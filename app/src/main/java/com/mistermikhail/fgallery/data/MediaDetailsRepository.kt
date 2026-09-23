@@ -20,6 +20,7 @@ class MediaDetailsRepository(
             title = "Файл",
             fields = buildList {
                 add(DetailField("Имя", item.name))
+                add(DetailField("Тип файла", fileExtension(item.name, item.mimeType)))
                 if (item.relativePath.isNotBlank()) {
                     add(DetailField("Папка", item.relativePath.trimEnd('/')))
                 }
@@ -184,6 +185,12 @@ class MediaDetailsRepository(
 
     private fun MediaMetadataRetriever.value(key: Int): String? =
         extractMetadata(key)?.trim()?.takeIf { it.isNotBlank() }
+
+    private fun fileExtension(name: String, mimeType: String?): String {
+        val extension = name.substringAfterLast('.', "").trim().uppercase(Locale.ROOT)
+        if (extension.isNotBlank()) return extension
+        return mimeType?.substringAfterLast('/')?.uppercase(Locale.ROOT) ?: "Неизвестно"
+    }
 
     private fun formatDate(value: Long): String =
         SimpleDateFormat("dd.MM.yyyy HH:mm:ss", Locale.getDefault()).format(Date(value))
