@@ -45,6 +45,7 @@ class MainActivity : ComponentActivity() {
     private fun FGalleryRoot(viewModel: GalleryViewModel) {
         val state by viewModel.uiState.collectAsState()
         var selectedItem by remember { mutableStateOf<MediaItem?>(null) }
+        var cleanupMode by remember { mutableStateOf(false) }
 
         val permissionLauncher = rememberLauncherForActivityResult(
             ActivityResultContracts.RequestMultiplePermissions(),
@@ -106,6 +107,8 @@ class MainActivity : ComponentActivity() {
                 onShowSettings = viewModel::showSettings,
                 onHideSettings = viewModel::hideSettings,
                 onQuickExifChanged = viewModel::setQuickExifEnabled,
+                cleanupMode = cleanupMode,
+                onCleanupModeChanged = { cleanupMode = it },
             )
         } else {
             ViewerScreen(
@@ -114,6 +117,7 @@ class MainActivity : ComponentActivity() {
                 onBack = { selectedItem = null },
                 onTrash = ::requestTrash,
                 quickExifEnabled = state.quickExifEnabled,
+                cleanupMode = cleanupMode,
             )
         }
     }
