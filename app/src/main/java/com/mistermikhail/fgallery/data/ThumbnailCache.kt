@@ -28,57 +28,70 @@ object ThumbnailCache {
     suspend fun preload(
         context: Context,
         items: List<MediaItem>,
-    ) = withContext(Dispatchers.IO) {
+    ): Int = withContext(Dispatchers.IO) {
+        var generated = 0
+        items.forEach { item ->
+            if (preloadOne(context, item)) generated += 1
+        }
+        generated
+    }
+
+    private fun preloadOne(
+        context: Context,
+        item: MediaItem,
+    ): Boolean {
         val directory = File(context.cacheDir, DIRECTORY)
         if (!directory.exists()) directory.mkdirs()
 
-        items.forEach { item ->
-            val target = fileFor(context, item)
-            if (target.exists() && target.length() > 0L) return@forEach
+        val target = fileFor(context, item)
+        if (target.exists() && target.length() > 0L) return false
 
-            // Remove older cached versions for this MediaStore row.
-            val prefix = "${item.kind.name.lowercase()}_${item.id}_"
-            directory.listFiles()
-                ?.filter { it.name.startsWith(prefix) && it != target }
-                ?.forEach(File::delete)
+        val prefix = "${item.kind.name.lowercase()}_${item.id}_"
+        directory.listFiles()
+            ?.filter { it.name.startsWith(prefix) && it != target }
+            ?.forEach(File::delete)
 
-            val bitmap = runCatching {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    context.contentResolver.loadThumbnail(
-                        item.uri,
-                        Size(EDGE_PX, EDGE_PX),
+        val bitmap = runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                context.contentResolver.loadThumbnail(
+                    item.uri,
+                    Size(EDGE_PX, EDGE_PX),
+                    null,
+                )
+            } else {
+                when (item.kind) {
+                    MediaKind.VIDEO -> MediaStore.Video.Thumbnails.getThumbnail(
+                        context.contentResolver,
+                        item.id,
+                        MediaStore.Video.Thumbnails.MINI_KIND,
                         null,
                     )
-                } else {
-                    when (item.kind) {
-                        MediaKind.VIDEO -> MediaStore.Video.Thumbnails.getThumbnail(
-                            context.contentResolver,
-                            item.id,
-                            MediaStore.Video.Thumbnails.MINI_KIND,
-                            null,
-                        )
 
-                        MediaKind.IMAGE,
-                        MediaKind.RAW,
-                        -> MediaStore.Images.Thumbnails.getThumbnail(
-                            context.contentResolver,
-                            item.id,
-                            MediaStore.Images.Thumbnails.MINI_KIND,
-                            null,
-                        )
-                    }
+                    MediaKind.IMAGE,
+                    MediaKind.RAW,
+                    -> MediaStore.Images.Thumbnails.getThumbnail(
+                        context.contentResolver,
+                        item.id,
+                        MediaStore.Images.Thumbnails.MINI_KIND,
+                        null,
+                    )
                 }
-            }.getOrNull() ?: return@forEach
-
-            runCatching {
-                FileOutputStream(target).use { stream ->
-                    bitmap.compress(Bitmap.CompressFormat.JPEG, 88, stream)
-                }
-            }.onFailure {
-                target.delete()
             }
+        }.getOrNull() ?: return false
 
-            bitmap.recycle()
+        val written = runCatching {
+            FileOutputStream(target).use { stream ->
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 88, stream)
+            }
+        }.getOrDefault(false)
+
+        bitmap.recycle()
+
+        if (!written) {
+            target.delete()
+            return false
         }
+
+        return true
     }
 }
