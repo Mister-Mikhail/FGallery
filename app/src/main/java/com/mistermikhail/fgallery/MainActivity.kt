@@ -102,6 +102,7 @@ class MainActivity : ComponentActivity() {
                 onToggleSearch = viewModel::toggleSearch,
                 onQueryChanged = viewModel::setQuery,
                 onFilterChanged = viewModel::setFilter,
+                onSortChanged = viewModel::setSortMode,
             )
         } else {
             ViewerScreen(
