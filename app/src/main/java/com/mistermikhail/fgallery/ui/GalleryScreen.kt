@@ -1,28 +1,31 @@
 package com.mistermikhail.fgallery.ui
 
-import android.graphics.Bitmap
-import android.media.MediaMetadataRetriever
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.items as lazyItems
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.GridItemSpan
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.grid.LazyGridState
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -35,6 +38,7 @@ import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.GridOn
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Sort
 import androidx.compose.material.icons.outlined.ViewQuilt
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
@@ -52,23 +56,21 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
+import coil3.video.videoFrameMillis
 import com.mistermikhail.fgallery.data.MediaItem
 import com.mistermikhail.fgallery.data.MediaKind
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -98,15 +100,14 @@ fun GalleryScreen(
     onMoveSelected: (List<MediaItem>, String) -> Unit,
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
+    var sortMenuExpanded by remember { mutableStateOf(false) }
     var renameTarget by remember { mutableStateOf<MediaItem?>(null) }
     var renameText by remember { mutableStateOf("") }
     var moveDialogVisible by remember { mutableStateOf(false) }
     var movePath by remember { mutableStateOf("") }
 
-    // Keep independent scroll positions alive while switching between album browser
-    // and album contents. Returning from an album must land exactly where the user was.
     val albumsGridState = rememberLazyGridState()
-    val mosaicGridState = rememberLazyGridState()
+    val mosaicListState = rememberLazyListState()
     val uniformGridState = rememberLazyGridState()
 
     val inAlbum = state.selectedAlbum != null
@@ -170,9 +171,16 @@ fun GalleryScreen(
                         },
                         title = {
                             Column {
-                                Text(text = state.selectedAlbum ?: "FGallery", fontWeight = FontWeight.SemiBold)
                                 Text(
-                                    text = if (inAlbum) "${state.visibleItems.size} объектов" else "${state.albums.size} альбомов",
+                                    text = state.selectedAlbum ?: "FGallery",
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                                Text(
+                                    text = if (inAlbum) {
+                                        "${state.visibleItems.size} объектов"
+                                    } else {
+                                        "${state.albums.size} альбомов"
+                                    },
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
                                 )
@@ -185,14 +193,66 @@ fun GalleryScreen(
                             IconButton(onClick = onToggleSearch) {
                                 Icon(Icons.Outlined.Search, contentDescription = "Поиск")
                             }
+
+                            Box {
+                                IconButton(onClick = { sortMenuExpanded = true }) {
+                                    Icon(Icons.Outlined.Sort, contentDescription = "Сортировка")
+                                }
+                                DropdownMenu(
+                                    expanded = sortMenuExpanded,
+                                    onDismissRequest = { sortMenuExpanded = false },
+                                ) {
+                                    SortMenuItem(
+                                        text = "Сначала новые",
+                                        selected = state.sortMode == SortMode.DATE_DESC,
+                                    ) {
+                                        sortMenuExpanded = false
+                                        onSortChanged(SortMode.DATE_DESC)
+                                    }
+                                    SortMenuItem(
+                                        text = "Сначала старые",
+                                        selected = state.sortMode == SortMode.DATE_ASC,
+                                    ) {
+                                        sortMenuExpanded = false
+                                        onSortChanged(SortMode.DATE_ASC)
+                                    }
+                                    SortMenuItem(
+                                        text = "Имя А–Я",
+                                        selected = state.sortMode == SortMode.NAME_ASC,
+                                    ) {
+                                        sortMenuExpanded = false
+                                        onSortChanged(SortMode.NAME_ASC)
+                                    }
+                                    SortMenuItem(
+                                        text = "Имя Я–А",
+                                        selected = state.sortMode == SortMode.NAME_DESC,
+                                    ) {
+                                        sortMenuExpanded = false
+                                        onSortChanged(SortMode.NAME_DESC)
+                                    }
+                                    SortMenuItem(
+                                        text = "Сначала крупные",
+                                        selected = state.sortMode == SortMode.SIZE_DESC,
+                                    ) {
+                                        sortMenuExpanded = false
+                                        onSortChanged(SortMode.SIZE_DESC)
+                                    }
+                                }
+                            }
+
                             if (inAlbum) {
                                 IconButton(onClick = onToggleGridMode) {
                                     Icon(
-                                        if (state.gridMode == GridMode.MOSAIC) Icons.Outlined.GridOn else Icons.Outlined.ViewQuilt,
+                                        if (state.gridMode == GridMode.MOSAIC) {
+                                            Icons.Outlined.GridOn
+                                        } else {
+                                            Icons.Outlined.ViewQuilt
+                                        },
                                         contentDescription = "Вид сетки",
                                     )
                                 }
                             }
+
                             Box {
                                 IconButton(onClick = { menuExpanded = true }) {
                                     Icon(Icons.Outlined.MoreVert, contentDescription = "Меню")
@@ -206,26 +266,54 @@ fun GalleryScreen(
                                         action()
                                     }
 
-                                    DropdownMenuItem(text = { Text("Все файлы") }, onClick = { apply { onFilterChanged(MediaFilter.ALL) } })
-                                    DropdownMenuItem(text = { Text("Фото") }, onClick = { apply { onFilterChanged(MediaFilter.PHOTOS) } })
-                                    DropdownMenuItem(text = { Text("Видео") }, onClick = { apply { onFilterChanged(MediaFilter.VIDEOS) } })
-                                    DropdownMenuItem(text = { Text("RAW") }, onClick = { apply { onFilterChanged(MediaFilter.RAW) } })
+                                    DropdownMenuItem(
+                                        text = { Text("Все файлы") },
+                                        onClick = { apply { onFilterChanged(MediaFilter.ALL) } },
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Фото") },
+                                        onClick = { apply { onFilterChanged(MediaFilter.PHOTOS) } },
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Видео") },
+                                        onClick = { apply { onFilterChanged(MediaFilter.VIDEOS) } },
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("RAW") },
+                                        onClick = { apply { onFilterChanged(MediaFilter.RAW) } },
+                                    )
 
                                     if (inAlbum) {
-                                        DropdownMenuItem(text = { Text("Сначала новые") }, onClick = { apply { onSortChanged(SortMode.DATE_DESC) } })
-                                        DropdownMenuItem(text = { Text("Сначала старые") }, onClick = { apply { onSortChanged(SortMode.DATE_ASC) } })
-                                        DropdownMenuItem(text = { Text("Имя А–Я") }, onClick = { apply { onSortChanged(SortMode.NAME_ASC) } })
-                                        DropdownMenuItem(text = { Text("Имя Я–А") }, onClick = { apply { onSortChanged(SortMode.NAME_DESC) } })
-                                        DropdownMenuItem(text = { Text("Сначала крупные") }, onClick = { apply { onSortChanged(SortMode.SIZE_DESC) } })
                                         DropdownMenuItem(
-                                            text = { Text(if (cleanupMode) "Выключить режим уборки" else "Режим уборки") },
-                                            onClick = { apply { onCleanupModeChanged(!cleanupMode) } },
+                                            text = {
+                                                Text(
+                                                    if (cleanupMode) {
+                                                        "Выключить режим уборки"
+                                                    } else {
+                                                        "Режим уборки"
+                                                    }
+                                                )
+                                            },
+                                            onClick = {
+                                                apply {
+                                                    onCleanupModeChanged(!cleanupMode)
+                                                }
+                                            },
                                         )
                                     }
 
-                                    DropdownMenuItem(text = { Text("Корзина") }, onClick = { apply(onOpenRecycleBin) })
-                                    DropdownMenuItem(text = { Text("Обновить") }, onClick = { apply(onRefresh) })
-                                    DropdownMenuItem(text = { Text("Настройки") }, onClick = { apply(onShowSettings) })
+                                    DropdownMenuItem(
+                                        text = { Text("Корзина") },
+                                        onClick = { apply(onOpenRecycleBin) },
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Обновить") },
+                                        onClick = { apply(onRefresh) },
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Настройки") },
+                                        onClick = { apply(onShowSettings) },
+                                    )
                                 }
                             }
                         },
@@ -237,7 +325,9 @@ fun GalleryScreen(
                         value = state.query,
                         onValueChange = onQueryChanged,
                         singleLine = true,
-                        placeholder = { Text(if (inAlbum) "Поиск в альбоме" else "Поиск альбома") },
+                        placeholder = {
+                            Text(if (inAlbum) "Поиск в альбоме" else "Поиск альбома")
+                        },
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 12.dp, vertical = 6.dp),
@@ -251,25 +341,34 @@ fun GalleryScreen(
             state.isLoading -> MessageState("Загрузка…", innerPadding)
             !inAlbum && state.albums.isEmpty() -> MessageState("Альбомы не найдены", innerPadding)
             inAlbum && state.visibleItems.isEmpty() -> MessageState("Медиа не найдено", innerPadding)
+
             !inAlbum -> AlbumsGrid(
                 albums = state.albums,
                 state = albumsGridState,
-                modifier = Modifier.fillMaxSize().padding(innerPadding),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding),
                 onOpenAlbum = onOpenAlbum,
             )
+
             state.gridMode == GridMode.MOSAIC -> MosaicGrid(
                 items = state.visibleItems,
-                state = mosaicGridState,
-                modifier = Modifier.fillMaxSize().padding(innerPadding),
+                state = mosaicListState,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding),
                 onOpenMedia = onOpenMedia,
                 cleanupMode = cleanupMode,
                 selectedIds = selectedIds,
                 onToggleSelection = onToggleSelection,
             )
+
             else -> UniformGrid(
                 items = state.visibleItems,
                 state = uniformGridState,
-                modifier = Modifier.fillMaxSize().padding(innerPadding),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding),
                 onOpenMedia = onOpenMedia,
                 cleanupMode = cleanupMode,
                 selectedIds = selectedIds,
@@ -316,8 +415,11 @@ fun GalleryScreen(
             onDismissRequest = { moveDialogVisible = false },
             title = {
                 Text(
-                    if (selectedItems.size == 1) "Переместить файл"
-                    else "Переместить ${selectedItems.size} файлов"
+                    if (selectedItems.size == 1) {
+                        "Переместить файл"
+                    } else {
+                        "Переместить ${selectedItems.size} файлов"
+                    }
                 )
             },
             text = {
@@ -367,18 +469,50 @@ fun GalleryScreen(
 }
 
 @Composable
-private fun PermissionState(innerPadding: PaddingValues, onRequestPermission: () -> Unit) {
-    Box(Modifier.fillMaxSize().padding(innerPadding), contentAlignment = Alignment.Center) {
+private fun SortMenuItem(
+    text: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    DropdownMenuItem(
+        text = {
+            Text(if (selected) "✓  $text" else "   $text")
+        },
+        onClick = onClick,
+    )
+}
+
+@Composable
+private fun PermissionState(
+    innerPadding: PaddingValues,
+    onRequestPermission: () -> Unit,
+) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .padding(innerPadding),
+        contentAlignment = Alignment.Center,
+    ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text("Нужен доступ к фото и видео")
-            TextButton(onClick = onRequestPermission) { Text("Разрешить доступ") }
+            TextButton(onClick = onRequestPermission) {
+                Text("Разрешить доступ")
+            }
         }
     }
 }
 
 @Composable
-private fun MessageState(text: String, innerPadding: PaddingValues) {
-    Box(Modifier.fillMaxSize().padding(innerPadding), contentAlignment = Alignment.Center) {
+private fun MessageState(
+    text: String,
+    innerPadding: PaddingValues,
+) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .padding(innerPadding),
+        contentAlignment = Alignment.Center,
+    ) {
         Text(text)
     }
 }
@@ -399,7 +533,7 @@ private fun AlbumsGrid(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        items(albums, key = { it.name }) { album ->
+        gridItems(albums, key = { it.name }) { album ->
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -408,16 +542,24 @@ private fun AlbumsGrid(
             ) {
                 MediaPreview(
                     item = album.cover,
-                    modifier = Modifier.fillMaxWidth().height(156.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(156.dp),
                 )
                 Column(
                     modifier = Modifier
                         .align(Alignment.BottomStart)
                         .fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.background.copy(alpha = 0.72f))
+                        .background(
+                            MaterialTheme.colorScheme.background.copy(alpha = 0.72f)
+                        )
                         .padding(horizontal = 10.dp, vertical = 7.dp),
                 ) {
-                    Text(album.name, maxLines = 1, fontWeight = FontWeight.Medium)
+                    Text(
+                        album.name,
+                        maxLines = 1,
+                        fontWeight = FontWeight.Medium,
+                    )
                     Text(
                         "${album.count}",
                         style = MaterialTheme.typography.labelSmall,
@@ -429,11 +571,40 @@ private fun AlbumsGrid(
     }
 }
 
+private fun buildMosaicRows(items: List<MediaItem>): List<List<MediaItem>> {
+    if (items.isEmpty()) return emptyList()
+
+    val rows = mutableListOf<List<MediaItem>>()
+    var current = mutableListOf<MediaItem>()
+    var ratioSum = 0f
+
+    fun flush() {
+        if (current.isNotEmpty()) {
+            rows += current.toList()
+            current = mutableListOf()
+            ratioSum = 0f
+        }
+    }
+
+    items.forEach { item ->
+        val ratio = item.aspectRatio.coerceIn(0.55f, 2.4f)
+        current += item
+        ratioSum += ratio
+
+        if ((ratioSum >= 2.75f && current.size >= 2) || current.size >= 4) {
+            flush()
+        }
+    }
+
+    flush()
+    return rows
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun MosaicGrid(
     items: List<MediaItem>,
-    state: LazyGridState,
+    state: LazyListState,
     modifier: Modifier,
     onOpenMedia: (MediaItem) -> Unit,
     cleanupMode: Boolean,
@@ -441,38 +612,52 @@ private fun MosaicGrid(
     onToggleSelection: (MediaItem) -> Unit,
 ) {
     val gap = if (cleanupMode) 5.dp else 3.dp
+    val rows = remember(items) { buildMosaicRows(items) }
 
-    LazyVerticalGrid(
-        columns = GridCells.Fixed(3),
+    LazyColumn(
         state = state,
-        modifier = modifier.background(if (cleanupMode) Color(0xFFFF5A36) else Color.Transparent),
+        modifier = modifier.background(
+            if (cleanupMode) Color(0xFFFF5A36) else Color.Transparent
+        ),
         contentPadding = PaddingValues(gap),
-        horizontalArrangement = Arrangement.spacedBy(gap),
         verticalArrangement = Arrangement.spacedBy(gap),
     ) {
-        itemsIndexed(
-            items = items,
-            key = { _, item -> item.id },
-            span = { index, _ ->
-                val wide = index % 8 == 0 || index % 13 == 5
-                GridItemSpan(if (wide) 2 else 1)
-            },
-        ) { index, item ->
-            val wide = index % 8 == 0 || index % 13 == 5
-            val ratio = if (wide) {
-                item.aspectRatio.coerceIn(1.15f, 2.1f)
-            } else {
-                item.aspectRatio.coerceIn(0.72f, 1.35f)
-            }
+        lazyItems(
+            items = rows,
+            key = { row -> row.joinToString(separator = ":") { it.id.toString() } },
+        ) { row ->
+            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                val ratios = row.map { it.aspectRatio.coerceIn(0.55f, 2.4f) }
+                val ratioSum = ratios.sum().coerceAtLeast(0.5f)
+                val totalGap = gap.value * (row.size - 1).coerceAtLeast(0)
+                val availableWidth = (maxWidth.value - totalGap).coerceAtLeast(1f)
+                val rowHeight = (availableWidth / ratioSum)
+                    .dp
+                    .coerceIn(108.dp, 225.dp)
 
-            MediaTile(
-                item = item,
-                aspectRatio = ratio,
-                onOpenMedia = onOpenMedia,
-                selected = item.id in selectedIds,
-                selectionMode = selectedIds.isNotEmpty(),
-                onToggleSelection = onToggleSelection,
-            )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(rowHeight),
+                ) {
+                    row.forEachIndexed { index, item ->
+                        if (index > 0) {
+                            Spacer(modifier = Modifier.width(gap))
+                        }
+
+                        MediaTile(
+                            item = item,
+                            modifier = Modifier
+                                .weight(ratios[index])
+                                .fillMaxHeight(),
+                            onOpenMedia = onOpenMedia,
+                            selected = item.id in selectedIds,
+                            selectionMode = selectedIds.isNotEmpty(),
+                            onToggleSelection = onToggleSelection,
+                        )
+                    }
+                }
+            }
         }
     }
 }
@@ -493,15 +678,19 @@ private fun UniformGrid(
     LazyVerticalGrid(
         columns = GridCells.Adaptive(112.dp),
         state = state,
-        modifier = modifier.background(if (cleanupMode) Color(0xFFFF5A36) else Color.Transparent),
+        modifier = modifier.background(
+            if (cleanupMode) Color(0xFFFF5A36) else Color.Transparent
+        ),
         contentPadding = PaddingValues(gap),
         horizontalArrangement = Arrangement.spacedBy(gap),
         verticalArrangement = Arrangement.spacedBy(gap),
     ) {
-        items(items, key = { it.id }) { item ->
+        gridItems(items, key = { it.id }) { item ->
             MediaTile(
                 item = item,
-                aspectRatio = 1f,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(1f),
                 onOpenMedia = onOpenMedia,
                 selected = item.id in selectedIds,
                 selectionMode = selectedIds.isNotEmpty(),
@@ -515,7 +704,7 @@ private fun UniformGrid(
 @Composable
 private fun MediaTile(
     item: MediaItem,
-    aspectRatio: Float,
+    modifier: Modifier,
     onOpenMedia: (MediaItem) -> Unit,
     selected: Boolean,
     selectionMode: Boolean,
@@ -524,11 +713,14 @@ private fun MediaTile(
     val shape = RoundedCornerShape(4.dp)
 
     Box(
-        modifier = Modifier
-            .fillMaxWidth()
+        modifier = modifier
             .then(
                 if (selected) {
-                    Modifier.border(3.dp, MaterialTheme.colorScheme.primary, shape)
+                    Modifier.border(
+                        width = 3.dp,
+                        color = MaterialTheme.colorScheme.primary,
+                        shape = shape,
+                    )
                 } else {
                     Modifier
                 }
@@ -536,16 +728,18 @@ private fun MediaTile(
             .clip(shape)
             .combinedClickable(
                 onClick = {
-                    if (selectionMode) onToggleSelection(item) else onOpenMedia(item)
+                    if (selectionMode) {
+                        onToggleSelection(item)
+                    } else {
+                        onOpenMedia(item)
+                    }
                 },
                 onLongClick = { onToggleSelection(item) },
             ),
     ) {
         MediaPreview(
             item = item,
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(aspectRatio.coerceAtLeast(0.45f)),
+            modifier = Modifier.fillMaxSize(),
         )
 
         val badge = when (item.kind) {
@@ -572,7 +766,7 @@ private fun MediaTile(
         if (selected) {
             Box(
                 modifier = Modifier
-                    .matchParentSize()
+                    .fillMaxSize()
                     .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)),
             )
             Icon(
@@ -588,9 +782,15 @@ private fun MediaTile(
 }
 
 @Composable
-private fun MediaPreview(item: MediaItem, modifier: Modifier) {
+private fun MediaPreview(
+    item: MediaItem,
+    modifier: Modifier,
+) {
     if (item.kind == MediaKind.VIDEO) {
-        VideoThumbnail(item, modifier)
+        VideoThumbnail(
+            item = item,
+            modifier = modifier,
+        )
     } else {
         AsyncImage(
             model = item.uri,
@@ -602,49 +802,29 @@ private fun MediaPreview(item: MediaItem, modifier: Modifier) {
 }
 
 @Composable
-private fun VideoThumbnail(item: MediaItem, modifier: Modifier) {
+private fun VideoThumbnail(
+    item: MediaItem,
+    modifier: Modifier,
+) {
     val context = LocalContext.current
-    val bitmap by produceState<Bitmap?>(
-        initialValue = null,
-        key1 = item.id,
-    ) {
-        value = withContext(Dispatchers.IO) {
-            val retriever = MediaMetadataRetriever()
-            try {
-                retriever.setDataSource(context, item.uri)
-                val durationMs = retriever
-                    .extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
-                    ?.toLongOrNull()
-                    ?: item.durationMillis
-                val middleUs = (durationMs.coerceAtLeast(2_000L) / 2L) * 1_000L
-
-                retriever.getFrameAtTime(
-                    middleUs,
-                    MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
-                ) ?: retriever.getFrameAtTime(
-                    1_000_000L,
-                    MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
-                ) ?: retriever.getFrameAtTime(
-                    0L,
-                    MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
-                )
-            } catch (_: Exception) {
-                null
-            } finally {
-                retriever.release()
-            }
-        }
-    }
-
-    val frame = bitmap
-    if (frame != null) {
-        Image(
-            bitmap = frame.asImageBitmap(),
-            contentDescription = item.name,
-            contentScale = ContentScale.Crop,
-            modifier = modifier.background(MaterialTheme.colorScheme.surfaceVariant),
-        )
+    val frameMillis = if (item.durationMillis > 2_000L) {
+        item.durationMillis / 2L
     } else {
-        Box(modifier.background(MaterialTheme.colorScheme.surfaceVariant))
+        1_000L
     }
+
+    val request = remember(item.uri, frameMillis) {
+        ImageRequest.Builder(context)
+            .data(item.uri)
+            .videoFrameMillis(frameMillis)
+            .crossfade(100)
+            .build()
+    }
+
+    AsyncImage(
+        model = request,
+        contentDescription = item.name,
+        contentScale = ContentScale.Crop,
+        modifier = modifier.background(MaterialTheme.colorScheme.surfaceVariant),
+    )
 }
