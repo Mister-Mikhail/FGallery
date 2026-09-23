@@ -399,19 +399,19 @@ class MainActivity : ComponentActivity() {
                 transitionSpec = {
                     if (targetState != null) {
                         (
-                            fadeIn(animationSpec = tween(120)) +
+                            fadeIn(animationSpec = tween(150)) +
                                 scaleIn(
-                                    animationSpec = tween(160),
-                                    initialScale = 0.985f,
+                                    animationSpec = tween(220),
+                                    initialScale = 0.96f,
                                 )
-                            ) togetherWith fadeOut(animationSpec = tween(70))
+                            ) togetherWith fadeOut(animationSpec = tween(90))
                     } else {
-                        fadeIn(animationSpec = tween(60)) togetherWith
+                        fadeIn(animationSpec = tween(90)) togetherWith
                             (
-                                fadeOut(animationSpec = tween(130)) +
+                                fadeOut(animationSpec = tween(180)) +
                                     scaleOut(
-                                        animationSpec = tween(150),
-                                        targetScale = 0.985f,
+                                        animationSpec = tween(210),
+                                        targetScale = 0.96f,
                                     )
                                 )
                     }
