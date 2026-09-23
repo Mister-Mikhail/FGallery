@@ -1,22 +1,25 @@
 package com.mistermikhail.fgallery.ui
 
+import android.graphics.Bitmap
+import android.media.MediaMetadataRetriever
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
-import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
-import androidx.compose.foundation.lazy.staggeredgrid.itemsIndexed
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowBack
@@ -39,18 +42,23 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.mistermikhail.fgallery.data.MediaItem
 import com.mistermikhail.fgallery.data.MediaKind
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -126,8 +134,6 @@ fun GalleryScreen(
                                     DropdownMenuItem(text = { Text("Имя А–Я") }, onClick = { apply { onSortChanged(SortMode.NAME_ASC) } })
                                     DropdownMenuItem(text = { Text("Имя Я–А") }, onClick = { apply { onSortChanged(SortMode.NAME_DESC) } })
                                     DropdownMenuItem(text = { Text("Сначала крупные") }, onClick = { apply { onSortChanged(SortMode.SIZE_DESC) } })
-                                }
-                                if (inAlbum) {
                                     DropdownMenuItem(
                                         text = { Text(if (cleanupMode) "Выключить режим уборки" else "Режим уборки") },
                                         onClick = { apply { onCleanupModeChanged(!cleanupMode) } },
@@ -216,11 +222,9 @@ private fun AlbumsGrid(albums: List<AlbumSummary>, modifier: Modifier, onOpenAlb
                 modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp))
                     .combinedClickable(onClick = { onOpenAlbum(album.name) }),
             ) {
-                AsyncImage(
-                    model = album.cover.uri,
-                    contentDescription = album.name,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxWidth().height(156.dp).background(MaterialTheme.colorScheme.surfaceVariant),
+                MediaPreview(
+                    item = album.cover,
+                    modifier = Modifier.fillMaxWidth().height(156.dp),
                 )
                 Column(
                     modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth()
@@ -237,16 +241,36 @@ private fun AlbumsGrid(albums: List<AlbumSummary>, modifier: Modifier, onOpenAlb
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun MosaicGrid(items: List<MediaItem>, modifier: Modifier, onOpenMedia: (MediaItem) -> Unit, cleanupMode: Boolean) {
-    LazyVerticalStaggeredGrid(
-        columns = StaggeredGridCells.Adaptive(112.dp),
+private fun MosaicGrid(
+    items: List<MediaItem>,
+    modifier: Modifier,
+    onOpenMedia: (MediaItem) -> Unit,
+    cleanupMode: Boolean,
+) {
+    val gap = if (cleanupMode) 5.dp else 3.dp
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(3),
         modifier = modifier.background(if (cleanupMode) Color(0xFFFF5A36) else Color.Transparent),
-        contentPadding = PaddingValues(if (cleanupMode) 5.dp else 3.dp),
-        horizontalArrangement = Arrangement.spacedBy(if (cleanupMode) 5.dp else 3.dp),
-        verticalItemSpacing = if (cleanupMode) 5.dp else 3.dp,
+        contentPadding = PaddingValues(gap),
+        horizontalArrangement = Arrangement.spacedBy(gap),
+        verticalArrangement = Arrangement.spacedBy(gap),
     ) {
-        itemsIndexed(items, key = { _, item -> item.id }) { _, item ->
-            MediaTile(item, item.aspectRatio.coerceIn(0.62f, 1.65f), onOpenMedia)
+        itemsIndexed(
+            items = items,
+            key = { _, item -> item.id },
+            span = { index, _ ->
+                // Real mosaic: selected tiles occupy two columns, not only varying heights.
+                val wide = index % 8 == 0 || index % 13 == 5
+                GridItemSpan(if (wide) 2 else 1)
+            },
+        ) { index, item ->
+            val wide = index % 8 == 0 || index % 13 == 5
+            val ratio = if (wide) {
+                item.aspectRatio.coerceIn(1.15f, 2.1f)
+            } else {
+                item.aspectRatio.coerceIn(0.72f, 1.35f)
+            }
+            MediaTile(item, ratio, onOpenMedia)
         }
     }
 }
@@ -254,12 +278,13 @@ private fun MosaicGrid(items: List<MediaItem>, modifier: Modifier, onOpenMedia: 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun UniformGrid(items: List<MediaItem>, modifier: Modifier, onOpenMedia: (MediaItem) -> Unit, cleanupMode: Boolean) {
+    val gap = if (cleanupMode) 5.dp else 3.dp
     LazyVerticalGrid(
         columns = GridCells.Adaptive(112.dp),
         modifier = modifier.background(if (cleanupMode) Color(0xFFFF5A36) else Color.Transparent),
-        contentPadding = PaddingValues(if (cleanupMode) 5.dp else 3.dp),
-        horizontalArrangement = Arrangement.spacedBy(if (cleanupMode) 5.dp else 3.dp),
-        verticalArrangement = Arrangement.spacedBy(if (cleanupMode) 5.dp else 3.dp),
+        contentPadding = PaddingValues(gap),
+        horizontalArrangement = Arrangement.spacedBy(gap),
+        verticalArrangement = Arrangement.spacedBy(gap),
     ) {
         items(items, key = { it.id }) { item -> MediaTile(item, 1f, onOpenMedia) }
     }
@@ -273,13 +298,9 @@ private fun MediaTile(item: MediaItem, aspectRatio: Float, onOpenMedia: (MediaIt
             onClick = { onOpenMedia(item) },
         ),
     ) {
-        AsyncImage(
-            model = item.uri,
-            contentDescription = item.name,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxWidth()
-                .height((112.dp / aspectRatio.coerceAtLeast(0.5f)).coerceIn(82.dp, 210.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant),
+        MediaPreview(
+            item = item,
+            modifier = Modifier.fillMaxWidth().aspectRatio(aspectRatio.coerceAtLeast(0.45f)),
         )
 
         val badge = when (item.kind) {
@@ -296,5 +317,55 @@ private fun MediaTile(item: MediaItem, aspectRatio: Float, onOpenMedia: (MediaIt
                 style = MaterialTheme.typography.labelSmall,
             )
         }
+    }
+}
+
+@Composable
+private fun MediaPreview(item: MediaItem, modifier: Modifier) {
+    if (item.kind == MediaKind.VIDEO) {
+        VideoThumbnail(item, modifier)
+    } else {
+        AsyncImage(
+            model = item.uri,
+            contentDescription = item.name,
+            contentScale = ContentScale.Crop,
+            modifier = modifier.background(MaterialTheme.colorScheme.surfaceVariant),
+        )
+    }
+}
+
+@Composable
+private fun VideoThumbnail(item: MediaItem, modifier: Modifier) {
+    val context = LocalContext.current
+    val bitmap by produceState<Bitmap?>(
+        initialValue = null,
+        key1 = item.id,
+    ) {
+        value = withContext(Dispatchers.IO) {
+            val retriever = MediaMetadataRetriever()
+            try {
+                retriever.setDataSource(context, item.uri)
+                retriever.getFrameAtTime(
+                    0L,
+                    MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
+                )
+            } catch (_: Exception) {
+                null
+            } finally {
+                retriever.release()
+            }
+        }
+    }
+
+    val frame = bitmap
+    if (frame != null) {
+        Image(
+            bitmap = frame.asImageBitmap(),
+            contentDescription = item.name,
+            contentScale = ContentScale.Crop,
+            modifier = modifier.background(MaterialTheme.colorScheme.surfaceVariant),
+        )
+    } else {
+        Box(modifier.background(MaterialTheme.colorScheme.surfaceVariant))
     }
 }
