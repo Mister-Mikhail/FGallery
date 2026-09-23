@@ -56,6 +56,7 @@ fun ViewerScreen(
     onBack: () -> Unit,
     onTrash: (MediaItem) -> Unit,
     quickExifEnabled: Boolean,
+    cleanupMode: Boolean,
 ) {
     val initialPage = items.indexOfFirst { it.id == initialItem.id }.coerceAtLeast(0)
     val pagerState = rememberPagerState(
@@ -92,13 +93,14 @@ fun ViewerScreen(
                 VideoPlayer(
                     item = item,
                     onSingleTap = ::toggleChrome,
-                    onDoubleTap = { onTrash(item) },
+                    onDoubleTap = { if (cleanupMode) onTrash(item) },
                 )
             } else {
                 ZoomableImage(
                     item = item,
                     onSingleTap = ::toggleChrome,
-                    onDoubleTap = { onTrash(item) },
+                    cleanupMode = cleanupMode,
+                    onTrash = { onTrash(item) },
                 )
             }
         }
@@ -236,7 +238,8 @@ private fun VideoPlayer(
 private fun ZoomableImage(
     item: MediaItem,
     onSingleTap: () -> Unit,
-    onDoubleTap: () -> Unit,
+    cleanupMode: Boolean,
+    onTrash: () -> Unit,
 ) {
     var scale by remember(item.id) { mutableFloatStateOf(1f) }
     var offsetX by remember(item.id) { mutableFloatStateOf(0f) }
@@ -262,7 +265,21 @@ private fun ZoomableImage(
             .pointerInput(item.id) {
                 detectTapGestures(
                     onTap = { onSingleTap() },
-                    onDoubleTap = { onDoubleTap() },
+                    onDoubleTap = {
+                        if (cleanupMode) {
+                            onTrash()
+                        } else {
+                            scale = when {
+                                scale < 1.5f -> 2.5f
+                                scale < 4f -> 6f
+                                else -> 1f
+                            }
+                            if (scale == 1f) {
+                                offsetX = 0f
+                                offsetY = 0f
+                            }
+                        }
+                    },
                 )
             },
         contentAlignment = Alignment.Center,
