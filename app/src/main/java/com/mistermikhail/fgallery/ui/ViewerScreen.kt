@@ -37,6 +37,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
@@ -347,16 +348,29 @@ private fun ZoomableImage(
             .pointerInput(item.id, viewportSize) {
                 awaitEachGesture {
                     awaitFirstDown(requireUnconsumed = false)
+
                     var gestureActive = true
+                    var transforming = false
+                    var accumulatedPan = Offset.Zero
 
                     while (gestureActive) {
                         val event = awaitPointerEvent()
                         val pressedCount = event.changes.count { it.pressed }
-                        val shouldTransform = pressedCount > 1 || scale > 1.01f
+                        val zoom = event.calculateZoom()
+                        val pan = event.calculatePan()
 
-                        if (shouldTransform) {
-                            val zoom = event.calculateZoom()
-                            val pan = event.calculatePan()
+                        accumulatedPan += pan
+
+                        val multiTouch = pressedCount > 1
+                        val realPan =
+                            scale > 1.01f &&
+                                accumulatedPan.getDistance() > viewConfiguration.touchSlop
+
+                        // Do not consume a stationary one-finger tap while zoomed.
+                        // That lets single/double tap continue to control EXIF/chrome.
+                        if (multiTouch || realPan || transforming) {
+                            transforming = true
+
                             val newScale = (scale * zoom).coerceIn(1f, 8f)
                             scale = newScale
 
