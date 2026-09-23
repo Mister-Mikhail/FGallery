@@ -1,6 +1,7 @@
 package com.mistermikhail.fgallery.ui
 
 import android.view.GestureDetector
+import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.ViewGroup
 import androidx.compose.animation.AnimatedVisibility
@@ -49,9 +50,11 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem as PlayerMediaItem
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
+import com.mistermikhail.fgallery.R
 import com.mistermikhail.fgallery.data.MediaItem
 import com.mistermikhail.fgallery.data.MediaKind
 import kotlin.math.min
@@ -186,6 +189,25 @@ fun ViewerScreen(
     }
 }
 
+private fun MediaItem.isLikely360Video(): Boolean {
+    if (kind != MediaKind.VIDEO) return false
+
+    val normalizedName = name.lowercase()
+    val explicit360 =
+        "360" in normalizedName ||
+        "spherical" in normalizedName ||
+        "equirect" in normalizedName ||
+        "vr360" in normalizedName
+
+    val ratio = if (height > 0) width.toFloat() / height.toFloat() else 0f
+    val highResolutionEquirectangular =
+        width >= 3000 &&
+        height >= 1400 &&
+        ratio in 1.85f..2.15f
+
+    return explicit360 || highResolutionEquirectangular
+}
+
 @Composable
 private fun VideoPlayer(
     item: MediaItem,
@@ -193,6 +215,10 @@ private fun VideoPlayer(
     onDoubleTap: () -> Unit,
 ) {
     val context = LocalContext.current
+    val spherical = remember(item.id, item.width, item.height, item.name) {
+        item.isLikely360Video()
+    }
+
     val player = remember(item.uri) {
         ExoPlayer.Builder(context).build().apply {
             setMediaItem(PlayerMediaItem.fromUri(item.uri))
@@ -226,9 +252,18 @@ private fun VideoPlayer(
 
     AndroidView(
         factory = { ctx ->
-            PlayerView(ctx).apply {
+            val view = if (spherical) {
+                LayoutInflater.from(ctx)
+                    .inflate(R.layout.player_view_spherical, null, false) as PlayerView
+            } else {
+                PlayerView(ctx).apply {
+                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                    useController = true
+                }
+            }
+
+            view.apply {
                 this.player = player
-                useController = true
                 layoutParams = ViewGroup.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT,
@@ -256,10 +291,21 @@ private fun ZoomableImage(
     var offsetY by remember(item.id) { mutableFloatStateOf(0f) }
     var viewportSize by remember(item.id) { mutableStateOf(IntSize.Zero) }
 
-    val imageRequest = remember(item.uri) {
+    val isAnimatedGif = remember(item.name, item.mimeType) {
+        item.name.endsWith(".gif", ignoreCase = true) ||
+            item.mimeType.equals("image/gif", ignoreCase = true)
+    }
+    val decodeEdge = when {
+        isAnimatedGif -> 2048
+        scale > 1.25f -> 4096
+        else -> 2048
+    }
+
+    val imageRequest = remember(item.uri, decodeEdge) {
         ImageRequest.Builder(context)
             .data(item.uri)
-            .size(4096, 4096)
+            .size(decodeEdge, decodeEdge)
+            .crossfade(100)
             .build()
     }
 
