@@ -5,8 +5,8 @@ import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.ViewGroup
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -35,6 +35,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -313,9 +314,9 @@ private fun ZoomableImage(
     val context = LocalContext.current
     val animationScope = rememberCoroutineScope()
 
-    val scale = remember(item.id) { Animatable(1f) }
-    val offsetX = remember(item.id) { Animatable(0f) }
-    val offsetY = remember(item.id) { Animatable(0f) }
+    var scale by remember(item.id) { mutableFloatStateOf(1f) }
+    var offsetX by remember(item.id) { mutableFloatStateOf(0f) }
+    var offsetY by remember(item.id) { mutableFloatStateOf(0f) }
 
     var viewportSize by remember(item.id) { mutableStateOf(IntSize.Zero) }
     var highResRequested by remember(item.id) { mutableStateOf(false) }
@@ -354,16 +355,16 @@ private fun ZoomableImage(
         return maxX to maxY
     }
 
-    suspend fun snapOffsetsInsideBounds(targetScale: Float) {
+    fun clampOffsets(targetScale: Float = scale) {
         if (targetScale <= 1.01f) {
-            offsetX.snapTo(0f)
-            offsetY.snapTo(0f)
+            offsetX = 0f
+            offsetY = 0f
             return
         }
 
         val (maxX, maxY) = maxOffsets(targetScale)
-        offsetX.snapTo(offsetX.value.coerceIn(-maxX, maxX))
-        offsetY.snapTo(offsetY.value.coerceIn(-maxY, maxY))
+        offsetX = offsetX.coerceIn(-maxX, maxX)
+        offsetY = offsetY.coerceIn(-maxY, maxY)
     }
 
     fun animateDoubleTapZoom() {
@@ -373,8 +374,8 @@ private fun ZoomableImage(
         }
 
         val targetScale = when {
-            scale.value < 1.5f -> 2.5f
-            scale.value < 5f -> 8f
+            scale < 1.5f -> 2.5f
+            scale < 5f -> 8f
             else -> 1f
         }
 
@@ -382,31 +383,31 @@ private fun ZoomableImage(
             highResRequested = true
         }
 
+        val startScale = scale
+        val startOffsetX = offsetX
+        val startOffsetY = offsetY
+
         animationScope.launch {
-            val spec = tween<Float>(
-                durationMillis = 240,
-                easing = FastOutSlowInEasing,
-            )
-
-            launch {
-                scale.animateTo(
-                    targetValue = targetScale,
-                    animationSpec = spec,
-                )
+            animate(
+                initialValue = 0f,
+                targetValue = 1f,
+                animationSpec = tween(
+                    durationMillis = 240,
+                    easing = FastOutSlowInEasing,
+                ),
+            ) { progress, _ ->
+                scale = startScale + (targetScale - startScale) * progress
+                offsetX = startOffsetX * (1f - progress)
+                offsetY = startOffsetY * (1f - progress)
+                clampOffsets(scale)
             }
 
-            launch {
-                offsetX.animateTo(
-                    targetValue = 0f,
-                    animationSpec = spec,
-                )
-            }
-
-            launch {
-                offsetY.animateTo(
-                    targetValue = 0f,
-                    animationSpec = spec,
-                )
+            scale = targetScale
+            if (targetScale <= 1.01f) {
+                offsetX = 0f
+                offsetY = 0f
+            } else {
+                clampOffsets(targetScale)
             }
         }
     }
@@ -417,9 +418,7 @@ private fun ZoomableImage(
             .clipToBounds()
             .onSizeChanged {
                 viewportSize = it
-                animationScope.launch {
-                    snapOffsetsInsideBounds(scale.value)
-                }
+                clampOffsets(scale)
             }
             .pointerInput(item.id, viewportSize) {
                 awaitEachGesture {
@@ -439,30 +438,26 @@ private fun ZoomableImage(
 
                         val multiTouch = pressedCount > 1
                         val realPan =
-                            scale.value > 1.01f &&
+                            scale > 1.01f &&
                                 accumulatedPan.getDistance() > viewConfiguration.touchSlop
 
                         if (multiTouch || realPan || transforming) {
                             transforming = true
 
-                            val newScale = (scale.value * zoom).coerceIn(1f, 8f)
+                            val newScale = (scale * zoom).coerceIn(1f, 8f)
                             if (newScale > 1.25f) {
                                 highResRequested = true
                             }
 
-                            scale.snapTo(newScale)
+                            scale = newScale
 
                             if (newScale > 1.01f) {
                                 val (maxX, maxY) = maxOffsets(newScale)
-                                offsetX.snapTo(
-                                    (offsetX.value + pan.x).coerceIn(-maxX, maxX)
-                                )
-                                offsetY.snapTo(
-                                    (offsetY.value + pan.y).coerceIn(-maxY, maxY)
-                                )
+                                offsetX = (offsetX + pan.x).coerceIn(-maxX, maxX)
+                                offsetY = (offsetY + pan.y).coerceIn(-maxY, maxY)
                             } else {
-                                offsetX.snapTo(0f)
-                                offsetY.snapTo(0f)
+                                offsetX = 0f
+                                offsetY = 0f
                             }
 
                             event.changes.forEach { change ->
@@ -493,10 +488,10 @@ private fun ZoomableImage(
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer {
-                    scaleX = scale.value
-                    scaleY = scale.value
-                    translationX = offsetX.value
-                    translationY = offsetY.value
+                    scaleX = scale
+                    scaleY = scale
+                    translationX = offsetX
+                    translationY = offsetY
                 },
         )
     }
