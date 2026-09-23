@@ -72,6 +72,7 @@ class MainActivity : ComponentActivity() {
         var cleanupMode by remember { mutableStateOf(false) }
         var selectedIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
         var pendingWrite by remember { mutableStateOf<PendingWriteOperation?>(null) }
+        var pendingPermanentDeleteUris by remember { mutableStateOf<Set<String>>(emptySet()) }
 
         val permissionLauncher = rememberLauncherForActivityResult(
             ActivityResultContracts.RequestMultiplePermissions(),
@@ -187,103 +188,65 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        val trashLauncher = rememberLauncherForActivityResult(
-            ActivityResultContracts.StartIntentSenderForResult(),
-        ) { result ->
-            if (result.resultCode == Activity.RESULT_OK) {
-                selectedItem = null
-                selectedIds = emptySet()
-                viewModel.refresh()
-                if (state.recycleBinVisible) viewModel.refreshRecycleBin()
-            }
-        }
-
-        val restoreLauncher = rememberLauncherForActivityResult(
-            ActivityResultContracts.StartIntentSenderForResult(),
-        ) { result ->
-            if (result.resultCode == Activity.RESULT_OK) {
-                selectedIds = emptySet()
-                viewModel.refresh()
-                viewModel.refreshRecycleBin()
-            }
-        }
-
         val deleteForeverLauncher = rememberLauncherForActivityResult(
             ActivityResultContracts.StartIntentSenderForResult(),
         ) { result ->
+            val deletedUris = pendingPermanentDeleteUris
+            pendingPermanentDeleteUris = emptySet()
+
             if (result.resultCode == Activity.RESULT_OK) {
                 selectedIds = emptySet()
-                viewModel.refreshRecycleBin()
+                viewModel.onPermanentlyDeleted(deletedUris)
             }
         }
 
         fun requestTrash(items: List<MediaItem>) {
             if (items.isEmpty()) return
 
-            runCatching {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    val pendingIntent = MediaStore.createTrashRequest(
-                        contentResolver,
-                        items.map { it.uri },
-                        true,
-                    )
-                    trashLauncher.launch(
-                        IntentSenderRequest.Builder(pendingIntent.intentSender).build()
-                    )
-                    return@runCatching
-                }
-
-                var deletedAny = false
-                items.forEach { item ->
-                    try {
-                        deletedAny =
-                            contentResolver.delete(item.uri, null, null) > 0 || deletedAny
-                    } catch (securityException: SecurityException) {
-                        val recoverable = securityException as? RecoverableSecurityException
-                        val sender: IntentSender? =
-                            recoverable?.userAction?.actionIntent?.intentSender
-
-                        if (sender != null) {
-                            trashLauncher.launch(
-                                IntentSenderRequest.Builder(sender).build()
-                            )
-                            return@forEach
-                        }
-                    }
-                }
-
-                if (deletedAny) {
-                    selectedItem = null
-                    selectedIds = emptySet()
-                    viewModel.refresh()
-                }
-            }
+            viewModel.moveToRecycleBin(items)
+            selectedItem = null
+            selectedIds = emptySet()
         }
 
         fun restoreFromRecycleBin(items: List<MediaItem>) {
-            if (items.isEmpty() || Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
-            runCatching {
-                val pendingIntent = MediaStore.createTrashRequest(
-                    contentResolver,
-                    items.map { it.uri },
-                    false,
-                )
-                restoreLauncher.launch(
-                    IntentSenderRequest.Builder(pendingIntent.intentSender).build()
-                )
-            }
+            if (items.isEmpty()) return
+
+            viewModel.restoreFromRecycleBin(items)
+            selectedIds = emptySet()
         }
 
         fun deleteForever(items: List<MediaItem>) {
-            if (items.isEmpty() || Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
-            runCatching {
-                val pendingIntent = MediaStore.createDeleteRequest(
-                    contentResolver,
-                    items.map { it.uri },
-                )
-                deleteForeverLauncher.launch(
-                    IntentSenderRequest.Builder(pendingIntent.intentSender).build()
-                )
+            if (items.isEmpty()) return
+
+            val uriStrings = items.mapTo(mutableSetOf()) { it.uri.toString() }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                runCatching {
+                    pendingPermanentDeleteUris = uriStrings
+                    val pendingIntent = MediaStore.createDeleteRequest(
+                        contentResolver,
+                        items.map { it.uri },
+                    )
+                    deleteForeverLauncher.launch(
+                        IntentSenderRequest.Builder(pendingIntent.intentSender).build()
+                    )
+                }.onFailure {
+                    pendingPermanentDeleteUris = emptySet()
+                }
+                return
+            }
+
+            var deletedAny = false
+            items.forEach { item ->
+                runCatching {
+                    deletedAny =
+                        contentResolver.delete(item.uri, null, null) > 0 || deletedAny
+                }
+            }
+
+            if (deletedAny) {
+                selectedIds = emptySet()
+                viewModel.onPermanentlyDeleted(uriStrings)
             }
         }
 
@@ -322,7 +285,6 @@ class MainActivity : ComponentActivity() {
             if (state.recycleBinVisible) {
                 RecycleBinScreen(
                     items = state.recycleBinItems,
-                    loading = state.recycleBinLoading,
                     selectedIds = selectedIds,
                     onBack = {
                         selectedIds = emptySet()
@@ -332,6 +294,12 @@ class MainActivity : ComponentActivity() {
                         selectedIds =
                             if (item.id in selectedIds) selectedIds - item.id
                             else selectedIds + item.id
+                    },
+                    onSelectAll = {
+                        selectedIds = state.recycleBinItems.mapTo(mutableSetOf()) { it.id }
+                    },
+                    onClearSelection = {
+                        selectedIds = emptySet()
                     },
                     onRestore = ::restoreFromRecycleBin,
                     onDeleteForever = ::deleteForever,
