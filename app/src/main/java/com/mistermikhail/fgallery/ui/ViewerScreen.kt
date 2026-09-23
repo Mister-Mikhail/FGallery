@@ -8,13 +8,17 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
@@ -45,6 +49,7 @@ import androidx.media3.common.MediaItem as PlayerMediaItem
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
 import com.mistermikhail.fgallery.data.MediaItem
 import com.mistermikhail.fgallery.data.MediaKind
 
@@ -81,7 +86,7 @@ fun ViewerScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black),
+            .background(if (cleanupMode) Color(0xFF38100A) else Color.Black),
     ) {
         HorizontalPager(
             state = pagerState,
@@ -109,13 +114,13 @@ fun ViewerScreen(
             visible = chromeVisible,
             enter = fadeIn(),
             exit = fadeOut(),
-            modifier = Modifier
-                .align(Alignment.TopCenter),
+            modifier = Modifier.align(Alignment.TopCenter),
         ) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Color.Black.copy(alpha = 0.42f)),
+                    .background(Color.Black.copy(alpha = 0.55f))
+                    .statusBarsPadding(),
             ) {
                 IconButton(
                     onClick = onBack,
@@ -241,28 +246,57 @@ private fun ZoomableImage(
     cleanupMode: Boolean,
     onTrash: () -> Unit,
 ) {
+    val context = LocalContext.current
     var scale by remember(item.id) { mutableFloatStateOf(1f) }
     var offsetX by remember(item.id) { mutableFloatStateOf(0f) }
     var offsetY by remember(item.id) { mutableFloatStateOf(0f) }
+
+    val imageRequest = remember(item.uri) {
+        ImageRequest.Builder(context)
+            .data(item.uri)
+            // Decode substantially above display resolution so multi-megapixel JPEGs
+            // retain noticeably more detail while zooming. Full tiled decode comes next.
+            .size(4096, 4096)
+            .build()
+    }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .clipToBounds()
             .pointerInput(item.id) {
-                detectTransformGestures { _, pan, zoom, _ ->
-                    scale = (scale * zoom).coerceIn(1f, 6f)
+                // Multi-touch zoom/pan only consumes pointer changes when there are
+                // 2+ fingers or the image is already zoomed. At 1x, a one-finger
+                // horizontal drag remains available to HorizontalPager for swiping.
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    do {
+                        val event = awaitPointerEvent()
+                        val pressedCount = event.changes.count { it.pressed }
+                        val shouldTransform = pressedCount > 1 || scale > 1.01f
 
-                    if (scale > 1f) {
-                        offsetX += pan.x
-                        offsetY += pan.y
-                    } else {
-                        offsetX = 0f
-                        offsetY = 0f
-                    }
+                        if (shouldTransform) {
+                            val zoom = event.calculateZoom()
+                            val pan = event.calculatePan()
+                            scale = (scale * zoom).coerceIn(1f, 8f)
+
+                            if (scale > 1.01f) {
+                                offsetX += pan.x
+                                offsetY += pan.y
+                            } else {
+                                scale = 1f
+                                offsetX = 0f
+                                offsetY = 0f
+                            }
+
+                            event.changes.forEach { change ->
+                                if (change.pressed) change.consume()
+                            }
+                        }
+                    } while (event.changes.any { it.pressed })
                 }
             }
-            .pointerInput(item.id) {
+            .pointerInput(item.id, cleanupMode) {
                 detectTapGestures(
                     onTap = { onSingleTap() },
                     onDoubleTap = {
@@ -271,7 +305,7 @@ private fun ZoomableImage(
                         } else {
                             scale = when {
                                 scale < 1.5f -> 2.5f
-                                scale < 4f -> 6f
+                                scale < 5f -> 8f
                                 else -> 1f
                             }
                             if (scale == 1f) {
@@ -285,7 +319,7 @@ private fun ZoomableImage(
         contentAlignment = Alignment.Center,
     ) {
         AsyncImage(
-            model = item.uri,
+            model = imageRequest,
             contentDescription = item.name,
             contentScale = ContentScale.Fit,
             modifier = Modifier
