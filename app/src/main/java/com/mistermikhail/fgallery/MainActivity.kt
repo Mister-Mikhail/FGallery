@@ -103,6 +103,9 @@ class MainActivity : ComponentActivity() {
                 onQueryChanged = viewModel::setQuery,
                 onFilterChanged = viewModel::setFilter,
                 onSortChanged = viewModel::setSortMode,
+                onShowSettings = viewModel::showSettings,
+                onHideSettings = viewModel::hideSettings,
+                onQuickExifChanged = viewModel::setQuickExifEnabled,
             )
         } else {
             ViewerScreen(
@@ -110,6 +113,7 @@ class MainActivity : ComponentActivity() {
                 initialItem = current,
                 onBack = { selectedItem = null },
                 onTrash = ::requestTrash,
+                quickExifEnabled = state.quickExifEnabled,
             )
         }
     }
