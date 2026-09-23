@@ -13,6 +13,7 @@ import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -111,6 +112,7 @@ fun ViewerScreen(
         ) {
             Box(
                 modifier = Modifier
+                    .fillMaxWidth()
                     .background(Color.Black.copy(alpha = 0.42f)),
             ) {
                 IconButton(
