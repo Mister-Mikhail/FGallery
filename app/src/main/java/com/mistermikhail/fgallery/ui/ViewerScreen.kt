@@ -77,8 +77,9 @@ fun ViewerScreen(
 
     val currentItem = items.getOrNull(pagerState.currentPage)
 
+    // Keep chrome / Quick EXIF visibility unchanged while swiping between files.
+    // The overlay is keyed by currentItem and refreshes its metadata for each page.
     LaunchedEffect(currentItem?.id) {
-        chromeVisible = false
         showDetails = false
     }
 
