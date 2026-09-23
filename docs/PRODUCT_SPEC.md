@@ -17,7 +17,8 @@ FGallery is not intended to be a visual clone. The main deliberate visual extens
 - Folder/album-oriented navigation.
 - Dark interface as an important default direction, with light theme support.
 - No mandatory account, cloud backend, subscription, or network dependency for the gallery itself.
-- Modern Android storage APIs and system Trash behavior.
+- Modern Android storage APIs.
+- FGallery uses an app-managed recycle-bin state for fast cleanup without per-item Android confirmation. Permanent deletion still uses Android's protected delete confirmation when required.
 
 ## 3. Main navigation
 
@@ -90,7 +91,7 @@ Normal mode:
 
 Cleanup mode:
 - Cleanup mode is explicitly enabled by the user from the gallery menu;
-- while Cleanup mode is active, double tap on the currently opened media item requests moving that item to Android system Trash;
+- while Cleanup mode is active, double tap on the currently opened media item moves that item immediately into the FGallery recycle bin without an extra Android confirmation dialog;
 - thumbnail double tap must never delete media;
 - the gallery visually indicates Cleanup mode with warm red/orange spacing/accent so the destructive gesture cannot be forgotten.
 
@@ -185,10 +186,10 @@ Selection behavior:
 
 Required operations:
 - move one or many selected files to another folder;
-- move one or many selected files to Android system Trash;
+- move one or many selected files to the FGallery recycle bin without per-item confirmation;
 - rename a single selected file;
 - share one or many selected files;
-- destructive operations use Android confirmation / MediaStore write or Trash APIs where required.
+- permanent deletion uses Android confirmation / MediaStore delete APIs where required; moving into the FGallery recycle bin itself is non-destructive and immediate.
 
 Rename is available only for a single selected item. Move and Trash must work for multiple selected files.
 
@@ -199,12 +200,13 @@ The following remain part of the planned application scope:
 - date grouping/navigation;
 - favorites;
 - hidden folders/media;
-- recycle-bin management with a dedicated in-app screen, restore, and permanent delete through Android system confirmation;
+- recycle-bin management with a dedicated in-app screen, restore, Select All, and Clear Bin / permanent delete through Android system confirmation;
 - metadata/details;
 - share;
 - edit/open-in-editor actions;
 - reliable large-image viewing;
 - performance tuning and preloading.
+- background thumbnail cache generation keyed by media modification time, so scrolling normally uses prebuilt previews instead of decoding on demand.
 
 ## 10. Android implementation direction
 
