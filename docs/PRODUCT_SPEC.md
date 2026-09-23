@@ -222,3 +222,12 @@ The following remain part of the planned application scope:
 This file records agreed product behavior.
 
 When implementation details, old README text, generated mockups, or remembered chat context conflict with this document, update this document deliberately first and then align the code to it.
+
+
+## Branding
+
+Current FGallery brand direction:
+- use the selected middle logo concept as the working visual identity;
+- the compact upper F mark inside the frame is the launcher/app icon direction;
+- keep supporting brand words minimal: only "FAST" and "RAW READY";
+- do not use additional slogans or descriptive taglines in the current logo treatment.
