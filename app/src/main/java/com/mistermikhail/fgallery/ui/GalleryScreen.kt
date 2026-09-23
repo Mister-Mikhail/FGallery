@@ -60,7 +60,6 @@ fun GalleryScreen(
     onOpenAlbum: (String) -> Unit,
     onBackToAlbums: () -> Unit,
     onOpenMedia: (MediaItem) -> Unit,
-    onTrashMedia: (MediaItem) -> Unit,
     onToggleGridMode: () -> Unit,
     onToggleSearch: () -> Unit,
     onQueryChanged: (String) -> Unit,
@@ -146,7 +145,6 @@ fun GalleryScreen(
                 items = state.visibleItems,
                 modifier = Modifier.fillMaxSize().padding(innerPadding),
                 onOpenMedia = onOpenMedia,
-                onTrashMedia = onTrashMedia,
             )
             else -> UniformGrid(
                 items = state.visibleItems,
@@ -243,7 +241,6 @@ private fun MediaTile(item: MediaItem, aspectRatio: Float, onOpenMedia: (MediaIt
     Box(
         modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(4.dp)).combinedClickable(
             onClick = { onOpenMedia(item) },
-            onDoubleClick = { onTrashMedia(item) },
         ),
     ) {
         AsyncImage(
