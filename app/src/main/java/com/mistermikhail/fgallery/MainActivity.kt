@@ -200,11 +200,32 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        fun requestTrash(items: List<MediaItem>) {
+        fun requestTrash(
+            items: List<MediaItem>,
+            keepViewerOpen: Boolean = false,
+        ) {
             if (items.isEmpty()) return
 
+            val nextViewerItem = if (
+                keepViewerOpen &&
+                items.size == 1 &&
+                selectedItem?.id == items.first().id
+            ) {
+                val currentItems = state.visibleItems
+                val currentIndex = currentItems.indexOfFirst { it.id == items.first().id }
+
+                when {
+                    currentIndex < 0 -> null
+                    currentIndex < currentItems.lastIndex -> currentItems[currentIndex + 1]
+                    currentIndex > 0 -> currentItems[currentIndex - 1]
+                    else -> null
+                }
+            } else {
+                null
+            }
+
             viewModel.moveToRecycleBin(items)
-            selectedItem = null
+            selectedItem = if (keepViewerOpen) nextViewerItem else null
             selectedIds = emptySet()
         }
 
@@ -353,7 +374,7 @@ class MainActivity : ComponentActivity() {
                     onClearSelection = {
                         selectedIds = emptySet()
                     },
-                    onTrashSelected = ::requestTrash,
+                    onTrashSelected = { items -> requestTrash(items, keepViewerOpen = false) },
                     onRenameSelected = { item, name ->
                         requestWrite(
                             PendingWriteOperation.Rename(
@@ -396,7 +417,7 @@ class MainActivity : ComponentActivity() {
                                 )
                     }
                 },
-                contentKey = { item -> item?.id ?: Long.MIN_VALUE },
+                contentKey = { item -> if (item == null) "gallery" else "viewer" },
                 label = "media-viewer-transition",
             ) { animatedItem ->
                 if (animatedItem != null) {
@@ -404,7 +425,7 @@ class MainActivity : ComponentActivity() {
                         items = state.visibleItems,
                         initialItem = animatedItem,
                         onBack = { selectedItem = null },
-                        onTrash = { requestTrash(listOf(it)) },
+                        onTrash = { requestTrash(listOf(it), keepViewerOpen = true) },
                         quickExifEnabled = state.quickExifEnabled,
                         cleanupMode = cleanupMode,
                     )
