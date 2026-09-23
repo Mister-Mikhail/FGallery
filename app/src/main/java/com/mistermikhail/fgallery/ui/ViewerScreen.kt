@@ -3,6 +3,9 @@ package com.mistermikhail.fgallery.ui
 import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.ViewGroup
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -21,6 +24,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -50,15 +54,27 @@ fun ViewerScreen(
     initialItem: MediaItem,
     onBack: () -> Unit,
     onTrash: (MediaItem) -> Unit,
+    quickExifEnabled: Boolean,
 ) {
     val initialPage = items.indexOfFirst { it.id == initialItem.id }.coerceAtLeast(0)
     val pagerState = rememberPagerState(
         initialPage = initialPage,
         pageCount = { items.size },
     )
+
+    var chromeVisible by remember { mutableStateOf(false) }
     var showDetails by remember { mutableStateOf(false) }
 
     val currentItem = items.getOrNull(pagerState.currentPage)
+
+    LaunchedEffect(currentItem?.id) {
+        chromeVisible = false
+        showDetails = false
+    }
+
+    fun toggleChrome() {
+        chromeVisible = !chromeVisible
+    }
 
     Box(
         modifier = Modifier
@@ -74,51 +90,78 @@ fun ViewerScreen(
             if (item.kind == MediaKind.VIDEO) {
                 VideoPlayer(
                     item = item,
+                    onSingleTap = ::toggleChrome,
                     onDoubleTap = { onTrash(item) },
                 )
             } else {
                 ZoomableImage(
                     item = item,
+                    onSingleTap = ::toggleChrome,
                     onDoubleTap = { onTrash(item) },
                 )
             }
         }
 
-        IconButton(
-            onClick = onBack,
+        AnimatedVisibility(
+            visible = chromeVisible,
+            enter = fadeIn(),
+            exit = fadeOut(),
             modifier = Modifier
-                .align(Alignment.TopStart)
-                .padding(8.dp),
+                .align(Alignment.TopCenter),
         ) {
-            Icon(
-                Icons.Outlined.ArrowBack,
-                contentDescription = "Назад",
-                tint = Color.White,
-            )
-        }
-
-        if (currentItem != null) {
-            Row(
+            Box(
                 modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(8.dp),
+                    .background(Color.Black.copy(alpha = 0.42f)),
             ) {
-                IconButton(onClick = { showDetails = true }) {
+                IconButton(
+                    onClick = onBack,
+                    modifier = Modifier
+                        .align(Alignment.CenterStart)
+                        .padding(start = 4.dp),
+                ) {
                     Icon(
-                        Icons.Outlined.Info,
-                        contentDescription = "Информация / EXIF",
+                        Icons.Outlined.ArrowBack,
+                        contentDescription = "Назад",
                         tint = Color.White,
                     )
                 }
 
-                IconButton(onClick = { onTrash(currentItem) }) {
-                    Icon(
-                        Icons.Outlined.DeleteOutline,
-                        contentDescription = "В корзину",
-                        tint = Color.White,
-                    )
+                if (currentItem != null) {
+                    Row(
+                        modifier = Modifier
+                            .align(Alignment.CenterEnd)
+                            .padding(end = 4.dp),
+                    ) {
+                        IconButton(onClick = { showDetails = true }) {
+                            Icon(
+                                Icons.Outlined.Info,
+                                contentDescription = "Полные сведения / EXIF",
+                                tint = Color.White,
+                            )
+                        }
+
+                        IconButton(onClick = { onTrash(currentItem) }) {
+                            Icon(
+                                Icons.Outlined.DeleteOutline,
+                                contentDescription = "В корзину",
+                                tint = Color.White,
+                            )
+                        }
+                    }
                 }
             }
+        }
+
+        if (
+            chromeVisible &&
+            quickExifEnabled &&
+            currentItem != null &&
+            currentItem.kind != MediaKind.VIDEO
+        ) {
+            QuickExifOverlay(
+                item = currentItem,
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
         }
     }
 
@@ -133,6 +176,7 @@ fun ViewerScreen(
 @Composable
 private fun VideoPlayer(
     item: MediaItem,
+    onSingleTap: () -> Unit,
     onDoubleTap: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -143,10 +187,16 @@ private fun VideoPlayer(
             playWhenReady = true
         }
     }
+
     val gestureDetector = remember(item.id) {
         GestureDetector(
             context,
             object : GestureDetector.SimpleOnGestureListener() {
+                override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+                    onSingleTap()
+                    return false
+                }
+
                 override fun onDoubleTap(e: MotionEvent): Boolean {
                     onDoubleTap()
                     return true
@@ -183,6 +233,7 @@ private fun VideoPlayer(
 @Composable
 private fun ZoomableImage(
     item: MediaItem,
+    onSingleTap: () -> Unit,
     onDoubleTap: () -> Unit,
 ) {
     var scale by remember(item.id) { mutableFloatStateOf(1f) }
@@ -208,6 +259,7 @@ private fun ZoomableImage(
             }
             .pointerInput(item.id) {
                 detectTapGestures(
+                    onTap = { onSingleTap() },
                     onDoubleTap = { onDoubleTap() },
                 )
             },
