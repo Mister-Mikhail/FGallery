@@ -12,6 +12,7 @@ FGallery is not intended to be a visual clone. The main deliberate visual extens
 
 - Local-first and offline-first.
 - Fast startup and fast scrolling.
+- QuickPic is the interaction-performance benchmark: scrolling, opening media, closing media, and horizontal paging should feel immediate and continuous rather than like screen rebuilds.
 - Minimal chrome: media should occupy most of the screen.
 - Folder/album-oriented navigation.
 - Dark interface as an important default direction, with light theme support.
@@ -32,7 +33,10 @@ Each album shows:
 Top app bar:
 - FGallery title;
 - search;
+- a dedicated sorting action;
 - overflow menu.
+
+Sorting is global. The selected sort mode applies consistently to the album/folder browser and media inside every album/folder, and is remembered across app restarts.
 
 No permanent bottom navigation.
 
@@ -49,7 +53,7 @@ Top app bar:
 
 Supported grid modes:
 1. Uniform grid — classic equal square tiles.
-2. Mosaic grid — variable tile height based on the original media aspect ratio.
+2. Mosaic grid — dense justified rows with variable tile width and height based on source aspect ratios. The layout must fill available width without large black holes or unintentional empty cells.
 
 A single tap on a thumbnail opens the media viewer.
 
@@ -96,7 +100,9 @@ A visible Trash action may also remain available in the viewer.
 
 Required:
 - common image formats supported by Android;
+- animated GIF playback;
 - video;
+- spherical / equirectangular 360° video playback when the media is identified as 360 content;
 - broad RAW recognition.
 
 RAW formats targeted for recognition include:
