@@ -21,6 +21,13 @@ class AppSettingsRepository(
     )
     val sortModeName: StateFlow<String> = _sortModeName.asStateFlow()
 
+    private val _recycleBinUris = MutableStateFlow(
+        preferences.getStringSet(KEY_RECYCLE_BIN_URIS, emptySet())
+            ?.toSet()
+            .orEmpty()
+    )
+    val recycleBinUris: StateFlow<Set<String>> = _recycleBinUris.asStateFlow()
+
     fun setQuickExifEnabled(enabled: Boolean) {
         preferences
             .edit()
@@ -39,10 +46,35 @@ class AppSettingsRepository(
         _sortModeName.value = value
     }
 
+    fun addToRecycleBin(uris: Collection<String>) {
+        updateRecycleBin(_recycleBinUris.value + uris)
+    }
+
+    fun removeFromRecycleBin(uris: Collection<String>) {
+        updateRecycleBin(_recycleBinUris.value - uris.toSet())
+    }
+
+    fun retainRecycleBin(existingUris: Set<String>) {
+        val pruned = _recycleBinUris.value.intersect(existingUris)
+        if (pruned != _recycleBinUris.value) {
+            updateRecycleBin(pruned)
+        }
+    }
+
+    private fun updateRecycleBin(value: Set<String>) {
+        val copy = value.toSet()
+        preferences
+            .edit()
+            .putStringSet(KEY_RECYCLE_BIN_URIS, copy)
+            .apply()
+        _recycleBinUris.value = copy
+    }
+
     companion object {
         private const val PREFERENCES_NAME = "fgallery_settings"
         private const val KEY_QUICK_EXIF_ENABLED = "quick_exif_enabled"
         private const val KEY_SORT_MODE = "sort_mode"
+        private const val KEY_RECYCLE_BIN_URIS = "recycle_bin_uris"
         private const val DEFAULT_SORT_MODE = "DATE_DESC"
     }
 }
