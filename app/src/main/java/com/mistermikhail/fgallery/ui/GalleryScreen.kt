@@ -209,7 +209,7 @@ private fun AlbumsGrid(albums: List<AlbumSummary>, modifier: Modifier, onOpenAlb
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun MosaicGrid(items: List<MediaItem>, modifier: Modifier, onOpenMedia: (MediaItem) -> Unit, onTrashMedia: (MediaItem) -> Unit) {
+private fun MosaicGrid(items: List<MediaItem>, modifier: Modifier, onOpenMedia: (MediaItem) -> Unit) {
     LazyVerticalStaggeredGrid(
         columns = StaggeredGridCells.Adaptive(112.dp),
         modifier = modifier,
@@ -218,14 +218,14 @@ private fun MosaicGrid(items: List<MediaItem>, modifier: Modifier, onOpenMedia: 
         verticalItemSpacing = 3.dp,
     ) {
         itemsIndexed(items, key = { _, item -> item.id }) { _, item ->
-            MediaTile(item, item.aspectRatio.coerceIn(0.62f, 1.65f), onOpenMedia, onTrashMedia)
+            MediaTile(item, item.aspectRatio.coerceIn(0.62f, 1.65f), onOpenMedia)
         }
     }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun UniformGrid(items: List<MediaItem>, modifier: Modifier, onOpenMedia: (MediaItem) -> Unit, onTrashMedia: (MediaItem) -> Unit) {
+private fun UniformGrid(items: List<MediaItem>, modifier: Modifier, onOpenMedia: (MediaItem) -> Unit) {
     LazyVerticalGrid(
         columns = GridCells.Adaptive(112.dp),
         modifier = modifier,
@@ -233,13 +233,13 @@ private fun UniformGrid(items: List<MediaItem>, modifier: Modifier, onOpenMedia:
         horizontalArrangement = Arrangement.spacedBy(3.dp),
         verticalArrangement = Arrangement.spacedBy(3.dp),
     ) {
-        items(items, key = { it.id }) { item -> MediaTile(item, 1f, onOpenMedia, onTrashMedia) }
+        items(items, key = { it.id }) { item -> MediaTile(item, 1f, onOpenMedia) }
     }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun MediaTile(item: MediaItem, aspectRatio: Float, onOpenMedia: (MediaItem) -> Unit, onTrashMedia: (MediaItem) -> Unit) {
+private fun MediaTile(item: MediaItem, aspectRatio: Float, onOpenMedia: (MediaItem) -> Unit) {
     Box(
         modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(4.dp)).combinedClickable(
             onClick = { onOpenMedia(item) },
