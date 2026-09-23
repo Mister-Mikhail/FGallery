@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
@@ -29,6 +30,7 @@ import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Close
@@ -71,6 +73,7 @@ import coil3.request.ImageRequest
 import coil3.video.videoFrameMillis
 import com.mistermikhail.fgallery.data.MediaItem
 import com.mistermikhail.fgallery.data.MediaKind
+import com.mistermikhail.fgallery.data.ThumbnailCache
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -236,6 +239,13 @@ fun GalleryScreen(
                                     ) {
                                         sortMenuExpanded = false
                                         onSortChanged(SortMode.SIZE_DESC)
+                                    }
+                                    SortMenuItem(
+                                        text = "Сначала мелкие",
+                                        selected = state.sortMode == SortMode.SIZE_ASC,
+                                    ) {
+                                        sortMenuExpanded = false
+                                        onSortChanged(SortMode.SIZE_ASC)
                                     }
                                 }
                             }
@@ -742,25 +752,43 @@ private fun MediaTile(
             modifier = Modifier.fillMaxSize(),
         )
 
-        val badge = when (item.kind) {
-            MediaKind.VIDEO -> "VIDEO"
-            MediaKind.RAW -> "RAW"
-            MediaKind.IMAGE -> null
-        }
-
-        if (badge != null) {
-            Text(
-                badge,
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(6.dp)
-                    .background(
-                        MaterialTheme.colorScheme.background.copy(alpha = 0.72f),
-                        RoundedCornerShape(4.dp),
+        when (item.kind) {
+            MediaKind.VIDEO -> {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(6.dp)
+                        .size(22.dp)
+                        .background(
+                            MaterialTheme.colorScheme.background.copy(alpha = 0.72f),
+                            RoundedCornerShape(11.dp),
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.Filled.PlayArrow,
+                        contentDescription = "Видео",
+                        modifier = Modifier.size(14.dp),
                     )
-                    .padding(horizontal = 5.dp, vertical = 2.dp),
-                style = MaterialTheme.typography.labelSmall,
-            )
+                }
+            }
+
+            MediaKind.RAW -> {
+                Text(
+                    "RAW",
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(6.dp)
+                        .background(
+                            MaterialTheme.colorScheme.background.copy(alpha = 0.72f),
+                            RoundedCornerShape(4.dp),
+                        )
+                        .padding(horizontal = 5.dp, vertical = 2.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                )
+            }
+
+            MediaKind.IMAGE -> Unit
         }
 
         if (selected) {
@@ -786,7 +814,19 @@ private fun MediaPreview(
     item: MediaItem,
     modifier: Modifier,
 ) {
-    if (item.kind == MediaKind.VIDEO) {
+    val context = LocalContext.current
+    val cachedFile = remember(item.id, item.dateModifiedMillis) {
+        ThumbnailCache.fileFor(context, item)
+    }
+
+    if (cachedFile.exists()) {
+        AsyncImage(
+            model = cachedFile,
+            contentDescription = item.name,
+            contentScale = ContentScale.Crop,
+            modifier = modifier.background(MaterialTheme.colorScheme.surfaceVariant),
+        )
+    } else if (item.kind == MediaKind.VIDEO) {
         VideoThumbnail(
             item = item,
             modifier = modifier,
