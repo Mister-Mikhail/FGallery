@@ -23,8 +23,10 @@
 - Horizontal swipe: previous/next item.
 - Pinch: zoom image.
 - Pan: move around a zoomed image, but never beyond the actual scaled image edges.
-- In normal mode, double tap cycles first zoom -> maximum zoom -> fit-to-screen.
+- In normal mode, double tap smoothly animates first zoom -> maximum zoom -> fit-to-screen.
 - In Cleanup mode, double tap moves the currently open media item immediately into the FGallery recycle bin with no extra confirmation dialog.
+- Cleanup deletion keeps the viewer open: advance to next item, or previous if the removed item was last.
+- Cleanup mode can be toggled from both the album browser and album contents; its menu item uses the cleanup red/orange accent.
 - A visible Trash control may coexist with the gesture.
 
 ### Search
@@ -69,6 +71,7 @@ FGallery-specific addition:
 - Single tap toggles the viewer chrome.
 - If the Quick EXIF setting is enabled, showing the viewer chrome also shows a compact EXIF summary over the open image.
 - Swiping to another image while chrome / Quick EXIF is visible keeps that state visible and refreshes the metadata for the current image.
+- Quick EXIF displays the current file name including its extension.
 - A second single tap hides both the chrome and compact EXIF.
 - Single tap must continue to toggle chrome / Quick EXIF even while the image is zoomed; pan recognition must not swallow stationary taps.
 - Quick EXIF can be disabled from Settings for users who do not want metadata over the image.
@@ -84,6 +87,8 @@ FGallery-specific addition:
 - Closing a media file returns smoothly to the preserved gallery position.
 - Thumbnail generation and video-frame extraction must be cached/off the scroll-critical path so fling/scroll remains smooth.
 - Generate thumbnails automatically in the background and invalidate cached previews when the underlying media modification time changes.
+- Prioritize album covers, update tiles reactively as thumbnail batches finish, and prewarm media for an album when it is opened.
+- Video thumbnails may become muted live previews one at a time; each active live preview runs for about 5 seconds before rotating to the next video.
 
 ## Viewer priorities
 
@@ -95,4 +100,5 @@ Priorities:
 3. sharp rendering;
 4. graceful handling of very large images;
 5. low memory pressure;
-6. predictable gestures with no conflict between zoom/navigation/Trash.
+6. predictable gestures with no conflict between zoom/navigation/Trash;
+7. neighboring precomposed video pages must never leak audio before they become current.
