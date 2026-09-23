@@ -56,6 +56,8 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -66,14 +68,21 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.media3.common.MediaItem as PlayerMediaItem
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.ui.PlayerView
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.video.videoFrameMillis
 import com.mistermikhail.fgallery.data.MediaItem
 import com.mistermikhail.fgallery.data.MediaKind
 import com.mistermikhail.fgallery.data.ThumbnailCache
+import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -112,8 +121,36 @@ fun GalleryScreen(
     val albumsGridState = rememberLazyGridState()
     val mosaicListState = rememberLazyListState()
     val uniformGridState = rememberLazyGridState()
+    var activeLiveVideoId by remember { mutableStateOf<Long?>(null) }
 
     val inAlbum = state.selectedAlbum != null
+
+    LaunchedEffect(
+        inAlbum,
+        state.selectedAlbum,
+        state.visibleItems.map { it.id },
+    ) {
+        if (!inAlbum) {
+            activeLiveVideoId = null
+            return@LaunchedEffect
+        }
+
+        val videoIds = state.visibleItems
+            .filter { it.kind == MediaKind.VIDEO }
+            .map { it.id }
+
+        if (videoIds.isEmpty()) {
+            activeLiveVideoId = null
+            return@LaunchedEffect
+        }
+
+        var index = 0
+        while (true) {
+            activeLiveVideoId = videoIds[index]
+            delay(5_000L)
+            index = (index + 1) % videoIds.size
+        }
+    }
     val selectedItems = state.visibleItems.filter { it.id in selectedIds }
     val selectionMode = selectedItems.isNotEmpty()
 
@@ -293,24 +330,23 @@ fun GalleryScreen(
                                         onClick = { apply { onFilterChanged(MediaFilter.RAW) } },
                                     )
 
-                                    if (inAlbum) {
-                                        DropdownMenuItem(
-                                            text = {
-                                                Text(
-                                                    if (cleanupMode) {
-                                                        "Выключить режим уборки"
-                                                    } else {
-                                                        "Режим уборки"
-                                                    }
-                                                )
-                                            },
-                                            onClick = {
-                                                apply {
-                                                    onCleanupModeChanged(!cleanupMode)
-                                                }
-                                            },
-                                        )
-                                    }
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                text = if (cleanupMode) {
+                                                    "Выключить режим уборки"
+                                                } else {
+                                                    "Режим уборки"
+                                                },
+                                                color = Color(0xFFFF5A36),
+                                            )
+                                        },
+                                        onClick = {
+                                            apply {
+                                                onCleanupModeChanged(!cleanupMode)
+                                            }
+                                        },
+                                    )
 
                                     DropdownMenuItem(
                                         text = { Text("Корзина") },
@@ -359,6 +395,7 @@ fun GalleryScreen(
                     .fillMaxSize()
                     .padding(innerPadding),
                 onOpenAlbum = onOpenAlbum,
+                thumbnailCacheVersion = state.thumbnailCacheVersion,
             )
 
             state.gridMode == GridMode.MOSAIC -> MosaicGrid(
@@ -371,6 +408,8 @@ fun GalleryScreen(
                 cleanupMode = cleanupMode,
                 selectedIds = selectedIds,
                 onToggleSelection = onToggleSelection,
+                thumbnailCacheVersion = state.thumbnailCacheVersion,
+                activeLiveVideoId = activeLiveVideoId,
             )
 
             else -> UniformGrid(
@@ -383,6 +422,8 @@ fun GalleryScreen(
                 cleanupMode = cleanupMode,
                 selectedIds = selectedIds,
                 onToggleSelection = onToggleSelection,
+                thumbnailCacheVersion = state.thumbnailCacheVersion,
+                activeLiveVideoId = activeLiveVideoId,
             )
         }
     }
@@ -534,6 +575,7 @@ private fun AlbumsGrid(
     state: LazyGridState,
     modifier: Modifier,
     onOpenAlbum: (String) -> Unit,
+    thumbnailCacheVersion: Long,
 ) {
     LazyVerticalGrid(
         columns = GridCells.Adaptive(156.dp),
@@ -555,6 +597,8 @@ private fun AlbumsGrid(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(156.dp),
+                    thumbnailCacheVersion = thumbnailCacheVersion,
+                    livePreview = false,
                 )
                 Column(
                     modifier = Modifier
@@ -620,6 +664,8 @@ private fun MosaicGrid(
     cleanupMode: Boolean,
     selectedIds: Set<Long>,
     onToggleSelection: (MediaItem) -> Unit,
+    thumbnailCacheVersion: Long,
+    activeLiveVideoId: Long?,
 ) {
     val gap = if (cleanupMode) 5.dp else 3.dp
     val rows = remember(items) { buildMosaicRows(items) }
@@ -664,6 +710,8 @@ private fun MosaicGrid(
                             selected = item.id in selectedIds,
                             selectionMode = selectedIds.isNotEmpty(),
                             onToggleSelection = onToggleSelection,
+                            thumbnailCacheVersion = thumbnailCacheVersion,
+                            livePreview = item.id == activeLiveVideoId,
                         )
                     }
                 }
@@ -682,6 +730,8 @@ private fun UniformGrid(
     cleanupMode: Boolean,
     selectedIds: Set<Long>,
     onToggleSelection: (MediaItem) -> Unit,
+    thumbnailCacheVersion: Long,
+    activeLiveVideoId: Long?,
 ) {
     val gap = if (cleanupMode) 5.dp else 3.dp
 
@@ -705,6 +755,8 @@ private fun UniformGrid(
                 selected = item.id in selectedIds,
                 selectionMode = selectedIds.isNotEmpty(),
                 onToggleSelection = onToggleSelection,
+                thumbnailCacheVersion = thumbnailCacheVersion,
+                livePreview = item.id == activeLiveVideoId,
             )
         }
     }
@@ -719,6 +771,8 @@ private fun MediaTile(
     selected: Boolean,
     selectionMode: Boolean,
     onToggleSelection: (MediaItem) -> Unit,
+    thumbnailCacheVersion: Long,
+    livePreview: Boolean,
 ) {
     val shape = RoundedCornerShape(4.dp)
 
@@ -750,6 +804,8 @@ private fun MediaTile(
         MediaPreview(
             item = item,
             modifier = Modifier.fillMaxSize(),
+            thumbnailCacheVersion = thumbnailCacheVersion,
+            livePreview = livePreview,
         )
 
         when (item.kind) {
@@ -813,32 +869,80 @@ private fun MediaTile(
 private fun MediaPreview(
     item: MediaItem,
     modifier: Modifier,
+    thumbnailCacheVersion: Long,
+    livePreview: Boolean,
 ) {
     val context = LocalContext.current
-    val cachedFile = remember(item.id, item.dateModifiedMillis) {
+    val cachedFile = remember(
+        item.id,
+        item.dateModifiedMillis,
+        thumbnailCacheVersion,
+    ) {
         ThumbnailCache.fileFor(context, item)
     }
 
-    if (cachedFile.exists()) {
-        AsyncImage(
-            model = cachedFile,
-            contentDescription = item.name,
-            contentScale = ContentScale.Crop,
-            modifier = modifier.background(MaterialTheme.colorScheme.surfaceVariant),
-        )
-    } else if (item.kind == MediaKind.VIDEO) {
-        VideoThumbnail(
-            item = item,
-            modifier = modifier,
-        )
-    } else {
-        AsyncImage(
-            model = item.uri,
-            contentDescription = item.name,
-            contentScale = ContentScale.Crop,
-            modifier = modifier.background(MaterialTheme.colorScheme.surfaceVariant),
-        )
+    when {
+        item.kind == MediaKind.VIDEO && livePreview -> {
+            InlineVideoPreview(
+                item = item,
+                modifier = modifier,
+            )
+        }
+
+        cachedFile.exists() -> {
+            AsyncImage(
+                model = cachedFile,
+                contentDescription = item.name,
+                contentScale = ContentScale.Crop,
+                modifier = modifier.background(MaterialTheme.colorScheme.surfaceVariant),
+            )
+        }
+
+        else -> {
+            // Keep scrolling cheap while the background preloader creates the thumbnail.
+            // Avoid decoding the full source file on the scroll-critical path.
+            Box(
+                modifier = modifier.background(MaterialTheme.colorScheme.surfaceVariant),
+            )
+        }
     }
+}
+
+@Composable
+private fun InlineVideoPreview(
+    item: MediaItem,
+    modifier: Modifier,
+) {
+    val context = LocalContext.current
+    val player = remember(item.uri) {
+        ExoPlayer.Builder(context).build().apply {
+            setMediaItem(PlayerMediaItem.fromUri(item.uri))
+            volume = 0f
+            repeatMode = Player.REPEAT_MODE_ONE
+            prepare()
+            seekTo(750L)
+            playWhenReady = true
+        }
+    }
+
+    DisposableEffect(player) {
+        onDispose {
+            player.release()
+        }
+    }
+
+    AndroidView(
+        factory = { ctx ->
+            PlayerView(ctx).apply {
+                this.player = player
+                useController = false
+                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                isClickable = false
+                isFocusable = false
+            }
+        },
+        modifier = modifier,
+    )
 }
 
 @Composable
