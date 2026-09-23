@@ -16,6 +16,11 @@ class AppSettingsRepository(
     )
     val quickExifEnabled: StateFlow<Boolean> = _quickExifEnabled.asStateFlow()
 
+    private val _sortModeName = MutableStateFlow(
+        preferences.getString(KEY_SORT_MODE, DEFAULT_SORT_MODE) ?: DEFAULT_SORT_MODE
+    )
+    val sortModeName: StateFlow<String> = _sortModeName.asStateFlow()
+
     fun setQuickExifEnabled(enabled: Boolean) {
         preferences
             .edit()
@@ -25,8 +30,19 @@ class AppSettingsRepository(
         _quickExifEnabled.value = enabled
     }
 
+    fun setSortModeName(value: String) {
+        preferences
+            .edit()
+            .putString(KEY_SORT_MODE, value)
+            .apply()
+
+        _sortModeName.value = value
+    }
+
     companion object {
         private const val PREFERENCES_NAME = "fgallery_settings"
         private const val KEY_QUICK_EXIF_ENABLED = "quick_exif_enabled"
+        private const val KEY_SORT_MODE = "sort_mode"
+        private const val DEFAULT_SORT_MODE = "DATE_DESC"
     }
 }
