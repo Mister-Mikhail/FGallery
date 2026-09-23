@@ -817,7 +817,6 @@ private fun VideoThumbnail(
         ImageRequest.Builder(context)
             .data(item.uri)
             .videoFrameMillis(frameMillis)
-            .crossfade(100)
             .build()
     }
 
