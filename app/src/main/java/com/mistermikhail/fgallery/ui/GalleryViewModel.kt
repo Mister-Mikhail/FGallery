@@ -9,6 +9,7 @@ import com.mistermikhail.fgallery.data.MediaKind
 import com.mistermikhail.fgallery.data.MediaRepository
 import com.mistermikhail.fgallery.data.ThumbnailCache
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -186,11 +187,24 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
                 }
 
             viewModelScope.launch(Dispatchers.IO) {
-                // Fast tier first so the UI fills immediately.
+                // Keep the first screen sharp, but avoid hammering MediaStore/CPU while
+                // the user is already scrolling. Album covers are the only HQ previews
+                // generated globally; the rest of the library is fast-tier only until
+                // the user actually opens that album.
                 preloadThumbnailBatches(
                     items = albumCovers,
                     batchSize = 12,
                     highQuality = false,
+                    notifyUi = true,
+                    pauseBetweenBatchesMs = 0L,
+                )
+
+                preloadThumbnailBatches(
+                    items = albumCovers,
+                    batchSize = 8,
+                    highQuality = true,
+                    notifyUi = true,
+                    pauseBetweenBatchesMs = 40L,
                 )
 
                 val coverIds = albumCovers.mapTo(hashSetOf()) { it.id }
@@ -198,21 +212,10 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
 
                 preloadThumbnailBatches(
                     items = remaining,
-                    batchSize = 24,
+                    batchSize = 18,
                     highQuality = false,
-                )
-
-                // Then progressively replace them with sharp previews.
-                preloadThumbnailBatches(
-                    items = albumCovers,
-                    batchSize = 8,
-                    highQuality = true,
-                )
-
-                preloadThumbnailBatches(
-                    items = remaining,
-                    batchSize = 12,
-                    highQuality = true,
+                    notifyUi = false,
+                    pauseBetweenBatchesMs = 45L,
                 )
             }
         }
@@ -222,18 +225,24 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
         items: List<MediaItem>,
         batchSize: Int,
         highQuality: Boolean,
+        notifyUi: Boolean,
+        pauseBetweenBatchesMs: Long,
     ) {
-        items.chunked(batchSize).forEach { batch ->
+        items.chunked(batchSize).forEachIndexed { index, batch ->
             val generated = ThumbnailCache.preload(
                 context = getApplication<Application>(),
                 items = batch,
                 highQuality = highQuality,
             )
 
-            if (generated > 0) {
+            if (generated > 0 && notifyUi) {
                 _uiState.update {
                     it.copy(thumbnailCacheVersion = it.thumbnailCacheVersion + 1L)
                 }
+            }
+
+            if (pauseBetweenBatchesMs > 0L && index < items.lastIndex) {
+                delay(pauseBetweenBatchesMs)
             }
         }
     }
@@ -245,13 +254,22 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch(Dispatchers.IO) {
             preloadThumbnailBatches(
                 items = items,
-                batchSize = 16,
+                batchSize = 12,
                 highQuality = false,
+                notifyUi = true,
+                pauseBetweenBatchesMs = 25L,
             )
+
+            // Give the first visible fast previews a moment to settle before decoding
+            // the larger HQ tier. This keeps the initial fling responsive.
+            delay(350L)
+
             preloadThumbnailBatches(
                 items = items,
-                batchSize = 8,
+                batchSize = 6,
                 highQuality = true,
+                notifyUi = true,
+                pauseBetweenBatchesMs = 80L,
             )
         }
     }
