@@ -48,6 +48,7 @@ data class GalleryUiState(
     val settingsVisible: Boolean = false,
     val recycleBinVisible: Boolean = false,
     val recycleBinUris: Set<String> = emptySet(),
+    val thumbnailCacheVersion: Long = 0L,
 ) {
     private fun isInRecycleBin(item: MediaItem): Boolean =
         item.uri.toString() in recycleBinUris
@@ -176,12 +177,48 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
                 )
             }
 
+            // Prewarm covers first so the start screen stabilizes quickly.
+            val albumCovers = items
+                .groupBy { it.album }
+                .values
+                .mapNotNull { albumItems ->
+                    albumItems.maxByOrNull { it.dateTakenMillis }
+                }
+
             viewModelScope.launch(Dispatchers.IO) {
-                ThumbnailCache.preload(
-                    context = getApplication<Application>(),
-                    items = items,
-                )
+                preloadThumbnailBatches(albumCovers, batchSize = 12)
+
+                val coverIds = albumCovers.mapTo(hashSetOf()) { it.id }
+                val remaining = items.filterNot { it.id in coverIds }
+                preloadThumbnailBatches(remaining, batchSize = 24)
             }
+        }
+    }
+
+    private suspend fun preloadThumbnailBatches(
+        items: List<MediaItem>,
+        batchSize: Int,
+    ) {
+        items.chunked(batchSize).forEach { batch ->
+            val generated = ThumbnailCache.preload(
+                context = getApplication<Application>(),
+                items = batch,
+            )
+
+            if (generated > 0) {
+                _uiState.update {
+                    it.copy(thumbnailCacheVersion = it.thumbnailCacheVersion + 1L)
+                }
+            }
+        }
+    }
+
+    private fun prewarmAlbum(name: String) {
+        val items = _uiState.value.allItems
+            .filter { it.album == name && it.uri.toString() !in _uiState.value.recycleBinUris }
+
+        viewModelScope.launch(Dispatchers.IO) {
+            preloadThumbnailBatches(items, batchSize = 16)
         }
     }
 
@@ -219,12 +256,15 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
         it.copy(recycleBinVisible = false)
     }
 
-    fun openAlbum(name: String) = _uiState.update {
-        it.copy(
-            selectedAlbum = name,
-            query = "",
-            searchVisible = false,
-        )
+    fun openAlbum(name: String) {
+        _uiState.update {
+            it.copy(
+                selectedAlbum = name,
+                query = "",
+                searchVisible = false,
+            )
+        }
+        prewarmAlbum(name)
     }
 
     fun closeAlbum() = _uiState.update {
