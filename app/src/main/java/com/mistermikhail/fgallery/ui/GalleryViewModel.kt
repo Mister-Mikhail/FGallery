@@ -3,6 +3,7 @@ package com.mistermikhail.fgallery.ui
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.mistermikhail.fgallery.data.AppSettingsRepository
 import com.mistermikhail.fgallery.data.MediaItem
 import com.mistermikhail.fgallery.data.MediaKind
 import com.mistermikhail.fgallery.data.MediaRepository
@@ -32,6 +33,8 @@ data class GalleryUiState(
     val gridMode: GridMode = GridMode.MOSAIC,
     val sortMode: SortMode = SortMode.DATE_DESC,
     val selectedAlbum: String? = null,
+    val quickExifEnabled: Boolean = true,
+    val settingsVisible: Boolean = false,
 ) {
     val filteredItems: List<MediaItem>
         get() = allItems.asSequence()
@@ -77,8 +80,17 @@ data class GalleryUiState(
 
 class GalleryViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = MediaRepository(application)
+    private val settingsRepository = AppSettingsRepository(application)
     private val _uiState = MutableStateFlow(GalleryUiState())
     val uiState: StateFlow<GalleryUiState> = _uiState.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            settingsRepository.quickExifEnabled.collect { enabled ->
+                _uiState.update { it.copy(quickExifEnabled = enabled) }
+            }
+        }
+    }
 
     fun onPermissionChanged(granted: Boolean) {
         _uiState.update { it.copy(hasPermission = granted) }
@@ -111,4 +123,11 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
 
     fun toggleSearch() = _uiState.update { it.copy(searchVisible = !it.searchVisible, query = "") }
     fun setQuery(query: String) = _uiState.update { it.copy(query = query) }
+
+    fun showSettings() = _uiState.update { it.copy(settingsVisible = true) }
+    fun hideSettings() = _uiState.update { it.copy(settingsVisible = false) }
+
+    fun setQuickExifEnabled(enabled: Boolean) {
+        settingsRepository.setQuickExifEnabled(enabled)
+    }
 }
