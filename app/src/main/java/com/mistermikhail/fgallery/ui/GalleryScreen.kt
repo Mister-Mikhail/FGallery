@@ -85,6 +85,7 @@ fun GalleryScreen(
     onShowSettings: () -> Unit,
     onHideSettings: () -> Unit,
     onQuickExifChanged: (Boolean) -> Unit,
+    onOpenRecycleBin: () -> Unit,
     cleanupMode: Boolean,
     onCleanupModeChanged: (Boolean) -> Unit,
     selectedIds: Set<Long>,
@@ -214,6 +215,7 @@ fun GalleryScreen(
                                         )
                                     }
 
+                                    DropdownMenuItem(text = { Text("Корзина") }, onClick = { apply(onOpenRecycleBin) })
                                     DropdownMenuItem(text = { Text("Обновить") }, onClick = { apply(onRefresh) })
                                     DropdownMenuItem(text = { Text("Настройки") }, onClick = { apply(onShowSettings) })
                                 }
