@@ -20,6 +20,8 @@ class MediaRepository(private val context: Context) {
             MediaStore.MediaColumns.DATE_ADDED,
             MediaStore.MediaColumns.WIDTH,
             MediaStore.MediaColumns.HEIGHT,
+            MediaStore.MediaColumns.SIZE,
+            MediaStore.MediaColumns.RELATIVE_PATH,
             MediaStore.Video.VideoColumns.DURATION,
             MediaStore.Images.ImageColumns.BUCKET_DISPLAY_NAME,
         )
@@ -29,7 +31,8 @@ class MediaRepository(private val context: Context) {
             MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString(),
             MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString(),
         )
-        val sort = "${MediaStore.MediaColumns.DATE_TAKEN} DESC, ${MediaStore.MediaColumns.DATE_ADDED} DESC"
+        val sort =
+            "${MediaStore.MediaColumns.DATE_TAKEN} DESC, ${MediaStore.MediaColumns.DATE_ADDED} DESC"
 
         buildList {
             resolver.query(collection, projection, selection, args, sort)?.use { cursor ->
@@ -41,6 +44,8 @@ class MediaRepository(private val context: Context) {
                 val addedC = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_ADDED)
                 val widthC = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.WIDTH)
                 val heightC = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.HEIGHT)
+                val sizeC = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.SIZE)
+                val pathC = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.RELATIVE_PATH)
                 val durationC = cursor.getColumnIndexOrThrow(MediaStore.Video.VideoColumns.DURATION)
                 val albumC = cursor.getColumnIndexOrThrow(MediaStore.Images.ImageColumns.BUCKET_DISPLAY_NAME)
 
@@ -56,6 +61,7 @@ class MediaRepository(private val context: Context) {
                     }
                     val taken = cursor.getLong(takenC)
                     val added = cursor.getLong(addedC) * 1000L
+
                     add(
                         MediaItem(
                             id = id,
@@ -68,6 +74,8 @@ class MediaRepository(private val context: Context) {
                             height = cursor.getInt(heightC),
                             durationMillis = cursor.getLong(durationC),
                             album = cursor.getString(albumC).orEmpty().ifBlank { "Без альбома" },
+                            relativePath = cursor.getString(pathC).orEmpty(),
+                            sizeBytes = cursor.getLong(sizeC),
                         )
                     )
                 }
