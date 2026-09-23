@@ -9,6 +9,7 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -85,6 +86,10 @@ class MainActivity : ComponentActivity() {
         }
 
         val current = selectedItem
+
+        BackHandler(enabled = current != null) { selectedItem = null }
+        BackHandler(enabled = current == null && state.selectedAlbum != null) { viewModel.closeAlbum() }
+
         if (current == null) {
             GalleryScreen(
                 state = state,
