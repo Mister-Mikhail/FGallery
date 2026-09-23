@@ -33,6 +33,7 @@ class MediaRepository(private val context: Context) {
             MediaStore.MediaColumns.MIME_TYPE,
             MediaStore.MediaColumns.DATE_TAKEN,
             MediaStore.MediaColumns.DATE_ADDED,
+            MediaStore.MediaColumns.DATE_MODIFIED,
             MediaStore.MediaColumns.WIDTH,
             MediaStore.MediaColumns.HEIGHT,
             MediaStore.MediaColumns.SIZE,
@@ -73,6 +74,7 @@ class MediaRepository(private val context: Context) {
                 val mimeC = it.getColumnIndexOrThrow(MediaStore.MediaColumns.MIME_TYPE)
                 val takenC = it.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_TAKEN)
                 val addedC = it.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_ADDED)
+                val modifiedC = it.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_MODIFIED)
                 val widthC = it.getColumnIndexOrThrow(MediaStore.MediaColumns.WIDTH)
                 val heightC = it.getColumnIndexOrThrow(MediaStore.MediaColumns.HEIGHT)
                 val sizeC = it.getColumnIndexOrThrow(MediaStore.MediaColumns.SIZE)
@@ -114,6 +116,7 @@ class MediaRepository(private val context: Context) {
                             album = it.getString(albumC).orEmpty().ifBlank { "Без альбома" },
                             relativePath = it.getString(pathC).orEmpty(),
                             sizeBytes = it.getLong(sizeC),
+                            dateModifiedMillis = it.getLong(modifiedC) * 1000L,
                         )
                     )
                 }
