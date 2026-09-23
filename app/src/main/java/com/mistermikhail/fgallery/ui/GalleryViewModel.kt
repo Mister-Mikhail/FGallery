@@ -37,6 +37,9 @@ data class AlbumSummary(
 
 data class GalleryUiState(
     val allItems: List<MediaItem> = emptyList(),
+    val visibleItems: List<MediaItem> = emptyList(),
+    val albums: List<AlbumSummary> = emptyList(),
+    val recycleBinItems: List<MediaItem> = emptyList(),
     val isLoading: Boolean = false,
     val hasPermission: Boolean = false,
     val query: String = "",
@@ -49,80 +52,7 @@ data class GalleryUiState(
     val settingsVisible: Boolean = false,
     val recycleBinVisible: Boolean = false,
     val recycleBinUris: Set<String> = emptySet(),
-    val thumbnailCacheVersion: Long = 0L,
-) {
-    private fun isInRecycleBin(item: MediaItem): Boolean =
-        item.uri.toString() in recycleBinUris
-
-    val filteredItems: List<MediaItem>
-        get() = allItems.asSequence()
-            .filterNot(::isInRecycleBin)
-            .filter {
-                when (filter) {
-                    MediaFilter.ALL -> true
-                    MediaFilter.PHOTOS -> it.kind == MediaKind.IMAGE
-                    MediaFilter.VIDEOS -> it.kind == MediaKind.VIDEO
-                    MediaFilter.RAW -> it.kind == MediaKind.RAW
-                }
-            }
-            .toList()
-
-    private fun sortItems(items: List<MediaItem>): List<MediaItem> =
-        when (sortMode) {
-            SortMode.DATE_DESC -> items.sortedByDescending { it.dateTakenMillis }
-            SortMode.DATE_ASC -> items.sortedBy { it.dateTakenMillis }
-            SortMode.NAME_ASC -> items.sortedBy { it.name.lowercase() }
-            SortMode.NAME_DESC -> items.sortedByDescending { it.name.lowercase() }
-            SortMode.SIZE_DESC -> items.sortedByDescending { it.sizeBytes }
-            SortMode.SIZE_ASC -> items.sortedBy { it.sizeBytes }
-        }
-
-    val visibleItems: List<MediaItem>
-        get() {
-            val items = filteredItems.asSequence()
-                .filter { selectedAlbum == null || it.album == selectedAlbum }
-                .filter {
-                    query.isBlank() ||
-                        it.name.contains(query, ignoreCase = true) ||
-                        it.album.contains(query, ignoreCase = true)
-                }
-                .toList()
-
-            return sortItems(items)
-        }
-
-    val recycleBinItems: List<MediaItem>
-        get() = sortItems(
-            allItems.filter(::isInRecycleBin)
-        )
-
-    val albums: List<AlbumSummary>
-        get() {
-            val result = filteredItems
-                .groupBy { it.album }
-                .mapNotNull { (name, items) ->
-                    val sorted = sortItems(items)
-                    val cover = sorted.firstOrNull() ?: return@mapNotNull null
-                    AlbumSummary(
-                        name = name,
-                        cover = cover,
-                        count = items.size,
-                        newestDateMillis = items.maxOfOrNull { it.dateTakenMillis } ?: 0L,
-                        totalSizeBytes = items.sumOf { it.sizeBytes },
-                    )
-                }
-                .filter { query.isBlank() || it.name.contains(query, ignoreCase = true) }
-
-            return when (sortMode) {
-                SortMode.DATE_DESC -> result.sortedByDescending { it.newestDateMillis }
-                SortMode.DATE_ASC -> result.sortedBy { it.newestDateMillis }
-                SortMode.NAME_ASC -> result.sortedBy { it.name.lowercase() }
-                SortMode.NAME_DESC -> result.sortedByDescending { it.name.lowercase() }
-                SortMode.SIZE_DESC -> result.sortedByDescending { it.totalSizeBytes }
-                SortMode.SIZE_ASC -> result.sortedBy { it.totalSizeBytes }
-            }
-        }
-}
+)
 
 class GalleryViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = MediaRepository(application)
@@ -142,15 +72,108 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
                 val mode = runCatching {
                     SortMode.valueOf(saved)
                 }.getOrDefault(SortMode.DATE_DESC)
-                _uiState.update { it.copy(sortMode = mode) }
+
+                _uiState.update { current ->
+                    derive(current.copy(sortMode = mode))
+                }
             }
         }
 
         viewModelScope.launch {
             settingsRepository.recycleBinUris.collect { uris ->
-                _uiState.update { it.copy(recycleBinUris = uris) }
+                _uiState.update { current ->
+                    derive(current.copy(recycleBinUris = uris))
+                }
             }
         }
+    }
+
+    private fun sortItems(
+        items: List<MediaItem>,
+        mode: SortMode,
+    ): List<MediaItem> =
+        when (mode) {
+            SortMode.DATE_DESC -> items.sortedByDescending { it.dateTakenMillis }
+            SortMode.DATE_ASC -> items.sortedBy { it.dateTakenMillis }
+            SortMode.NAME_ASC -> items.sortedBy { it.name.lowercase() }
+            SortMode.NAME_DESC -> items.sortedByDescending { it.name.lowercase() }
+            SortMode.SIZE_DESC -> items.sortedByDescending { it.sizeBytes }
+            SortMode.SIZE_ASC -> items.sortedBy { it.sizeBytes }
+        }
+
+    /**
+     * Expensive filtering/grouping/sorting happens only when its actual inputs change.
+     * Compose reads already-materialized immutable lists during scroll/recomposition.
+     */
+    private fun derive(state: GalleryUiState): GalleryUiState {
+        val available = state.allItems.asSequence()
+            .filterNot { it.uriKey in state.recycleBinUris }
+            .filter { item ->
+                when (state.filter) {
+                    MediaFilter.ALL -> true
+                    MediaFilter.PHOTOS -> item.kind == MediaKind.IMAGE
+                    MediaFilter.VIDEOS -> item.kind == MediaKind.VIDEO
+                    MediaFilter.RAW -> item.kind == MediaKind.RAW
+                }
+            }
+            .toList()
+
+        val visible = sortItems(
+            available.asSequence()
+                .filter {
+                    state.selectedAlbum == null ||
+                        it.album == state.selectedAlbum
+                }
+                .filter {
+                    state.query.isBlank() ||
+                        it.name.contains(state.query, ignoreCase = true) ||
+                        it.album.contains(state.query, ignoreCase = true)
+                }
+                .toList(),
+            state.sortMode,
+        )
+
+        val recycle = sortItems(
+            state.allItems.filter { it.uriKey in state.recycleBinUris },
+            state.sortMode,
+        )
+
+        val unsortedAlbums = available
+            .groupBy { it.album }
+            .mapNotNull { (name, items) ->
+                if (
+                    state.query.isNotBlank() &&
+                    !name.contains(state.query, ignoreCase = true)
+                ) {
+                    return@mapNotNull null
+                }
+
+                val sorted = sortItems(items, state.sortMode)
+                val cover = sorted.firstOrNull() ?: return@mapNotNull null
+
+                AlbumSummary(
+                    name = name,
+                    cover = cover,
+                    count = items.size,
+                    newestDateMillis = items.maxOfOrNull { it.dateTakenMillis } ?: 0L,
+                    totalSizeBytes = items.sumOf { it.sizeBytes },
+                )
+            }
+
+        val albums = when (state.sortMode) {
+            SortMode.DATE_DESC -> unsortedAlbums.sortedByDescending { it.newestDateMillis }
+            SortMode.DATE_ASC -> unsortedAlbums.sortedBy { it.newestDateMillis }
+            SortMode.NAME_ASC -> unsortedAlbums.sortedBy { it.name.lowercase() }
+            SortMode.NAME_DESC -> unsortedAlbums.sortedByDescending { it.name.lowercase() }
+            SortMode.SIZE_DESC -> unsortedAlbums.sortedByDescending { it.totalSizeBytes }
+            SortMode.SIZE_ASC -> unsortedAlbums.sortedBy { it.totalSizeBytes }
+        }
+
+        return state.copy(
+            visibleItems = visible,
+            recycleBinItems = recycle,
+            albums = albums,
+        )
     }
 
     fun onPermissionChanged(granted: Boolean) {
@@ -160,6 +183,7 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
 
     fun refresh() {
         if (!_uiState.value.hasPermission) return
+
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
 
@@ -168,17 +192,18 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
             }.getOrDefault(emptyList())
 
             settingsRepository.retainRecycleBin(
-                items.mapTo(mutableSetOf()) { it.uri.toString() }
+                items.mapTo(mutableSetOf()) { it.uriKey }
             )
 
-            _uiState.update {
-                it.copy(
-                    allItems = items,
-                    isLoading = false,
+            _uiState.update { current ->
+                derive(
+                    current.copy(
+                        allItems = items,
+                        isLoading = false,
+                    )
                 )
             }
 
-            // Prewarm covers first so the start screen stabilizes quickly.
             val albumCovers = items
                 .groupBy { it.album }
                 .values
@@ -187,15 +212,11 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
                 }
 
             viewModelScope.launch(Dispatchers.IO) {
-                // Keep the first screen sharp, but avoid hammering MediaStore/CPU while
-                // the user is already scrolling. Album covers are the only HQ previews
-                // generated globally; the rest of the library is fast-tier only until
-                // the user actually opens that album.
+                // Cache generation must never drive Compose recomposition.
                 preloadThumbnailBatches(
                     items = albumCovers,
                     batchSize = 12,
                     highQuality = false,
-                    notifyUi = true,
                     pauseBetweenBatchesMs = 0L,
                 )
 
@@ -203,7 +224,6 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
                     items = albumCovers,
                     batchSize = 8,
                     highQuality = true,
-                    notifyUi = true,
                     pauseBetweenBatchesMs = 40L,
                 )
 
@@ -214,7 +234,6 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
                     items = remaining,
                     batchSize = 18,
                     highQuality = false,
-                    notifyUi = false,
                     pauseBetweenBatchesMs = 45L,
                 )
             }
@@ -225,22 +244,16 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
         items: List<MediaItem>,
         batchSize: Int,
         highQuality: Boolean,
-        notifyUi: Boolean,
         pauseBetweenBatchesMs: Long,
     ) {
         val batches = items.chunked(batchSize)
+
         batches.forEachIndexed { index, batch ->
-            val generated = ThumbnailCache.preload(
+            ThumbnailCache.preload(
                 context = getApplication<Application>(),
                 items = batch,
                 highQuality = highQuality,
             )
-
-            if (generated > 0 && notifyUi) {
-                _uiState.update {
-                    it.copy(thumbnailCacheVersion = it.thumbnailCacheVersion + 1L)
-                }
-            }
 
             if (pauseBetweenBatchesMs > 0L && index < batches.lastIndex) {
                 delay(pauseBetweenBatchesMs)
@@ -249,27 +262,27 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private fun prewarmAlbum(name: String) {
-        val items = _uiState.value.allItems
-            .filter { it.album == name && it.uri.toString() !in _uiState.value.recycleBinUris }
+        val snapshot = _uiState.value
+        val items = snapshot.allItems.filter {
+            it.album == name && it.uriKey !in snapshot.recycleBinUris
+        }
 
         viewModelScope.launch(Dispatchers.IO) {
+            // No StateFlow updates here: creating cache files must not invalidate
+            // the entire gallery while the user is scrolling.
             preloadThumbnailBatches(
                 items = items,
                 batchSize = 12,
                 highQuality = false,
-                notifyUi = true,
                 pauseBetweenBatchesMs = 25L,
             )
 
-            // Give the first visible fast previews a moment to settle before decoding
-            // the larger HQ tier. This keeps the initial fling responsive.
             delay(350L)
 
             preloadThumbnailBatches(
                 items = items,
                 batchSize = 6,
                 highQuality = true,
-                notifyUi = true,
                 pauseBetweenBatchesMs = 80L,
             )
         }
@@ -278,14 +291,14 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
     fun moveToRecycleBin(items: List<MediaItem>) {
         if (items.isEmpty()) return
         settingsRepository.addToRecycleBin(
-            items.map { it.uri.toString() }
+            items.map { it.uriKey }
         )
     }
 
     fun restoreFromRecycleBin(items: List<MediaItem>) {
         if (items.isEmpty()) return
         settingsRepository.removeFromRecycleBin(
-            items.map { it.uri.toString() }
+            items.map { it.uriKey }
         )
     }
 
@@ -301,60 +314,68 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
                 selectedAlbum = null,
                 query = "",
                 searchVisible = false,
-            )
+            ).let(::derive)
         }
     }
 
-    fun closeRecycleBin() = _uiState.update {
-        it.copy(recycleBinVisible = false)
-    }
+    fun closeRecycleBin() =
+        _uiState.update { it.copy(recycleBinVisible = false) }
 
     fun openAlbum(name: String) {
         _uiState.update {
-            it.copy(
-                selectedAlbum = name,
-                query = "",
-                searchVisible = false,
+            derive(
+                it.copy(
+                    selectedAlbum = name,
+                    query = "",
+                    searchVisible = false,
+                )
             )
         }
         prewarmAlbum(name)
     }
 
-    fun closeAlbum() = _uiState.update {
-        it.copy(
-            selectedAlbum = null,
-            query = "",
-            searchVisible = false,
-        )
-    }
+    fun closeAlbum() =
+        _uiState.update {
+            derive(
+                it.copy(
+                    selectedAlbum = null,
+                    query = "",
+                    searchVisible = false,
+                )
+            )
+        }
 
     fun setFilter(filter: MediaFilter) =
-        _uiState.update { it.copy(filter = filter) }
+        _uiState.update { derive(it.copy(filter = filter)) }
 
     fun setSortMode(sortMode: SortMode) {
-        _uiState.update { it.copy(sortMode = sortMode) }
+        _uiState.update { derive(it.copy(sortMode = sortMode)) }
         settingsRepository.setSortModeName(sortMode.name)
     }
 
-    fun toggleGridMode() = _uiState.update {
-        it.copy(
-            gridMode = if (it.gridMode == GridMode.MOSAIC) {
-                GridMode.UNIFORM
-            } else {
-                GridMode.MOSAIC
-            }
-        )
-    }
+    fun toggleGridMode() =
+        _uiState.update {
+            it.copy(
+                gridMode = if (it.gridMode == GridMode.MOSAIC) {
+                    GridMode.UNIFORM
+                } else {
+                    GridMode.MOSAIC
+                }
+            )
+        }
 
-    fun toggleSearch() = _uiState.update {
-        it.copy(
-            searchVisible = !it.searchVisible,
-            query = "",
-        )
-    }
+    fun toggleSearch() =
+        _uiState.update {
+            derive(
+                it.copy(
+                    searchVisible = !it.searchVisible,
+                    query = "",
+                )
+            )
+        }
 
     fun setQuery(query: String) =
-        _uiState.update { it.copy(query = query) }
+        _uiState.update { derive(it.copy(query = query)) }
 
     fun showSettings() =
         _uiState.update { it.copy(settingsVisible = true) }
