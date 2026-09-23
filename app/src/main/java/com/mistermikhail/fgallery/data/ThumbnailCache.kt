@@ -12,26 +12,35 @@ import java.io.FileOutputStream
 
 object ThumbnailCache {
     private const val DIRECTORY = "fgallery_thumbnails"
-    private const val EDGE_PX = 420
+    private const val FAST_EDGE_PX = 480
+    private const val HIGH_EDGE_PX = 1440
 
     fun fileFor(
         context: Context,
         item: MediaItem,
+        highQuality: Boolean = false,
     ): File {
         val version = item.dateModifiedMillis
             .takeIf { it > 0L }
             ?: item.dateTakenMillis
-        val name = "${item.kind.name.lowercase()}_${item.id}_${version}.jpg"
+
+        val tier = if (highQuality) "hq" else "fast"
+        val name =
+            "${item.kind.name.lowercase()}_${item.id}_${version}_${tier}.jpg"
+
         return File(File(context.cacheDir, DIRECTORY), name)
     }
 
     suspend fun preload(
         context: Context,
         items: List<MediaItem>,
+        highQuality: Boolean = false,
     ): Int = withContext(Dispatchers.IO) {
         var generated = 0
         items.forEach { item ->
-            if (preloadOne(context, item)) generated += 1
+            if (preloadOne(context, item, highQuality)) {
+                generated += 1
+            }
         }
         generated
     }
@@ -39,23 +48,42 @@ object ThumbnailCache {
     private fun preloadOne(
         context: Context,
         item: MediaItem,
+        highQuality: Boolean,
     ): Boolean {
         val directory = File(context.cacheDir, DIRECTORY)
         if (!directory.exists()) directory.mkdirs()
 
-        val target = fileFor(context, item)
+        val target = fileFor(
+            context = context,
+            item = item,
+            highQuality = highQuality,
+        )
+
         if (target.exists() && target.length() > 0L) return false
 
-        val prefix = "${item.kind.name.lowercase()}_${item.id}_"
+        val version = item.dateModifiedMillis
+            .takeIf { it > 0L }
+            ?: item.dateTakenMillis
+
+        val rowPrefix = "${item.kind.name.lowercase()}_${item.id}_"
+        val currentVersionPrefix =
+            "${item.kind.name.lowercase()}_${item.id}_${version}_"
+
         directory.listFiles()
-            ?.filter { it.name.startsWith(prefix) && it != target }
+            ?.filter {
+                it.name.startsWith(rowPrefix) &&
+                    !it.name.startsWith(currentVersionPrefix)
+            }
             ?.forEach(File::delete)
+
+        val edge = if (highQuality) HIGH_EDGE_PX else FAST_EDGE_PX
+        val jpegQuality = if (highQuality) 93 else 84
 
         val bitmap = runCatching {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 context.contentResolver.loadThumbnail(
                     item.uri,
-                    Size(EDGE_PX, EDGE_PX),
+                    Size(edge, edge),
                     null,
                 )
             } else {
@@ -81,7 +109,11 @@ object ThumbnailCache {
 
         val written = runCatching {
             FileOutputStream(target).use { stream ->
-                bitmap.compress(Bitmap.CompressFormat.JPEG, 88, stream)
+                bitmap.compress(
+                    Bitmap.CompressFormat.JPEG,
+                    jpegQuality,
+                    stream,
+                )
             }
         }.getOrDefault(false)
 
