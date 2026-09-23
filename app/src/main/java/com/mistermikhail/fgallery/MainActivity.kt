@@ -208,8 +208,7 @@ class MainActivity : ComponentActivity() {
 
             val nextViewerItem = if (
                 keepViewerOpen &&
-                items.size == 1 &&
-                selectedItem?.id == items.first().id
+                items.size == 1
             ) {
                 val currentItems = state.visibleItems
                 val currentIndex = currentItems.indexOfFirst { it.id == items.first().id }
