@@ -16,6 +16,8 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -23,6 +25,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import com.mistermikhail.fgallery.data.MediaItem
 import com.mistermikhail.fgallery.ui.GalleryScreen
@@ -56,28 +59,36 @@ class MainActivity : ComponentActivity() {
         val trashLauncher = rememberLauncherForActivityResult(
             ActivityResultContracts.StartIntentSenderForResult(),
         ) { result ->
-            if (result.resultCode == Activity.RESULT_OK) viewModel.refresh()
+            if (result.resultCode == Activity.RESULT_OK) {
+                selectedItem = null
+                viewModel.refresh()
+            }
         }
 
         fun requestTrash(item: MediaItem) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                val pendingIntent = MediaStore.createTrashRequest(
-                    contentResolver,
-                    listOf(item.uri),
-                    true,
-                )
-                trashLauncher.launch(IntentSenderRequest.Builder(pendingIntent.intentSender).build())
-                return
-            }
+            runCatching {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    val pendingIntent = MediaStore.createTrashRequest(
+                        contentResolver,
+                        listOf(item.uri),
+                        true,
+                    )
+                    trashLauncher.launch(
+                        IntentSenderRequest.Builder(pendingIntent.intentSender).build()
+                    )
+                    return@runCatching
+                }
 
-            try {
-                contentResolver.delete(item.uri, null, null)
-                viewModel.refresh()
-            } catch (securityException: SecurityException) {
-                val recoverable = securityException as? RecoverableSecurityException
-                val sender: IntentSender? = recoverable?.userAction?.actionIntent?.intentSender
-                if (sender != null) {
-                    trashLauncher.launch(IntentSenderRequest.Builder(sender).build())
+                try {
+                    contentResolver.delete(item.uri, null, null)
+                    selectedItem = null
+                    viewModel.refresh()
+                } catch (securityException: SecurityException) {
+                    val recoverable = securityException as? RecoverableSecurityException
+                    val sender: IntentSender? = recoverable?.userAction?.actionIntent?.intentSender
+                    if (sender != null) {
+                        trashLauncher.launch(IntentSenderRequest.Builder(sender).build())
+                    }
                 }
             }
         }
@@ -91,7 +102,9 @@ class MainActivity : ComponentActivity() {
         BackHandler(enabled = current != null) { selectedItem = null }
         BackHandler(enabled = current == null && state.selectedAlbum != null) { viewModel.closeAlbum() }
 
-        if (current == null) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            // Keep the gallery in composition while the viewer is open. This preserves
+            // the exact scroll position so Back returns to the tile the user opened.
             GalleryScreen(
                 state = state,
                 onRequestPermission = { permissionLauncher.launch(requiredPermissions()) },
@@ -110,15 +123,17 @@ class MainActivity : ComponentActivity() {
                 cleanupMode = cleanupMode,
                 onCleanupModeChanged = { cleanupMode = it },
             )
-        } else {
-            ViewerScreen(
-                items = state.visibleItems,
-                initialItem = current,
-                onBack = { selectedItem = null },
-                onTrash = ::requestTrash,
-                quickExifEnabled = state.quickExifEnabled,
-                cleanupMode = cleanupMode,
-            )
+
+            if (current != null) {
+                ViewerScreen(
+                    items = state.visibleItems,
+                    initialItem = current,
+                    onBack = { selectedItem = null },
+                    onTrash = ::requestTrash,
+                    quickExifEnabled = state.quickExifEnabled,
+                    cleanupMode = cleanupMode,
+                )
+            }
         }
     }
 
