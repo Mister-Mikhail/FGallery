@@ -77,21 +77,25 @@ Required behavior:
 
 - full-screen playback;
 - normal playback controls;
-- horizontal navigation between neighboring media items.
+- horizontal navigation between neighboring media items;
+- only the currently visible viewer page may play audio/video; precomposed neighboring video pages must stay paused and muted;
+- video tiles in folder grids use one-at-a-time muted live previews, rotating every 5 seconds.
 
 ### Double-tap behavior and Cleanup mode
 
 Double tap applies only to the currently opened media item.
 
 Normal mode:
-- first double tap: first zoom level;
-- second double tap: maximum zoom level;
-- third double tap: return to fit-to-screen;
+- first double tap: smoothly animate to the first zoom level;
+- second double tap: smoothly animate to maximum zoom;
+- third double tap: smoothly animate back to fit-to-screen;
 - pinch zoom remains available at all times.
 
 Cleanup mode:
 - Cleanup mode is explicitly enabled by the user from the gallery menu;
 - while Cleanup mode is active, double tap on the currently opened media item moves that item immediately into the FGallery recycle bin without an extra Android confirmation dialog;
+- after moving the current item to the recycle bin, the viewer stays open and advances to the next media item; if the removed item was last, it moves to the previous item; only an empty remaining set closes the viewer;
+- Cleanup mode can be enabled or disabled both inside a folder and from the top-level folder browser; its menu action uses the same warm red/orange warning color as the cleanup grid spacing;
 - thumbnail double tap must never delete media;
 - the gallery visually indicates Cleanup mode with warm red/orange spacing/accent so the destructive gesture cannot be forgotten.
 
@@ -170,6 +174,7 @@ Quick EXIF behavior in the full-screen image viewer:
 - when the controls are shown and the Quick EXIF setting is enabled, a compact EXIF summary is shown over the image;
 - if the user swipes to another image while Quick EXIF is visible, it must stay visible and update to the metadata of the newly opened image;
 - another single tap hides the controls and compact EXIF again;
+- the compact EXIF overlay includes the current file name with extension;
 - users can disable this automatic compact EXIF overlay in Settings;
 - disabling Quick EXIF must not remove access to full file details;
 - the full information/details view must always remain available from the viewer and must show all available file/EXIF metadata.
@@ -206,7 +211,8 @@ The following remain part of the planned application scope:
 - edit/open-in-editor actions;
 - reliable large-image viewing;
 - performance tuning and preloading.
-- background thumbnail cache generation keyed by media modification time, so scrolling normally uses prebuilt previews instead of decoding on demand.
+- background thumbnail cache generation keyed by media modification time, so scrolling normally uses prebuilt previews instead of decoding on demand;
+- cache generation starts automatically after media discovery, prioritizes album covers, refreshes visible tiles reactively as batches complete, and prewarms the currently opened album.
 
 ## 10. Android implementation direction
 
