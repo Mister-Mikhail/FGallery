@@ -20,6 +20,7 @@ import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -29,8 +30,16 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.outlined.Crop
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.DriveFileMove
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.Icon
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -76,6 +85,10 @@ fun ViewerScreen(
     onTrash: (MediaItem) -> Unit,
     quickExifEnabled: Boolean,
     cleanupMode: Boolean,
+    onShare: (MediaItem) -> Unit,
+    onCrop: (MediaItem) -> Unit,
+    onRename: (MediaItem, String) -> Unit,
+    onMove: (MediaItem, String) -> Unit,
 ) {
     val initialPage = items.indexOfFirst { it.id == initialItem.id }.coerceAtLeast(0)
     val pagerState = rememberPagerState(
@@ -85,6 +98,10 @@ fun ViewerScreen(
 
     var chromeVisible by remember { mutableStateOf(false) }
     var showDetails by remember { mutableStateOf(false) }
+    var renameTarget by remember { mutableStateOf<MediaItem?>(null) }
+    var renameText by remember { mutableStateOf("") }
+    var moveTarget by remember { mutableStateOf<MediaItem?>(null) }
+    var movePath by remember { mutableStateOf("") }
 
     LaunchedEffect(items.size) {
         if (items.isNotEmpty() && pagerState.currentPage > items.lastIndex) {
@@ -164,6 +181,26 @@ fun ViewerScreen(
                             .align(Alignment.CenterEnd)
                             .padding(end = 4.dp),
                     ) {
+                        IconButton(onClick = { onShare(currentItem) }) {
+                            Icon(Icons.Outlined.Share, contentDescription = "Отправить", tint = Color.White)
+                        }
+                        if (currentItem.kind != MediaKind.VIDEO) {
+                            IconButton(onClick = { onCrop(currentItem) }) {
+                                Icon(Icons.Outlined.Crop, contentDescription = "Кадрировать", tint = Color.White)
+                            }
+                        }
+                        IconButton(onClick = {
+                            renameTarget = currentItem
+                            renameText = currentItem.name
+                        }) {
+                            Icon(Icons.Outlined.Edit, contentDescription = "Переименовать", tint = Color.White)
+                        }
+                        IconButton(onClick = {
+                            moveTarget = currentItem
+                            movePath = currentItem.relativePath
+                        }) {
+                            Icon(Icons.Outlined.DriveFileMove, contentDescription = "Переместить", tint = Color.White)
+                        }
                         IconButton(onClick = { showDetails = true }) {
                             Icon(
                                 Icons.Outlined.Info,
@@ -201,6 +238,59 @@ fun ViewerScreen(
         MediaDetailsSheet(
             item = currentItem,
             onDismiss = { showDetails = false },
+        )
+    }
+
+    renameTarget?.let { item ->
+        AlertDialog(
+            onDismissRequest = { renameTarget = null },
+            title = { Text("Переименовать файл") },
+            text = {
+                OutlinedTextField(
+                    value = renameText,
+                    onValueChange = { renameText = it },
+                    singleLine = true,
+                    label = { Text("Новое имя") },
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val value = renameText.trim()
+                    if (value.isNotBlank()) {
+                        onRename(item, value)
+                        renameTarget = null
+                    }
+                }) { Text("Переименовать") }
+            },
+            dismissButton = { TextButton(onClick = { renameTarget = null }) { Text("Отмена") } },
+        )
+    }
+
+    moveTarget?.let { item ->
+        AlertDialog(
+            onDismissRequest = { moveTarget = null },
+            title = { Text("Переместить файл") },
+            text = {
+                Column {
+                    Text("Папка относительно памяти телефона")
+                    OutlinedTextField(
+                        value = movePath,
+                        onValueChange = { movePath = it },
+                        singleLine = true,
+                        label = { Text("Например Pictures/Travel/") },
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val value = movePath.trim()
+                    if (value.isNotBlank()) {
+                        onMove(item, value)
+                        moveTarget = null
+                    }
+                }) { Text("Переместить") }
+            },
+            dismissButton = { TextButton(onClick = { moveTarget = null }) { Text("Отмена") } },
         )
     }
 }
