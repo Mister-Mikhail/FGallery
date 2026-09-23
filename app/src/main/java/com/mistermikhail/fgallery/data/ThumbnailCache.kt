@@ -12,8 +12,8 @@ import java.io.FileOutputStream
 
 object ThumbnailCache {
     private const val DIRECTORY = "fgallery_thumbnails"
-    private const val FAST_EDGE_PX = 480
-    private const val HIGH_EDGE_PX = 1440
+    private const val FAST_EDGE_PX = 720
+    private const val HIGH_EDGE_PX = 1920
 
     fun fileFor(
         context: Context,
@@ -77,7 +77,7 @@ object ThumbnailCache {
             ?.forEach(File::delete)
 
         val edge = if (highQuality) HIGH_EDGE_PX else FAST_EDGE_PX
-        val jpegQuality = if (highQuality) 93 else 84
+        val jpegQuality = if (highQuality) 96 else 90
 
         val bitmap = runCatching {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
