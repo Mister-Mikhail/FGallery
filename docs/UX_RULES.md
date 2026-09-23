@@ -24,7 +24,7 @@
 - Pinch: zoom image.
 - Pan: move around a zoomed image, but never beyond the actual scaled image edges.
 - In normal mode, double tap cycles first zoom -> maximum zoom -> fit-to-screen.
-- In Cleanup mode, double tap moves the currently open media item to system Trash after Android's required confirmation flow.
+- In Cleanup mode, double tap moves the currently open media item immediately into the FGallery recycle bin with no extra confirmation dialog.
 - A visible Trash control may coexist with the gesture.
 
 ### Search
@@ -41,12 +41,15 @@
 
 ### Recycle bin
 - FGallery must expose a dedicated recycle-bin screen.
-- The recycle bin lists items currently in Android system Trash when the platform supports it.
-- Selected recycle-bin items can be restored or permanently deleted using Android system confirmation.
+- The recycle bin is app-managed so sending an item there is instant and does not require a system confirmation dialog.
+- The recycle-bin menu provides Select All and Clear Bin.
+- Selected recycle-bin items can be restored immediately.
+- Permanent deletion / Clear Bin uses Android system confirmation when the platform requires it.
 
 ### Destructive actions
-- Use Android system confirmation/Trash mechanisms.
-- Do not silently permanently delete media when the system Trash API is available.
+- Never silently permanently delete media.
+- Do not require a system confirmation merely to move an item into the FGallery recycle bin.
+- Use Android system confirmation for permanent deletion when required.
 - Cleanup mode must have a persistent red/orange visual indicator while active.
 
 ## Visual direction
@@ -67,6 +70,7 @@ FGallery-specific addition:
 - If the Quick EXIF setting is enabled, showing the viewer chrome also shows a compact EXIF summary over the open image.
 - Swiping to another image while chrome / Quick EXIF is visible keeps that state visible and refreshes the metadata for the current image.
 - A second single tap hides both the chrome and compact EXIF.
+- Single tap must continue to toggle chrome / Quick EXIF even while the image is zoomed; pan recognition must not swallow stationary taps.
 - Quick EXIF can be disabled from Settings for users who do not want metadata over the image.
 - Disabling Quick EXIF affects only the compact overlay, never the full details view.
 - The opened-media viewer must provide an information/details action.
@@ -79,6 +83,7 @@ FGallery-specific addition:
 - Opening a media file uses a short, subtle transition rather than an abrupt screen replacement.
 - Closing a media file returns smoothly to the preserved gallery position.
 - Thumbnail generation and video-frame extraction must be cached/off the scroll-critical path so fling/scroll remains smooth.
+- Generate thumbnails automatically in the background and invalidate cached previews when the underlying media modification time changes.
 
 ## Viewer priorities
 
