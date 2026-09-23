@@ -150,7 +150,6 @@ fun GalleryScreen(
                 items = state.visibleItems,
                 modifier = Modifier.fillMaxSize().padding(innerPadding),
                 onOpenMedia = onOpenMedia,
-                onTrashMedia = onTrashMedia,
             )
         }
     }
