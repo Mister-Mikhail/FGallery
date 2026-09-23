@@ -211,7 +211,7 @@ The following remain part of the planned application scope:
 - edit/open-in-editor actions;
 - reliable large-image viewing;
 - performance tuning and preloading.
-- background thumbnail cache generation keyed by media modification time, so scrolling normally uses prebuilt previews instead of decoding on demand;
+- two-tier background thumbnail cache keyed by media modification time: a fast ~480 px preview for immediate display and a high-quality ~1440 px preview for large mosaic tiles, so scrolling uses cached previews without visibly pixelating DSLR/high-resolution images;
 - cache generation starts automatically after media discovery, prioritizes album covers, refreshes visible tiles reactively as batches complete, and prewarms the currently opened album.
 
 ## 10. Android implementation direction
