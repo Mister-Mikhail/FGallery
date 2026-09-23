@@ -15,6 +15,12 @@ import kotlinx.coroutines.launch
 enum class MediaFilter { ALL, PHOTOS, VIDEOS, RAW }
 enum class GridMode { MOSAIC, UNIFORM }
 
+data class AlbumSummary(
+    val name: String,
+    val cover: MediaItem,
+    val count: Int,
+)
+
 data class GalleryUiState(
     val allItems: List<MediaItem> = emptyList(),
     val isLoading: Boolean = false,
@@ -23,8 +29,9 @@ data class GalleryUiState(
     val searchVisible: Boolean = false,
     val filter: MediaFilter = MediaFilter.ALL,
     val gridMode: GridMode = GridMode.MOSAIC,
+    val selectedAlbum: String? = null,
 ) {
-    val visibleItems: List<MediaItem>
+    val filteredItems: List<MediaItem>
         get() = allItems.asSequence()
             .filter {
                 when (filter) {
@@ -34,12 +41,26 @@ data class GalleryUiState(
                     MediaFilter.RAW -> it.kind == MediaKind.RAW
                 }
             }
+            .toList()
+
+    val visibleItems: List<MediaItem>
+        get() = filteredItems.asSequence()
+            .filter { selectedAlbum == null || it.album == selectedAlbum }
             .filter {
                 query.isBlank() ||
                     it.name.contains(query, ignoreCase = true) ||
                     it.album.contains(query, ignoreCase = true)
             }
             .toList()
+
+    val albums: List<AlbumSummary>
+        get() = filteredItems
+            .groupBy { it.album }
+            .mapNotNull { (name, items) ->
+                items.firstOrNull()?.let { AlbumSummary(name, it, items.size) }
+            }
+            .filter { query.isBlank() || it.name.contains(query, ignoreCase = true) }
+            .sortedBy { it.name.lowercase() }
 }
 
 class GalleryViewModel(application: Application) : AndroidViewModel(application) {
@@ -59,6 +80,14 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
             val items = runCatching { repository.loadMedia() }.getOrDefault(emptyList())
             _uiState.update { it.copy(allItems = items, isLoading = false) }
         }
+    }
+
+    fun openAlbum(name: String) = _uiState.update {
+        it.copy(selectedAlbum = name, query = "", searchVisible = false)
+    }
+
+    fun closeAlbum() = _uiState.update {
+        it.copy(selectedAlbum = null, query = "", searchVisible = false)
     }
 
     fun setFilter(filter: MediaFilter) = _uiState.update { it.copy(filter = filter) }
