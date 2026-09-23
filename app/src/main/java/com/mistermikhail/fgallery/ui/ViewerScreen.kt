@@ -201,9 +201,9 @@ private fun MediaItem.isLikely360Video(): Boolean {
 
     val ratio = if (height > 0) width.toFloat() / height.toFloat() else 0f
     val highResolutionEquirectangular =
-        width >= 3000 &&
-        height >= 1400 &&
-        ratio in 1.85f..2.15f
+        width >= 1600 &&
+        height >= 700 &&
+        ratio in 1.88f..2.12f
 
     return explicit360 || highResolutionEquirectangular
 }
