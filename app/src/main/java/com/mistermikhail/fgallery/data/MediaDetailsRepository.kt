@@ -109,7 +109,7 @@ class MediaDetailsRepository(
                 add(
                     DetailField(
                         "Баланс белого",
-                        if (whiteBalance == ExifInterface.WHITE_BALANCE_AUTO) "Авто" else "Ручной",
+                        if (whiteBalance == ExifInterface.WHITE_BALANCE_AUTO.toInt()) "Авто" else "Ручной",
                     )
                 )
             }
