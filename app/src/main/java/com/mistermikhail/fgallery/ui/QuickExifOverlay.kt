@@ -76,12 +76,20 @@ fun QuickExifOverlay(
             )
             .padding(horizontal = 12.dp, vertical = 10.dp),
     ) {
+        Text(
+            text = item.name,
+            color = Color.White,
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.SemiBold,
+        )
+
         if (primary.isNotEmpty()) {
             Text(
                 text = primary.joinToString("  •  "),
                 color = Color.White,
                 style = MaterialTheme.typography.bodySmall,
                 fontWeight = FontWeight.Medium,
+                modifier = Modifier.padding(top = 4.dp),
             )
         }
 
@@ -90,7 +98,7 @@ fun QuickExifOverlay(
                 text = exposure.joinToString("  •  "),
                 color = Color.White.copy(alpha = 0.82f),
                 style = MaterialTheme.typography.labelMedium,
-                modifier = Modifier.padding(top = if (primary.isNotEmpty()) 4.dp else 0.dp),
+                modifier = Modifier.padding(top = 4.dp),
             )
         }
     }
