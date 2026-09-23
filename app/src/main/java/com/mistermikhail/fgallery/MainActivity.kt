@@ -4,10 +4,12 @@ import android.Manifest
 import android.app.Activity
 import android.app.RecoverableSecurityException
 import android.content.ContentValues
+import android.content.Intent
 import android.content.IntentSender
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.widget.Toast
 import android.provider.MediaStore
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -73,6 +75,27 @@ class MainActivity : ComponentActivity() {
         var selectedIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
         var pendingWrite by remember { mutableStateOf<PendingWriteOperation?>(null) }
         var pendingPermanentDeleteUris by remember { mutableStateOf<Set<String>>(emptySet()) }
+
+        fun shareMedia(item: MediaItem) {
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = item.mimeType ?: if (item.kind == com.mistermikhail.fgallery.data.MediaKind.VIDEO) "video/*" else "image/*"
+                putExtra(Intent.EXTRA_STREAM, item.uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(Intent.createChooser(intent, "Отправить"))
+        }
+
+        fun cropMedia(item: MediaItem) {
+            val intent = Intent(Intent.ACTION_EDIT).apply {
+                setDataAndType(item.uri, item.mimeType ?: "image/*")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+                putExtra("return-data", false)
+            }
+            runCatching { startActivity(Intent.createChooser(intent, "Кадрировать")) }
+                .onFailure {
+                    Toast.makeText(this@MainActivity, "На устройстве нет редактора для этого формата", Toast.LENGTH_SHORT).show()
+                }
+        }
 
         val permissionLauncher = rememberLauncherForActivityResult(
             ActivityResultContracts.RequestMultiplePermissions(),
@@ -427,6 +450,14 @@ class MainActivity : ComponentActivity() {
                         onTrash = { requestTrash(listOf(it), keepViewerOpen = true) },
                         quickExifEnabled = state.quickExifEnabled,
                         cleanupMode = cleanupMode,
+                        onShare = ::shareMedia,
+                        onCrop = ::cropMedia,
+                        onRename = { item, name ->
+                            requestWrite(PendingWriteOperation.Rename(item, name))
+                        },
+                        onMove = { item, path ->
+                            requestWrite(PendingWriteOperation.Move(listOf(item), path))
+                        },
                     )
                 }
             }
