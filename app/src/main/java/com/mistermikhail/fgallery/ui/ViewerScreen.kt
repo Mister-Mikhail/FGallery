@@ -52,7 +52,7 @@ fun ViewerScreen(
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
             val item = items[page]
-            if (item.kind == MediaKind.VIDEO) VideoPlayer(item) else ZoomableImage(item)
+            if (item.kind == MediaKind.VIDEO) {\n                VideoPlayer(item = item, onDoubleTap = { onTrash(item) })\n            } else {\n                ZoomableImage(item = item, onDoubleTap = { onTrash(item) })\n            }
         }
 
         IconButton(onClick = onBack, modifier = Modifier.align(Alignment.TopStart).padding(8.dp)) {
@@ -71,7 +71,7 @@ fun ViewerScreen(
 }
 
 @Composable
-private fun VideoPlayer(item: MediaItem) {
+private fun VideoPlayer(item: MediaItem, onDoubleTap: () -> Unit) {
     val context = LocalContext.current
     val player = remember(item.uri) {
         ExoPlayer.Builder(context).build().apply {
@@ -96,12 +96,12 @@ private fun VideoPlayer(item: MediaItem) {
                 )
             }
         },
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier\n            .fillMaxSize()\n            .pointerInput(item.id) {\n                detectTapGestures(onDoubleTap = { onDoubleTap() })\n            },
     )
 }
 
 @Composable
-private fun ZoomableImage(item: MediaItem) {
+private fun ZoomableImage(item: MediaItem, onDoubleTap: () -> Unit) {
     var scale by remember(item.id) { mutableFloatStateOf(1f) }
     var offsetX by remember(item.id) { mutableFloatStateOf(0f) }
     var offsetY by remember(item.id) { mutableFloatStateOf(0f) }
