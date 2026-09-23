@@ -35,6 +35,9 @@ data class GalleryUiState(
     val selectedAlbum: String? = null,
     val quickExifEnabled: Boolean = true,
     val settingsVisible: Boolean = false,
+    val recycleBinVisible: Boolean = false,
+    val recycleBinItems: List<MediaItem> = emptyList(),
+    val recycleBinLoading: Boolean = false,
 ) {
     val filteredItems: List<MediaItem>
         get() = allItems.asSequence()
@@ -103,6 +106,36 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
             _uiState.update { it.copy(isLoading = true) }
             val items = runCatching { repository.loadMedia() }.getOrDefault(emptyList())
             _uiState.update { it.copy(allItems = items, isLoading = false) }
+        }
+    }
+
+    fun openRecycleBin() {
+        _uiState.update {
+            it.copy(
+                recycleBinVisible = true,
+                selectedAlbum = null,
+                query = "",
+                searchVisible = false,
+            )
+        }
+        refreshRecycleBin()
+    }
+
+    fun closeRecycleBin() = _uiState.update {
+        it.copy(recycleBinVisible = false, recycleBinItems = emptyList())
+    }
+
+    fun refreshRecycleBin() {
+        if (!_uiState.value.hasPermission) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(recycleBinLoading = true) }
+            val items = runCatching { repository.loadTrash() }.getOrDefault(emptyList())
+            _uiState.update {
+                it.copy(
+                    recycleBinItems = items,
+                    recycleBinLoading = false,
+                )
+            }
         }
     }
 
