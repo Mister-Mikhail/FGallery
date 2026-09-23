@@ -154,11 +154,25 @@ fun GalleryScreen(
         }
     }
 
-    LaunchedEffect(visibleVideoIds) {
-        if (visibleVideoIds.isEmpty()) {
-            activeLiveVideoId = null
+    val mediaGridScrolling by remember(inAlbum, state.gridMode) {
+        derivedStateOf {
+            inAlbum && when (state.gridMode) {
+                GridMode.UNIFORM -> uniformGridState.isScrollInProgress
+                GridMode.MOSAIC -> mosaicListState.isScrollInProgress
+            }
+        }
+    }
+
+    LaunchedEffect(visibleVideoIds, mediaGridScrolling) {
+        activeLiveVideoId = null
+
+        if (mediaGridScrolling || visibleVideoIds.isEmpty()) {
             return@LaunchedEffect
         }
+
+        // Never spin up an ExoPlayer during a fling. Wait until the grid is stable,
+        // then rotate one muted live preview at a time.
+        delay(700L)
 
         var index = 0
         while (true) {
@@ -412,6 +426,7 @@ fun GalleryScreen(
                     .padding(innerPadding),
                 onOpenAlbum = onOpenAlbum,
                 thumbnailCacheVersion = state.thumbnailCacheVersion,
+                cleanupMode = cleanupMode,
             )
 
             state.gridMode == GridMode.MOSAIC -> MosaicGrid(
@@ -592,11 +607,14 @@ private fun AlbumsGrid(
     modifier: Modifier,
     onOpenAlbum: (String) -> Unit,
     thumbnailCacheVersion: Long,
+    cleanupMode: Boolean,
 ) {
     LazyVerticalGrid(
         columns = GridCells.Adaptive(156.dp),
         state = state,
-        modifier = modifier,
+        modifier = modifier.background(
+            if (cleanupMode) Color(0xFFFF5A36) else MaterialTheme.colorScheme.background
+        ),
         contentPadding = PaddingValues(8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -937,10 +955,26 @@ private fun MediaPreview(
         }
 
         else -> {
-            // Keep scrolling cheap while background preloading creates the preview.
-            Box(
-                modifier = modifier.background(MaterialTheme.colorScheme.surfaceVariant),
-            )
+            val fallbackRequest = remember(item.uri, item.dateModifiedMillis) {
+                ImageRequest.Builder(context)
+                    .data(item.uri)
+                    .size(480, 480)
+                    .build()
+            }
+
+            if (item.kind == MediaKind.VIDEO) {
+                VideoThumbnail(
+                    item = item,
+                    modifier = modifier,
+                )
+            } else {
+                AsyncImage(
+                    model = fallbackRequest,
+                    contentDescription = item.name,
+                    contentScale = ContentScale.Crop,
+                    modifier = modifier.background(MaterialTheme.colorScheme.surfaceVariant),
+                )
+            }
         }
     }
 }
