@@ -161,6 +161,7 @@ Quick EXIF behavior in the full-screen image viewer:
 - EXIF is hidden when the media is first opened;
 - one single tap toggles the viewer controls;
 - when the controls are shown and the Quick EXIF setting is enabled, a compact EXIF summary is shown over the image;
+- if the user swipes to another image while Quick EXIF is visible, it must stay visible and update to the metadata of the newly opened image;
 - another single tap hides the controls and compact EXIF again;
 - users can disable this automatic compact EXIF overlay in Settings;
 - disabling Quick EXIF must not remove access to full file details;
@@ -192,7 +193,7 @@ The following remain part of the planned application scope:
 - date grouping/navigation;
 - favorites;
 - hidden folders/media;
-- recycle-bin management;
+- recycle-bin management with a dedicated in-app screen, restore, and permanent delete through Android system confirmation;
 - metadata/details;
 - share;
 - edit/open-in-editor actions;
