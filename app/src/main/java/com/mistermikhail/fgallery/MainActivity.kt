@@ -31,6 +31,7 @@ import androidx.core.content.ContextCompat
 import com.mistermikhail.fgallery.data.MediaItem
 import com.mistermikhail.fgallery.ui.GalleryScreen
 import com.mistermikhail.fgallery.ui.GalleryViewModel
+import com.mistermikhail.fgallery.ui.RecycleBinScreen
 import com.mistermikhail.fgallery.ui.ViewerScreen
 import com.mistermikhail.fgallery.ui.theme.FGalleryTheme
 
@@ -186,6 +187,26 @@ class MainActivity : ComponentActivity() {
                 selectedItem = null
                 selectedIds = emptySet()
                 viewModel.refresh()
+                if (state.recycleBinVisible) viewModel.refreshRecycleBin()
+            }
+        }
+
+        val restoreLauncher = rememberLauncherForActivityResult(
+            ActivityResultContracts.StartIntentSenderForResult(),
+        ) { result ->
+            if (result.resultCode == Activity.RESULT_OK) {
+                selectedIds = emptySet()
+                viewModel.refresh()
+                viewModel.refreshRecycleBin()
+            }
+        }
+
+        val deleteForeverLauncher = rememberLauncherForActivityResult(
+            ActivityResultContracts.StartIntentSenderForResult(),
+        ) { result ->
+            if (result.resultCode == Activity.RESULT_OK) {
+                selectedIds = emptySet()
+                viewModel.refreshRecycleBin()
             }
         }
 
@@ -232,6 +253,33 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        fun restoreFromRecycleBin(items: List<MediaItem>) {
+            if (items.isEmpty() || Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
+            runCatching {
+                val pendingIntent = MediaStore.createTrashRequest(
+                    contentResolver,
+                    items.map { it.uri },
+                    false,
+                )
+                restoreLauncher.launch(
+                    IntentSenderRequest.Builder(pendingIntent.intentSender).build()
+                )
+            }
+        }
+
+        fun deleteForever(items: List<MediaItem>) {
+            if (items.isEmpty() || Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
+            runCatching {
+                val pendingIntent = MediaStore.createDeleteRequest(
+                    contentResolver,
+                    items.map { it.uri },
+                )
+                deleteForeverLauncher.launch(
+                    IntentSenderRequest.Builder(pendingIntent.intentSender).build()
+                )
+            }
+        }
+
         LaunchedEffect(Unit) {
             viewModel.onPermissionChanged(hasMediaPermission())
         }
@@ -249,75 +297,108 @@ class MainActivity : ComponentActivity() {
         BackHandler(
             enabled = current == null &&
                 selectedIds.isEmpty() &&
+                state.recycleBinVisible,
+        ) {
+            viewModel.closeRecycleBin()
+        }
+
+        BackHandler(
+            enabled = current == null &&
+                selectedIds.isEmpty() &&
+                !state.recycleBinVisible &&
                 state.selectedAlbum != null,
         ) {
             viewModel.closeAlbum()
         }
 
         Box(modifier = Modifier.fillMaxSize()) {
-            GalleryScreen(
-                state = state,
-                onRequestPermission = {
-                    permissionLauncher.launch(requiredPermissions())
-                },
-                onRefresh = viewModel::refresh,
-                onOpenAlbum = { album ->
-                    selectedIds = emptySet()
-                    viewModel.openAlbum(album)
-                },
-                onBackToAlbums = {
-                    selectedIds = emptySet()
-                    viewModel.closeAlbum()
-                },
-                onOpenMedia = {
-                    selectedIds = emptySet()
-                    selectedItem = it
-                },
-                onToggleGridMode = viewModel::toggleGridMode,
-                onToggleSearch = viewModel::toggleSearch,
-                onQueryChanged = viewModel::setQuery,
-                onFilterChanged = { filter ->
-                    selectedIds = emptySet()
-                    viewModel.setFilter(filter)
-                },
-                onSortChanged = { sort ->
-                    selectedIds = emptySet()
-                    viewModel.setSortMode(sort)
-                },
-                onShowSettings = viewModel::showSettings,
-                onHideSettings = viewModel::hideSettings,
-                onQuickExifChanged = viewModel::setQuickExifEnabled,
-                cleanupMode = cleanupMode,
-                onCleanupModeChanged = { cleanupMode = it },
-                selectedIds = selectedIds,
-                onToggleSelection = { item ->
-                    selectedIds =
-                        if (item.id in selectedIds) selectedIds - item.id
-                        else selectedIds + item.id
-                },
-                onClearSelection = {
-                    selectedIds = emptySet()
-                },
-                onTrashSelected = ::requestTrash,
-                onRenameSelected = { item, name ->
-                    requestWrite(
-                        PendingWriteOperation.Rename(
-                            item = item,
-                            newName = name,
+            if (state.recycleBinVisible) {
+                RecycleBinScreen(
+                    items = state.recycleBinItems,
+                    loading = state.recycleBinLoading,
+                    selectedIds = selectedIds,
+                    onBack = {
+                        selectedIds = emptySet()
+                        viewModel.closeRecycleBin()
+                    },
+                    onToggleSelection = { item ->
+                        selectedIds =
+                            if (item.id in selectedIds) selectedIds - item.id
+                            else selectedIds + item.id
+                    },
+                    onRestore = ::restoreFromRecycleBin,
+                    onDeleteForever = ::deleteForever,
+                )
+            } else {
+                GalleryScreen(
+                    state = state,
+                    onRequestPermission = {
+                        permissionLauncher.launch(requiredPermissions())
+                    },
+                    onRefresh = viewModel::refresh,
+                    onOpenAlbum = { album ->
+                        selectedIds = emptySet()
+                        viewModel.openAlbum(album)
+                    },
+                    onBackToAlbums = {
+                        selectedIds = emptySet()
+                        viewModel.closeAlbum()
+                    },
+                    onOpenMedia = {
+                        selectedIds = emptySet()
+                        selectedItem = it
+                    },
+                    onToggleGridMode = viewModel::toggleGridMode,
+                    onToggleSearch = viewModel::toggleSearch,
+                    onQueryChanged = viewModel::setQuery,
+                    onFilterChanged = { filter ->
+                        selectedIds = emptySet()
+                        viewModel.setFilter(filter)
+                    },
+                    onSortChanged = { sort ->
+                        selectedIds = emptySet()
+                        viewModel.setSortMode(sort)
+                    },
+                    onShowSettings = viewModel::showSettings,
+                    onHideSettings = viewModel::hideSettings,
+                    onQuickExifChanged = viewModel::setQuickExifEnabled,
+                    onOpenRecycleBin = {
+                        selectedIds = emptySet()
+                        selectedItem = null
+                        viewModel.openRecycleBin()
+                    },
+                    cleanupMode = cleanupMode,
+                    onCleanupModeChanged = { cleanupMode = it },
+                    selectedIds = selectedIds,
+                    onToggleSelection = { item ->
+                        selectedIds =
+                            if (item.id in selectedIds) selectedIds - item.id
+                            else selectedIds + item.id
+                    },
+                    onClearSelection = {
+                        selectedIds = emptySet()
+                    },
+                    onTrashSelected = ::requestTrash,
+                    onRenameSelected = { item, name ->
+                        requestWrite(
+                            PendingWriteOperation.Rename(
+                                item = item,
+                                newName = name,
+                            )
                         )
-                    )
-                },
-                onMoveSelected = { items, path ->
-                    requestWrite(
-                        PendingWriteOperation.Move(
-                            items = items,
-                            relativePath = path,
+                    },
+                    onMoveSelected = { items, path ->
+                        requestWrite(
+                            PendingWriteOperation.Move(
+                                items = items,
+                                relativePath = path,
+                            )
                         )
-                    )
-                },
-            )
+                    },
+                )
+            }
 
-            if (current != null) {
+            if (current != null && !state.recycleBinVisible) {
                 ViewerScreen(
                     items = state.visibleItems,
                     initialItem = current,
