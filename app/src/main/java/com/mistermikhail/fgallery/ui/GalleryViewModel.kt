@@ -178,7 +178,7 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
 
             viewModelScope.launch(Dispatchers.IO) {
                 ThumbnailCache.preload(
-                    context = getApplication(),
+                    context = getApplication<Application>(),
                     items = items,
                 )
             }
