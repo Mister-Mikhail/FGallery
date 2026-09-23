@@ -1,7 +1,10 @@
 package com.mistermikhail.fgallery.data
 
+import android.content.ContentResolver
 import android.content.ContentUris
 import android.content.Context
+import android.os.Build
+import android.os.Bundle
 import android.provider.MediaStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -9,6 +12,18 @@ import java.util.Locale
 
 class MediaRepository(private val context: Context) {
     suspend fun loadMedia(): List<MediaItem> = withContext(Dispatchers.IO) {
+        queryMedia(trashedOnly = false)
+    }
+
+    suspend fun loadTrash(): List<MediaItem> = withContext(Dispatchers.IO) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            emptyList()
+        } else {
+            queryMedia(trashedOnly = true)
+        }
+    }
+
+    private fun queryMedia(trashedOnly: Boolean): List<MediaItem> {
         val resolver = context.contentResolver
         val collection = MediaStore.Files.getContentUri("external")
         val projection = arrayOf(
@@ -34,33 +49,49 @@ class MediaRepository(private val context: Context) {
         val sort =
             "${MediaStore.MediaColumns.DATE_TAKEN} DESC, ${MediaStore.MediaColumns.DATE_ADDED} DESC"
 
-        buildList {
-            resolver.query(collection, projection, selection, args, sort)?.use { cursor ->
-                val idC = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns._ID)
-                val typeC = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.MEDIA_TYPE)
-                val nameC = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
-                val mimeC = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.MIME_TYPE)
-                val takenC = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_TAKEN)
-                val addedC = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_ADDED)
-                val widthC = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.WIDTH)
-                val heightC = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.HEIGHT)
-                val sizeC = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.SIZE)
-                val pathC = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.RELATIVE_PATH)
-                val durationC = cursor.getColumnIndexOrThrow(MediaStore.Video.VideoColumns.DURATION)
-                val albumC = cursor.getColumnIndexOrThrow(MediaStore.Images.ImageColumns.BUCKET_DISPLAY_NAME)
+        val cursor = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val queryArgs = Bundle().apply {
+                putString(ContentResolver.QUERY_ARG_SQL_SELECTION, selection)
+                putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS, args)
+                putString(ContentResolver.QUERY_ARG_SQL_SORT_ORDER, sort)
+                putInt(
+                    MediaStore.QUERY_ARG_MATCH_TRASHED,
+                    if (trashedOnly) MediaStore.MATCH_ONLY else MediaStore.MATCH_EXCLUDE,
+                )
+            }
+            resolver.query(collection, projection, queryArgs, null)
+        } else {
+            if (trashedOnly) return emptyList()
+            resolver.query(collection, projection, selection, args, sort)
+        }
 
-                while (cursor.moveToNext()) {
-                    val id = cursor.getLong(idC)
-                    val mediaType = cursor.getInt(typeC)
-                    val name = cursor.getString(nameC).orEmpty()
-                    val mime = cursor.getString(mimeC)
+        return buildList {
+            cursor?.use {
+                val idC = it.getColumnIndexOrThrow(MediaStore.Files.FileColumns._ID)
+                val typeC = it.getColumnIndexOrThrow(MediaStore.Files.FileColumns.MEDIA_TYPE)
+                val nameC = it.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
+                val mimeC = it.getColumnIndexOrThrow(MediaStore.MediaColumns.MIME_TYPE)
+                val takenC = it.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_TAKEN)
+                val addedC = it.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_ADDED)
+                val widthC = it.getColumnIndexOrThrow(MediaStore.MediaColumns.WIDTH)
+                val heightC = it.getColumnIndexOrThrow(MediaStore.MediaColumns.HEIGHT)
+                val sizeC = it.getColumnIndexOrThrow(MediaStore.MediaColumns.SIZE)
+                val pathC = it.getColumnIndexOrThrow(MediaStore.MediaColumns.RELATIVE_PATH)
+                val durationC = it.getColumnIndexOrThrow(MediaStore.Video.VideoColumns.DURATION)
+                val albumC = it.getColumnIndexOrThrow(MediaStore.Images.ImageColumns.BUCKET_DISPLAY_NAME)
+
+                while (it.moveToNext()) {
+                    val id = it.getLong(idC)
+                    val mediaType = it.getInt(typeC)
+                    val name = it.getString(nameC).orEmpty()
+                    val mime = it.getString(mimeC)
                     val kind = when {
                         mediaType == MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO -> MediaKind.VIDEO
                         isRaw(name, mime) -> MediaKind.RAW
                         else -> MediaKind.IMAGE
                     }
-                    val taken = cursor.getLong(takenC)
-                    val added = cursor.getLong(addedC) * 1000L
+                    val taken = it.getLong(takenC)
+                    val added = it.getLong(addedC) * 1000L
 
                     add(
                         MediaItem(
@@ -69,13 +100,13 @@ class MediaRepository(private val context: Context) {
                             name = name,
                             mimeType = mime,
                             kind = kind,
-                            dateTakenMillis = taken.takeIf { it > 0L } ?: added,
-                            width = cursor.getInt(widthC),
-                            height = cursor.getInt(heightC),
-                            durationMillis = cursor.getLong(durationC),
-                            album = cursor.getString(albumC).orEmpty().ifBlank { "Без альбома" },
-                            relativePath = cursor.getString(pathC).orEmpty(),
-                            sizeBytes = cursor.getLong(sizeC),
+                            dateTakenMillis = taken.takeIf { value -> value > 0L } ?: added,
+                            width = it.getInt(widthC),
+                            height = it.getInt(heightC),
+                            durationMillis = it.getLong(durationC),
+                            album = it.getString(albumC).orEmpty().ifBlank { "Без альбома" },
+                            relativePath = it.getString(pathC).orEmpty(),
+                            sizeBytes = it.getLong(sizeC),
                         )
                     )
                 }
