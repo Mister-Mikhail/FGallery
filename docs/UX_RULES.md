@@ -41,6 +41,12 @@ The reference mood is QuickPic/QP Gallery:
 FGallery-specific addition:
 - mosaic presentation that respects source proportions and creates a less rigid visual rhythm than QuickPic's classic equal-tile grid.
 
+### EXIF / details
+- The opened-media viewer must provide an information/details action.
+- Details should surface EXIF and file metadata that actually exists in the source file.
+- Keep the information presentation compact, dark-theme friendly, and close in spirit to QuickPic's details/EXIF presentation.
+- Never synthesize camera, exposure, GPS, or other EXIF values that are not present.
+
 ## Viewer priorities
 
 Viewer quality is a major product differentiator.
