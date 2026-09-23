@@ -14,6 +14,7 @@ import kotlinx.coroutines.launch
 
 enum class MediaFilter { ALL, PHOTOS, VIDEOS, RAW }
 enum class GridMode { MOSAIC, UNIFORM }
+enum class SortMode { DATE_DESC, DATE_ASC, NAME_ASC, NAME_DESC, SIZE_DESC }
 
 data class AlbumSummary(
     val name: String,
@@ -29,6 +30,7 @@ data class GalleryUiState(
     val searchVisible: Boolean = false,
     val filter: MediaFilter = MediaFilter.ALL,
     val gridMode: GridMode = GridMode.MOSAIC,
+    val sortMode: SortMode = SortMode.DATE_DESC,
     val selectedAlbum: String? = null,
 ) {
     val filteredItems: List<MediaItem>
@@ -44,14 +46,24 @@ data class GalleryUiState(
             .toList()
 
     val visibleItems: List<MediaItem>
-        get() = filteredItems.asSequence()
-            .filter { selectedAlbum == null || it.album == selectedAlbum }
-            .filter {
-                query.isBlank() ||
-                    it.name.contains(query, ignoreCase = true) ||
-                    it.album.contains(query, ignoreCase = true)
+        get() {
+            val items = filteredItems.asSequence()
+                .filter { selectedAlbum == null || it.album == selectedAlbum }
+                .filter {
+                    query.isBlank() ||
+                        it.name.contains(query, ignoreCase = true) ||
+                        it.album.contains(query, ignoreCase = true)
+                }
+                .toList()
+
+            return when (sortMode) {
+                SortMode.DATE_DESC -> items.sortedByDescending { it.dateTakenMillis }
+                SortMode.DATE_ASC -> items.sortedBy { it.dateTakenMillis }
+                SortMode.NAME_ASC -> items.sortedBy { it.name.lowercase() }
+                SortMode.NAME_DESC -> items.sortedByDescending { it.name.lowercase() }
+                SortMode.SIZE_DESC -> items.sortedByDescending { it.sizeBytes }
             }
-            .toList()
+        }
 
     val albums: List<AlbumSummary>
         get() = filteredItems
@@ -91,6 +103,7 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun setFilter(filter: MediaFilter) = _uiState.update { it.copy(filter = filter) }
+    fun setSortMode(sortMode: SortMode) = _uiState.update { it.copy(sortMode = sortMode) }
 
     fun toggleGridMode() = _uiState.update {
         it.copy(gridMode = if (it.gridMode == GridMode.MOSAIC) GridMode.UNIFORM else GridMode.MOSAIC)
