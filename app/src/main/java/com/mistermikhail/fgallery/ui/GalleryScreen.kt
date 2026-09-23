@@ -44,6 +44,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -68,6 +69,8 @@ fun GalleryScreen(
     onShowSettings: () -> Unit,
     onHideSettings: () -> Unit,
     onQuickExifChanged: (Boolean) -> Unit,
+    cleanupMode: Boolean,
+    onCleanupModeChanged: (Boolean) -> Unit,
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
     val inAlbum = state.selectedAlbum != null
@@ -124,6 +127,12 @@ fun GalleryScreen(
                                     DropdownMenuItem(text = { Text("Имя Я–А") }, onClick = { apply { onSortChanged(SortMode.NAME_DESC) } })
                                     DropdownMenuItem(text = { Text("Сначала крупные") }, onClick = { apply { onSortChanged(SortMode.SIZE_DESC) } })
                                 }
+                                if (inAlbum) {
+                                    DropdownMenuItem(
+                                        text = { Text(if (cleanupMode) "Выключить режим уборки" else "Режим уборки") },
+                                        onClick = { apply { onCleanupModeChanged(!cleanupMode) } },
+                                    )
+                                }
                                 DropdownMenuItem(text = { Text("Обновить") }, onClick = { apply(onRefresh) })
                                 DropdownMenuItem(text = { Text("Настройки") }, onClick = { apply(onShowSettings) })
                             }
@@ -157,11 +166,13 @@ fun GalleryScreen(
                 items = state.visibleItems,
                 modifier = Modifier.fillMaxSize().padding(innerPadding),
                 onOpenMedia = onOpenMedia,
+                cleanupMode = cleanupMode,
             )
             else -> UniformGrid(
                 items = state.visibleItems,
                 modifier = Modifier.fillMaxSize().padding(innerPadding),
                 onOpenMedia = onOpenMedia,
+                cleanupMode = cleanupMode,
             )
         }
     }
@@ -226,13 +237,13 @@ private fun AlbumsGrid(albums: List<AlbumSummary>, modifier: Modifier, onOpenAlb
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun MosaicGrid(items: List<MediaItem>, modifier: Modifier, onOpenMedia: (MediaItem) -> Unit) {
+private fun MosaicGrid(items: List<MediaItem>, modifier: Modifier, onOpenMedia: (MediaItem) -> Unit, cleanupMode: Boolean) {
     LazyVerticalStaggeredGrid(
         columns = StaggeredGridCells.Adaptive(112.dp),
-        modifier = modifier,
-        contentPadding = PaddingValues(3.dp),
-        horizontalArrangement = Arrangement.spacedBy(3.dp),
-        verticalItemSpacing = 3.dp,
+        modifier = modifier.background(if (cleanupMode) Color(0xFFFF5A36) else Color.Transparent),
+        contentPadding = PaddingValues(if (cleanupMode) 5.dp else 3.dp),
+        horizontalArrangement = Arrangement.spacedBy(if (cleanupMode) 5.dp else 3.dp),
+        verticalItemSpacing = if (cleanupMode) 5.dp else 3.dp,
     ) {
         itemsIndexed(items, key = { _, item -> item.id }) { _, item ->
             MediaTile(item, item.aspectRatio.coerceIn(0.62f, 1.65f), onOpenMedia)
@@ -242,13 +253,13 @@ private fun MosaicGrid(items: List<MediaItem>, modifier: Modifier, onOpenMedia: 
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun UniformGrid(items: List<MediaItem>, modifier: Modifier, onOpenMedia: (MediaItem) -> Unit) {
+private fun UniformGrid(items: List<MediaItem>, modifier: Modifier, onOpenMedia: (MediaItem) -> Unit, cleanupMode: Boolean) {
     LazyVerticalGrid(
         columns = GridCells.Adaptive(112.dp),
-        modifier = modifier,
-        contentPadding = PaddingValues(3.dp),
-        horizontalArrangement = Arrangement.spacedBy(3.dp),
-        verticalArrangement = Arrangement.spacedBy(3.dp),
+        modifier = modifier.background(if (cleanupMode) Color(0xFFFF5A36) else Color.Transparent),
+        contentPadding = PaddingValues(if (cleanupMode) 5.dp else 3.dp),
+        horizontalArrangement = Arrangement.spacedBy(if (cleanupMode) 5.dp else 3.dp),
+        verticalArrangement = Arrangement.spacedBy(if (cleanupMode) 5.dp else 3.dp),
     ) {
         items(items, key = { it.id }) { item -> MediaTile(item, 1f, onOpenMedia) }
     }
