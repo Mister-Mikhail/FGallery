@@ -74,14 +74,21 @@ Required behavior:
 - normal playback controls;
 - horizontal navigation between neighboring media items.
 
-### Double-tap shortcut
+### Double-tap behavior and Cleanup mode
 
 Double tap applies only to the currently opened media item.
 
-Action:
-- request moving the current item to Android system Trash.
+Normal mode:
+- first double tap: first zoom level;
+- second double tap: maximum zoom level;
+- third double tap: return to fit-to-screen;
+- pinch zoom remains available at all times.
 
-This gesture is intentionally reserved for Trash and must not be used for thumbnail deletion or double-tap zoom.
+Cleanup mode:
+- Cleanup mode is explicitly enabled by the user from the gallery menu;
+- while Cleanup mode is active, double tap on the currently opened media item requests moving that item to Android system Trash;
+- thumbnail double tap must never delete media;
+- the gallery visually indicates Cleanup mode with warm red/orange spacing/accent so the destructive gesture cannot be forgotten.
 
 A visible Trash action may also remain available in the viewer.
 
@@ -159,7 +166,26 @@ Quick EXIF behavior in the full-screen image viewer:
 - disabling Quick EXIF must not remove access to full file details;
 - the full information/details view must always remain available from the viewer and must show all available file/EXIF metadata.
 
-## 8. Planned functional scope
+## 8. File management and multi-selection
+
+FGallery must support file-management operations directly from the album grid.
+
+Selection behavior:
+- long press a media tile to enter selection mode;
+- tap additional tiles to add/remove them from the selection;
+- show the number of selected items in the top app bar;
+- leaving selection mode clears the selection.
+
+Required operations:
+- move one or many selected files to another folder;
+- move one or many selected files to Android system Trash;
+- rename a single selected file;
+- share one or many selected files;
+- destructive operations use Android confirmation / MediaStore write or Trash APIs where required.
+
+Rename is available only for a single selected item. Move and Trash must work for multiple selected files.
+
+## 9. Planned functional scope
 
 The following remain part of the planned application scope:
 - sorting controls;
@@ -173,7 +199,7 @@ The following remain part of the planned application scope:
 - reliable large-image viewing;
 - performance tuning and preloading.
 
-## 9. Android implementation direction
+## 10. Android implementation direction
 
 - Kotlin.
 - Jetpack Compose.
@@ -182,7 +208,7 @@ The following remain part of the planned application scope:
 - Media3 for video playback.
 - Coil for ordinary image thumbnail/display loading, with specialized large-image/RAW handling added where needed.
 
-## 10. Source of truth
+## 11. Source of truth
 
 This file records agreed product behavior.
 
