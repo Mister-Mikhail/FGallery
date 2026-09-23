@@ -150,6 +150,15 @@ For video, the details view should show available technical metadata such as dur
 
 The exact visual arrangement should remain compact and consistent with the QuickPic reference screenshots: readable metadata without taking over the media viewer.
 
+Quick EXIF behavior in the full-screen image viewer:
+- EXIF is hidden when the media is first opened;
+- one single tap toggles the viewer controls;
+- when the controls are shown and the Quick EXIF setting is enabled, a compact EXIF summary is shown over the image;
+- another single tap hides the controls and compact EXIF again;
+- users can disable this automatic compact EXIF overlay in Settings;
+- disabling Quick EXIF must not remove access to full file details;
+- the full information/details view must always remain available from the viewer and must show all available file/EXIF metadata.
+
 ## 8. Planned functional scope
 
 The following remain part of the planned application scope:
