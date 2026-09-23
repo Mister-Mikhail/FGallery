@@ -745,7 +745,7 @@ private fun MosaicGrid(
                             selectionMode = selectedIds.isNotEmpty(),
                             onToggleSelection = onToggleSelection,
                             thumbnailCacheVersion = thumbnailCacheVersion,
-                            livePreview = item.id == activeLiveVideoId,
+                            livePreview = false,
                         )
                     }
                 }
@@ -958,7 +958,7 @@ private fun MediaPreview(
             val fallbackRequest = remember(item.uri, item.dateModifiedMillis) {
                 ImageRequest.Builder(context)
                     .data(item.uri)
-                    .size(480, 480)
+                    .size(960, 960)
                     .build()
             }
 
