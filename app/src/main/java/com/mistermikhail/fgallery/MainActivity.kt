@@ -98,7 +98,6 @@ class MainActivity : ComponentActivity() {
                 onOpenAlbum = viewModel::openAlbum,
                 onBackToAlbums = viewModel::closeAlbum,
                 onOpenMedia = { selectedItem = it },
-                onTrashMedia = ::requestTrash,
                 onToggleGridMode = viewModel::toggleGridMode,
                 onToggleSearch = viewModel::toggleSearch,
                 onQueryChanged = viewModel::setQuery,
