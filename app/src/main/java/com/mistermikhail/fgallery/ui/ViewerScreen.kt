@@ -1,5 +1,6 @@
 package com.mistermikhail.fgallery.ui
 
+import android.view.ViewGroup
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -14,9 +15,8 @@ import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
@@ -28,7 +28,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.common.MediaItem as PlayerMediaItem
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.PlayerView
 import coil3.compose.AsyncImage
 import com.mistermikhail.fgallery.data.MediaItem
 import com.mistermikhail.fgallery.data.MediaKind
@@ -47,25 +52,14 @@ fun ViewerScreen(
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
             val item = items[page]
-            if (item.kind == MediaKind.VIDEO) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text(
-                        "Видео — плеер будет подключён на следующем этапе",
-                        color = Color.White.copy(alpha = 0.72f),
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                }
-            } else {
-                ZoomableImage(item)
-            }
+            if (item.kind == MediaKind.VIDEO) VideoPlayer(item) else ZoomableImage(item)
         }
 
         IconButton(onClick = onBack, modifier = Modifier.align(Alignment.TopStart).padding(8.dp)) {
             Icon(Icons.Outlined.ArrowBack, contentDescription = "Назад", tint = Color.White)
         }
 
-        val current = items.getOrNull(pagerState.currentPage)
-        if (current != null) {
+        items.getOrNull(pagerState.currentPage)?.let { current ->
             IconButton(
                 onClick = { onTrash(current) },
                 modifier = Modifier.align(Alignment.TopEnd).padding(8.dp),
@@ -77,15 +71,43 @@ fun ViewerScreen(
 }
 
 @Composable
+private fun VideoPlayer(item: MediaItem) {
+    val context = LocalContext.current
+    val player = remember(item.uri) {
+        ExoPlayer.Builder(context).build().apply {
+            setMediaItem(PlayerMediaItem.fromUri(item.uri))
+            prepare()
+            playWhenReady = true
+        }
+    }
+
+    DisposableEffect(player) {
+        onDispose { player.release() }
+    }
+
+    AndroidView(
+        factory = { ctx ->
+            PlayerView(ctx).apply {
+                this.player = player
+                useController = true
+                layoutParams = ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                )
+            }
+        },
+        modifier = Modifier.fillMaxSize(),
+    )
+}
+
+@Composable
 private fun ZoomableImage(item: MediaItem) {
     var scale by remember(item.id) { mutableFloatStateOf(1f) }
     var offsetX by remember(item.id) { mutableFloatStateOf(0f) }
     var offsetY by remember(item.id) { mutableFloatStateOf(0f) }
 
     Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .clipToBounds()
+        modifier = Modifier.fillMaxSize().clipToBounds()
             .pointerInput(item.id) {
                 detectTransformGestures { _, pan, zoom, _ ->
                     scale = (scale * zoom).coerceIn(1f, 6f)
