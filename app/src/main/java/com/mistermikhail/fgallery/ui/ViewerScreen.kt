@@ -122,15 +122,7 @@ private fun ZoomableImage(item: MediaItem, onDoubleTap: () -> Unit) {
             }
             .pointerInput(item.id) {
                 detectTapGestures(
-                    onDoubleTap = {
-                        if (scale > 1f) {
-                            scale = 1f
-                            offsetX = 0f
-                            offsetY = 0f
-                        } else {
-                            scale = 2.5f
-                        }
-                    },
+                    onDoubleTap = { onDoubleTap() },
                 )
             },
         contentAlignment = Alignment.Center,
