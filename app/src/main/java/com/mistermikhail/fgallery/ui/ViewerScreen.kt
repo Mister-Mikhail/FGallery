@@ -6,6 +6,7 @@ import android.view.MotionEvent
 import android.view.ViewGroup
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -62,6 +63,7 @@ import coil3.request.ImageRequest
 import com.mistermikhail.fgallery.R
 import com.mistermikhail.fgallery.data.MediaItem
 import com.mistermikhail.fgallery.data.MediaKind
+import com.mistermikhail.fgallery.data.ThumbnailCache
 import kotlinx.coroutines.launch
 import kotlin.math.min
 
@@ -339,6 +341,33 @@ private fun ZoomableImage(
             .build()
     }
 
+    val fastPreview = remember(item.id, item.dateModifiedMillis) {
+        ThumbnailCache.fileFor(
+            context = context,
+            item = item,
+            highQuality = false,
+        )
+    }
+    val highPreview = remember(item.id, item.dateModifiedMillis) {
+        ThumbnailCache.fileFor(
+            context = context,
+            item = item,
+            highQuality = true,
+        )
+    }
+    val cachedPreview = when {
+        highPreview.exists() -> highPreview
+        fastPreview.exists() -> fastPreview
+        else -> null
+    }
+
+    var sourceLoaded by remember(item.id, decodeEdge) { mutableStateOf(false) }
+    val sourceAlpha by animateFloatAsState(
+        targetValue = if (sourceLoaded) 1f else 0f,
+        animationSpec = tween(durationMillis = 120),
+        label = "full-image-fade",
+    )
+
     fun maxOffsets(targetScale: Float): Pair<Float, Float> {
         val viewportWidth = viewportSize.width.toFloat()
         val viewportHeight = viewportSize.height.toFloat()
@@ -481,10 +510,7 @@ private fun ZoomableImage(
             },
         contentAlignment = Alignment.Center,
     ) {
-        AsyncImage(
-            model = imageRequest,
-            contentDescription = item.name,
-            contentScale = ContentScale.Fit,
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer {
@@ -493,6 +519,29 @@ private fun ZoomableImage(
                     translationX = offsetX
                     translationY = offsetY
                 },
-        )
+            contentAlignment = Alignment.Center,
+        ) {
+            if (cachedPreview != null) {
+                AsyncImage(
+                    model = cachedPreview,
+                    contentDescription = item.name,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+
+            AsyncImage(
+                model = imageRequest,
+                contentDescription = item.name,
+                contentScale = ContentScale.Fit,
+                onSuccess = { sourceLoaded = true },
+                onLoading = { sourceLoaded = false },
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        alpha = if (cachedPreview == null) 1f else sourceAlpha
+                    },
+            )
+        }
     }
 }
