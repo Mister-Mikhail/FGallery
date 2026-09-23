@@ -64,6 +64,7 @@ fun GalleryScreen(
     onToggleSearch: () -> Unit,
     onQueryChanged: (String) -> Unit,
     onFilterChanged: (MediaFilter) -> Unit,
+    onSortChanged: (SortMode) -> Unit,
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
     val inAlbum = state.selectedAlbum != null
@@ -113,6 +114,13 @@ fun GalleryScreen(
                                 DropdownMenuItem(text = { Text("Фото") }, onClick = { apply { onFilterChanged(MediaFilter.PHOTOS) } })
                                 DropdownMenuItem(text = { Text("Видео") }, onClick = { apply { onFilterChanged(MediaFilter.VIDEOS) } })
                                 DropdownMenuItem(text = { Text("RAW") }, onClick = { apply { onFilterChanged(MediaFilter.RAW) } })
+                                if (inAlbum) {
+                                    DropdownMenuItem(text = { Text("Сначала новые") }, onClick = { apply { onSortChanged(SortMode.DATE_DESC) } })
+                                    DropdownMenuItem(text = { Text("Сначала старые") }, onClick = { apply { onSortChanged(SortMode.DATE_ASC) } })
+                                    DropdownMenuItem(text = { Text("Имя А–Я") }, onClick = { apply { onSortChanged(SortMode.NAME_ASC) } })
+                                    DropdownMenuItem(text = { Text("Имя Я–А") }, onClick = { apply { onSortChanged(SortMode.NAME_DESC) } })
+                                    DropdownMenuItem(text = { Text("Сначала крупные") }, onClick = { apply { onSortChanged(SortMode.SIZE_DESC) } })
+                                }
                                 DropdownMenuItem(text = { Text("Обновить") }, onClick = { apply(onRefresh) })
                             }
                         }
