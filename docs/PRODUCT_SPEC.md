@@ -122,7 +122,35 @@ Filters:
 - videos;
 - RAW.
 
-## 7. Planned functional scope
+## 7. EXIF and media details
+
+FGallery must expose metadata for the currently opened media item, following the QuickPic-style information/details experience.
+
+For images, show all useful metadata that is actually present, including as available:
+- file name and path/location;
+- file size;
+- pixel dimensions and orientation;
+- capture date/time;
+- camera maker and model;
+- lens information;
+- focal length;
+- aperture;
+- shutter/exposure time;
+- ISO;
+- exposure compensation;
+- flash state;
+- white balance;
+- GPS/location coordinates when embedded;
+- image format / MIME type;
+- RAW-specific metadata when available.
+
+Do not fabricate missing EXIF values. Fields that are absent in the source file should be omitted or shown as unavailable.
+
+For video, the details view should show available technical metadata such as duration, dimensions, file size, codec/container information when available, frame rate when available, and creation date/time.
+
+The exact visual arrangement should remain compact and consistent with the QuickPic reference screenshots: readable metadata without taking over the media viewer.
+
+## 8. Planned functional scope
 
 The following remain part of the planned application scope:
 - sorting controls;
@@ -136,7 +164,7 @@ The following remain part of the planned application scope:
 - reliable large-image viewing;
 - performance tuning and preloading.
 
-## 8. Android implementation direction
+## 9. Android implementation direction
 
 - Kotlin.
 - Jetpack Compose.
@@ -145,7 +173,7 @@ The following remain part of the planned application scope:
 - Media3 for video playback.
 - Coil for ordinary image thumbnail/display loading, with specialized large-image/RAW handling added where needed.
 
-## 9. Source of truth
+## 10. Source of truth
 
 This file records agreed product behavior.
 
