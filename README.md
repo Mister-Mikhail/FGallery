@@ -10,6 +10,7 @@ FGallery is a local-first Android gallery inspired by the speed and visual restr
 - Local photo/video loading through `MediaStore`.
 - RAW recognition for DNG, CR2/CR3, NEF, ARW, ORF, RW2, RAF, PEF and more.
 - Search by file name and album.
+- Sort media by date, name, or file size.
 - Filters for all media, photos, video and RAW.
 - Single tap opens the viewer.
 - Double tap on the opened media item sends it to Android system Trash on Android 11+.
