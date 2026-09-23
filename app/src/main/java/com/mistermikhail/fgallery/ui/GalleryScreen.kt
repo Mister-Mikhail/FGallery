@@ -889,12 +889,34 @@ private fun MediaPreview(
     livePreview: Boolean,
 ) {
     val context = LocalContext.current
-    val cachedFile = remember(
+    val fastCachedFile = remember(
         item.id,
         item.dateModifiedMillis,
         thumbnailCacheVersion,
     ) {
-        ThumbnailCache.fileFor(context, item)
+        ThumbnailCache.fileFor(
+            context = context,
+            item = item,
+            highQuality = false,
+        )
+    }
+
+    val highCachedFile = remember(
+        item.id,
+        item.dateModifiedMillis,
+        thumbnailCacheVersion,
+    ) {
+        ThumbnailCache.fileFor(
+            context = context,
+            item = item,
+            highQuality = true,
+        )
+    }
+
+    val cachedModel = when {
+        highCachedFile.exists() -> highCachedFile
+        fastCachedFile.exists() -> fastCachedFile
+        else -> null
     }
 
     when {
@@ -905,9 +927,9 @@ private fun MediaPreview(
             )
         }
 
-        cachedFile.exists() -> {
+        cachedModel != null -> {
             AsyncImage(
-                model = cachedFile,
+                model = cachedModel,
                 contentDescription = item.name,
                 contentScale = ContentScale.Crop,
                 modifier = modifier.background(MaterialTheme.colorScheme.surfaceVariant),
@@ -915,8 +937,7 @@ private fun MediaPreview(
         }
 
         else -> {
-            // Keep scrolling cheap while the background preloader creates the thumbnail.
-            // Avoid decoding the full source file on the scroll-critical path.
+            // Keep scrolling cheap while background preloading creates the preview.
             Box(
                 modifier = modifier.background(MaterialTheme.colorScheme.surfaceVariant),
             )
