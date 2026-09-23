@@ -58,6 +58,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -124,31 +125,46 @@ fun GalleryScreen(
     var activeLiveVideoId by remember { mutableStateOf<Long?>(null) }
 
     val inAlbum = state.selectedAlbum != null
+    val visibleMosaicRows = remember(state.visibleItems) {
+        buildMosaicRows(state.visibleItems)
+    }
 
-    LaunchedEffect(
+    val visibleVideoIds by remember(
         inAlbum,
-        state.selectedAlbum,
-        state.visibleItems.map { it.id },
+        state.gridMode,
+        state.visibleItems,
+        visibleMosaicRows,
     ) {
-        if (!inAlbum) {
-            activeLiveVideoId = null
-            return@LaunchedEffect
+        derivedStateOf {
+            if (!inAlbum) {
+                emptyList()
+            } else {
+                when (state.gridMode) {
+                    GridMode.UNIFORM -> uniformGridState.layoutInfo.visibleItemsInfo
+                        .mapNotNull { info -> state.visibleItems.getOrNull(info.index) }
+                        .filter { it.kind == MediaKind.VIDEO }
+                        .map { it.id }
+
+                    GridMode.MOSAIC -> mosaicListState.layoutInfo.visibleItemsInfo
+                        .flatMap { info -> visibleMosaicRows.getOrNull(info.index).orEmpty() }
+                        .filter { it.kind == MediaKind.VIDEO }
+                        .map { it.id }
+                }
+            }
         }
+    }
 
-        val videoIds = state.visibleItems
-            .filter { it.kind == MediaKind.VIDEO }
-            .map { it.id }
-
-        if (videoIds.isEmpty()) {
+    LaunchedEffect(visibleVideoIds) {
+        if (visibleVideoIds.isEmpty()) {
             activeLiveVideoId = null
             return@LaunchedEffect
         }
 
         var index = 0
         while (true) {
-            activeLiveVideoId = videoIds[index]
+            activeLiveVideoId = visibleVideoIds[index]
             delay(5_000L)
-            index = (index + 1) % videoIds.size
+            index = (index + 1) % visibleVideoIds.size
         }
     }
     val selectedItems = state.visibleItems.filter { it.id in selectedIds }
