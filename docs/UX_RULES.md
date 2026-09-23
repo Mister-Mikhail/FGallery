@@ -36,6 +36,11 @@
 - Move, Share, and Trash may operate on multiple selected items.
 - File operations must preserve selection until the operation succeeds or the user cancels.
 
+### Recycle bin
+- FGallery must expose a dedicated recycle-bin screen.
+- The recycle bin lists items currently in Android system Trash when the platform supports it.
+- Selected recycle-bin items can be restored or permanently deleted using Android system confirmation.
+
 ### Destructive actions
 - Use Android system confirmation/Trash mechanisms.
 - Do not silently permanently delete media when the system Trash API is available.
@@ -57,6 +62,7 @@ FGallery-specific addition:
 - EXIF information is not permanently overlaid on a newly opened image.
 - Single tap toggles the viewer chrome.
 - If the Quick EXIF setting is enabled, showing the viewer chrome also shows a compact EXIF summary over the open image.
+- Swiping to another image while chrome / Quick EXIF is visible keeps that state visible and refreshes the metadata for the current image.
 - A second single tap hides both the chrome and compact EXIF.
 - Quick EXIF can be disabled from Settings for users who do not want metadata over the image.
 - Disabling Quick EXIF affects only the compact overlay, never the full details view.
