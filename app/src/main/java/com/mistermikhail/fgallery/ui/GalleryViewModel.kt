@@ -7,6 +7,8 @@ import com.mistermikhail.fgallery.data.AppSettingsRepository
 import com.mistermikhail.fgallery.data.MediaItem
 import com.mistermikhail.fgallery.data.MediaKind
 import com.mistermikhail.fgallery.data.MediaRepository
+import com.mistermikhail.fgallery.data.ThumbnailCache
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -15,7 +17,14 @@ import kotlinx.coroutines.launch
 
 enum class MediaFilter { ALL, PHOTOS, VIDEOS, RAW }
 enum class GridMode { MOSAIC, UNIFORM }
-enum class SortMode { DATE_DESC, DATE_ASC, NAME_ASC, NAME_DESC, SIZE_DESC }
+enum class SortMode {
+    DATE_DESC,
+    DATE_ASC,
+    NAME_ASC,
+    NAME_DESC,
+    SIZE_DESC,
+    SIZE_ASC,
+}
 
 data class AlbumSummary(
     val name: String,
@@ -38,11 +47,14 @@ data class GalleryUiState(
     val quickExifEnabled: Boolean = true,
     val settingsVisible: Boolean = false,
     val recycleBinVisible: Boolean = false,
-    val recycleBinItems: List<MediaItem> = emptyList(),
-    val recycleBinLoading: Boolean = false,
+    val recycleBinUris: Set<String> = emptySet(),
 ) {
+    private fun isInRecycleBin(item: MediaItem): Boolean =
+        item.uri.toString() in recycleBinUris
+
     val filteredItems: List<MediaItem>
         get() = allItems.asSequence()
+            .filterNot(::isInRecycleBin)
             .filter {
                 when (filter) {
                     MediaFilter.ALL -> true
@@ -60,6 +72,7 @@ data class GalleryUiState(
             SortMode.NAME_ASC -> items.sortedBy { it.name.lowercase() }
             SortMode.NAME_DESC -> items.sortedByDescending { it.name.lowercase() }
             SortMode.SIZE_DESC -> items.sortedByDescending { it.sizeBytes }
+            SortMode.SIZE_ASC -> items.sortedBy { it.sizeBytes }
         }
 
     val visibleItems: List<MediaItem>
@@ -75,6 +88,11 @@ data class GalleryUiState(
 
             return sortItems(items)
         }
+
+    val recycleBinItems: List<MediaItem>
+        get() = sortItems(
+            allItems.filter(::isInRecycleBin)
+        )
 
     val albums: List<AlbumSummary>
         get() {
@@ -99,6 +117,7 @@ data class GalleryUiState(
                 SortMode.NAME_ASC -> result.sortedBy { it.name.lowercase() }
                 SortMode.NAME_DESC -> result.sortedByDescending { it.name.lowercase() }
                 SortMode.SIZE_DESC -> result.sortedByDescending { it.totalSizeBytes }
+                SortMode.SIZE_ASC -> result.sortedBy { it.totalSizeBytes }
             }
         }
 }
@@ -118,8 +137,16 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
 
         viewModelScope.launch {
             settingsRepository.sortModeName.collect { saved ->
-                val mode = runCatching { SortMode.valueOf(saved) }.getOrDefault(SortMode.DATE_DESC)
+                val mode = runCatching {
+                    SortMode.valueOf(saved)
+                }.getOrDefault(SortMode.DATE_DESC)
                 _uiState.update { it.copy(sortMode = mode) }
+            }
+        }
+
+        viewModelScope.launch {
+            settingsRepository.recycleBinUris.collect { uris ->
+                _uiState.update { it.copy(recycleBinUris = uris) }
             }
         }
     }
@@ -133,9 +160,48 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
         if (!_uiState.value.hasPermission) return
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
-            val items = runCatching { repository.loadMedia() }.getOrDefault(emptyList())
-            _uiState.update { it.copy(allItems = items, isLoading = false) }
+
+            val items = runCatching {
+                repository.loadMedia()
+            }.getOrDefault(emptyList())
+
+            settingsRepository.retainRecycleBin(
+                items.mapTo(mutableSetOf()) { it.uri.toString() }
+            )
+
+            _uiState.update {
+                it.copy(
+                    allItems = items,
+                    isLoading = false,
+                )
+            }
+
+            viewModelScope.launch(Dispatchers.IO) {
+                ThumbnailCache.preload(
+                    context = getApplication(),
+                    items = items,
+                )
+            }
         }
+    }
+
+    fun moveToRecycleBin(items: List<MediaItem>) {
+        if (items.isEmpty()) return
+        settingsRepository.addToRecycleBin(
+            items.map { it.uri.toString() }
+        )
+    }
+
+    fun restoreFromRecycleBin(items: List<MediaItem>) {
+        if (items.isEmpty()) return
+        settingsRepository.removeFromRecycleBin(
+            items.map { it.uri.toString() }
+        )
+    }
+
+    fun onPermanentlyDeleted(uris: Collection<String>) {
+        settingsRepository.removeFromRecycleBin(uris)
+        refresh()
     }
 
     fun openRecycleBin() {
@@ -147,36 +213,30 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
                 searchVisible = false,
             )
         }
-        refreshRecycleBin()
     }
 
     fun closeRecycleBin() = _uiState.update {
-        it.copy(recycleBinVisible = false, recycleBinItems = emptyList())
-    }
-
-    fun refreshRecycleBin() {
-        if (!_uiState.value.hasPermission) return
-        viewModelScope.launch {
-            _uiState.update { it.copy(recycleBinLoading = true) }
-            val items = runCatching { repository.loadTrash() }.getOrDefault(emptyList())
-            _uiState.update {
-                it.copy(
-                    recycleBinItems = items,
-                    recycleBinLoading = false,
-                )
-            }
-        }
+        it.copy(recycleBinVisible = false)
     }
 
     fun openAlbum(name: String) = _uiState.update {
-        it.copy(selectedAlbum = name, query = "", searchVisible = false)
+        it.copy(
+            selectedAlbum = name,
+            query = "",
+            searchVisible = false,
+        )
     }
 
     fun closeAlbum() = _uiState.update {
-        it.copy(selectedAlbum = null, query = "", searchVisible = false)
+        it.copy(
+            selectedAlbum = null,
+            query = "",
+            searchVisible = false,
+        )
     }
 
-    fun setFilter(filter: MediaFilter) = _uiState.update { it.copy(filter = filter) }
+    fun setFilter(filter: MediaFilter) =
+        _uiState.update { it.copy(filter = filter) }
 
     fun setSortMode(sortMode: SortMode) {
         _uiState.update { it.copy(sortMode = sortMode) }
@@ -184,14 +244,30 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun toggleGridMode() = _uiState.update {
-        it.copy(gridMode = if (it.gridMode == GridMode.MOSAIC) GridMode.UNIFORM else GridMode.MOSAIC)
+        it.copy(
+            gridMode = if (it.gridMode == GridMode.MOSAIC) {
+                GridMode.UNIFORM
+            } else {
+                GridMode.MOSAIC
+            }
+        )
     }
 
-    fun toggleSearch() = _uiState.update { it.copy(searchVisible = !it.searchVisible, query = "") }
-    fun setQuery(query: String) = _uiState.update { it.copy(query = query) }
+    fun toggleSearch() = _uiState.update {
+        it.copy(
+            searchVisible = !it.searchVisible,
+            query = "",
+        )
+    }
 
-    fun showSettings() = _uiState.update { it.copy(settingsVisible = true) }
-    fun hideSettings() = _uiState.update { it.copy(settingsVisible = false) }
+    fun setQuery(query: String) =
+        _uiState.update { it.copy(query = query) }
+
+    fun showSettings() =
+        _uiState.update { it.copy(settingsVisible = true) }
+
+    fun hideSettings() =
+        _uiState.update { it.copy(settingsVisible = false) }
 
     fun setQuickExifEnabled(enabled: Boolean) {
         settingsRepository.setQuickExifEnabled(enabled)
