@@ -17,6 +17,13 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -398,15 +405,42 @@ class MainActivity : ComponentActivity() {
                 )
             }
 
-            if (current != null && !state.recycleBinVisible) {
-                ViewerScreen(
-                    items = state.visibleItems,
-                    initialItem = current,
-                    onBack = { selectedItem = null },
-                    onTrash = { requestTrash(listOf(it)) },
-                    quickExifEnabled = state.quickExifEnabled,
-                    cleanupMode = cleanupMode,
-                )
+            AnimatedContent(
+                targetState = if (state.recycleBinVisible) null else current,
+                modifier = Modifier.fillMaxSize(),
+                transitionSpec = {
+                    if (targetState != null) {
+                        (
+                            fadeIn(animationSpec = tween(120)) +
+                                scaleIn(
+                                    animationSpec = tween(160),
+                                    initialScale = 0.985f,
+                                )
+                            ) togetherWith fadeOut(animationSpec = tween(70))
+                    } else {
+                        fadeIn(animationSpec = tween(60)) togetherWith
+                            (
+                                fadeOut(animationSpec = tween(130)) +
+                                    scaleOut(
+                                        animationSpec = tween(150),
+                                        targetScale = 0.985f,
+                                    )
+                                )
+                    }
+                },
+                contentKey = { item -> item?.id ?: Long.MIN_VALUE },
+                label = "media-viewer-transition",
+            ) { animatedItem ->
+                if (animatedItem != null) {
+                    ViewerScreen(
+                        items = state.visibleItems,
+                        initialItem = animatedItem,
+                        onBack = { selectedItem = null },
+                        onTrash = { requestTrash(listOf(it)) },
+                        quickExifEnabled = state.quickExifEnabled,
+                        cleanupMode = cleanupMode,
+                    )
+                }
             }
         }
     }
