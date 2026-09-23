@@ -228,7 +228,8 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
         notifyUi: Boolean,
         pauseBetweenBatchesMs: Long,
     ) {
-        items.chunked(batchSize).forEachIndexed { index, batch ->
+        val batches = items.chunked(batchSize)
+        batches.forEachIndexed { index, batch ->
             val generated = ThumbnailCache.preload(
                 context = getApplication<Application>(),
                 items = batch,
@@ -241,7 +242,7 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
                 }
             }
 
-            if (pauseBetweenBatchesMs > 0L && index < items.lastIndex) {
+            if (pauseBetweenBatchesMs > 0L && index < batches.lastIndex) {
                 delay(pauseBetweenBatchesMs)
             }
         }
