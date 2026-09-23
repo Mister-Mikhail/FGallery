@@ -21,6 +21,8 @@ data class AlbumSummary(
     val name: String,
     val cover: MediaItem,
     val count: Int,
+    val newestDateMillis: Long,
+    val totalSizeBytes: Long,
 )
 
 data class GalleryUiState(
@@ -51,6 +53,15 @@ data class GalleryUiState(
             }
             .toList()
 
+    private fun sortItems(items: List<MediaItem>): List<MediaItem> =
+        when (sortMode) {
+            SortMode.DATE_DESC -> items.sortedByDescending { it.dateTakenMillis }
+            SortMode.DATE_ASC -> items.sortedBy { it.dateTakenMillis }
+            SortMode.NAME_ASC -> items.sortedBy { it.name.lowercase() }
+            SortMode.NAME_DESC -> items.sortedByDescending { it.name.lowercase() }
+            SortMode.SIZE_DESC -> items.sortedByDescending { it.sizeBytes }
+        }
+
     val visibleItems: List<MediaItem>
         get() {
             val items = filteredItems.asSequence()
@@ -62,23 +73,34 @@ data class GalleryUiState(
                 }
                 .toList()
 
-            return when (sortMode) {
-                SortMode.DATE_DESC -> items.sortedByDescending { it.dateTakenMillis }
-                SortMode.DATE_ASC -> items.sortedBy { it.dateTakenMillis }
-                SortMode.NAME_ASC -> items.sortedBy { it.name.lowercase() }
-                SortMode.NAME_DESC -> items.sortedByDescending { it.name.lowercase() }
-                SortMode.SIZE_DESC -> items.sortedByDescending { it.sizeBytes }
-            }
+            return sortItems(items)
         }
 
     val albums: List<AlbumSummary>
-        get() = filteredItems
-            .groupBy { it.album }
-            .mapNotNull { (name, items) ->
-                items.firstOrNull()?.let { AlbumSummary(name, it, items.size) }
+        get() {
+            val result = filteredItems
+                .groupBy { it.album }
+                .mapNotNull { (name, items) ->
+                    val sorted = sortItems(items)
+                    val cover = sorted.firstOrNull() ?: return@mapNotNull null
+                    AlbumSummary(
+                        name = name,
+                        cover = cover,
+                        count = items.size,
+                        newestDateMillis = items.maxOfOrNull { it.dateTakenMillis } ?: 0L,
+                        totalSizeBytes = items.sumOf { it.sizeBytes },
+                    )
+                }
+                .filter { query.isBlank() || it.name.contains(query, ignoreCase = true) }
+
+            return when (sortMode) {
+                SortMode.DATE_DESC -> result.sortedByDescending { it.newestDateMillis }
+                SortMode.DATE_ASC -> result.sortedBy { it.newestDateMillis }
+                SortMode.NAME_ASC -> result.sortedBy { it.name.lowercase() }
+                SortMode.NAME_DESC -> result.sortedByDescending { it.name.lowercase() }
+                SortMode.SIZE_DESC -> result.sortedByDescending { it.totalSizeBytes }
             }
-            .filter { query.isBlank() || it.name.contains(query, ignoreCase = true) }
-            .sortedBy { it.name.lowercase() }
+        }
 }
 
 class GalleryViewModel(application: Application) : AndroidViewModel(application) {
@@ -91,6 +113,13 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             settingsRepository.quickExifEnabled.collect { enabled ->
                 _uiState.update { it.copy(quickExifEnabled = enabled) }
+            }
+        }
+
+        viewModelScope.launch {
+            settingsRepository.sortModeName.collect { saved ->
+                val mode = runCatching { SortMode.valueOf(saved) }.getOrDefault(SortMode.DATE_DESC)
+                _uiState.update { it.copy(sortMode = mode) }
             }
         }
     }
@@ -148,7 +177,11 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun setFilter(filter: MediaFilter) = _uiState.update { it.copy(filter = filter) }
-    fun setSortMode(sortMode: SortMode) = _uiState.update { it.copy(sortMode = sortMode) }
+
+    fun setSortMode(sortMode: SortMode) {
+        _uiState.update { it.copy(sortMode = sortMode) }
+        settingsRepository.setSortModeName(sortMode.name)
+    }
 
     fun toggleGridMode() = _uiState.update {
         it.copy(gridMode = if (it.gridMode == GridMode.MOSAIC) GridMode.UNIFORM else GridMode.MOSAIC)
