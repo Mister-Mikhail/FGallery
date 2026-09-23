@@ -16,6 +16,7 @@ FGallery is a local-first Android gallery inspired by the speed and visual restr
 - Double tap on the opened media item sends it to Android system Trash on Android 11+.
 - Full-screen image viewer with pinch zoom and pan; double tap is reserved for the Trash shortcut.
 - EXIF / media details sheet from the opened-media viewer (camera, lens, exposure, ISO, GPS when present, file data, and video technical metadata).
+- Optional **Quick EXIF** overlay: hidden when media opens, shown only after a single tap together with viewer controls, and disableable in Settings without removing access to full details.
 
 ## Active branch
 
