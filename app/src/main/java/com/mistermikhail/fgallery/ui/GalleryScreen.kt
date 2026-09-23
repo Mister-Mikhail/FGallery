@@ -22,6 +22,8 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.foundation.lazy.grid.LazyGridState
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowBack
@@ -100,6 +102,12 @@ fun GalleryScreen(
     var renameText by remember { mutableStateOf("") }
     var moveDialogVisible by remember { mutableStateOf(false) }
     var movePath by remember { mutableStateOf("") }
+
+    // Keep independent scroll positions alive while switching between album browser
+    // and album contents. Returning from an album must land exactly where the user was.
+    val albumsGridState = rememberLazyGridState()
+    val mosaicGridState = rememberLazyGridState()
+    val uniformGridState = rememberLazyGridState()
 
     val inAlbum = state.selectedAlbum != null
     val selectedItems = state.visibleItems.filter { it.id in selectedIds }
@@ -245,11 +253,13 @@ fun GalleryScreen(
             inAlbum && state.visibleItems.isEmpty() -> MessageState("Медиа не найдено", innerPadding)
             !inAlbum -> AlbumsGrid(
                 albums = state.albums,
+                state = albumsGridState,
                 modifier = Modifier.fillMaxSize().padding(innerPadding),
                 onOpenAlbum = onOpenAlbum,
             )
             state.gridMode == GridMode.MOSAIC -> MosaicGrid(
                 items = state.visibleItems,
+                state = mosaicGridState,
                 modifier = Modifier.fillMaxSize().padding(innerPadding),
                 onOpenMedia = onOpenMedia,
                 cleanupMode = cleanupMode,
@@ -258,6 +268,7 @@ fun GalleryScreen(
             )
             else -> UniformGrid(
                 items = state.visibleItems,
+                state = uniformGridState,
                 modifier = Modifier.fillMaxSize().padding(innerPadding),
                 onOpenMedia = onOpenMedia,
                 cleanupMode = cleanupMode,
@@ -376,11 +387,13 @@ private fun MessageState(text: String, innerPadding: PaddingValues) {
 @Composable
 private fun AlbumsGrid(
     albums: List<AlbumSummary>,
+    state: LazyGridState,
     modifier: Modifier,
     onOpenAlbum: (String) -> Unit,
 ) {
     LazyVerticalGrid(
         columns = GridCells.Adaptive(156.dp),
+        state = state,
         modifier = modifier,
         contentPadding = PaddingValues(8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -420,6 +433,7 @@ private fun AlbumsGrid(
 @Composable
 private fun MosaicGrid(
     items: List<MediaItem>,
+    state: LazyGridState,
     modifier: Modifier,
     onOpenMedia: (MediaItem) -> Unit,
     cleanupMode: Boolean,
@@ -430,6 +444,7 @@ private fun MosaicGrid(
 
     LazyVerticalGrid(
         columns = GridCells.Fixed(3),
+        state = state,
         modifier = modifier.background(if (cleanupMode) Color(0xFFFF5A36) else Color.Transparent),
         contentPadding = PaddingValues(gap),
         horizontalArrangement = Arrangement.spacedBy(gap),
@@ -466,6 +481,7 @@ private fun MosaicGrid(
 @Composable
 private fun UniformGrid(
     items: List<MediaItem>,
+    state: LazyGridState,
     modifier: Modifier,
     onOpenMedia: (MediaItem) -> Unit,
     cleanupMode: Boolean,
@@ -476,6 +492,7 @@ private fun UniformGrid(
 
     LazyVerticalGrid(
         columns = GridCells.Adaptive(112.dp),
+        state = state,
         modifier = modifier.background(if (cleanupMode) Color(0xFFFF5A36) else Color.Transparent),
         contentPadding = PaddingValues(gap),
         horizontalArrangement = Arrangement.spacedBy(gap),
