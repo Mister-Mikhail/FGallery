@@ -87,6 +87,7 @@ FGallery-specific addition:
 - Closing a media file returns smoothly to the preserved gallery position.
 - Thumbnail generation and video-frame extraction must be cached/off the scroll-critical path so fling/scroll remains smooth.
 - Generate thumbnails automatically in the background and invalidate cached previews when the underlying media modification time changes.
+- Use two thumbnail tiers: a fast low-cost preview first, then a high-quality ~1440 px cached preview that replaces it for large tiles so high-resolution photos do not look pixelated.
 - Prioritize album covers, update tiles reactively as thumbnail batches finish, and prewarm media for an album when it is opened.
 - Video thumbnails may become muted live previews one at a time; each active live preview runs for about 5 seconds before rotating to the next video.
 
