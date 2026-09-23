@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
 import androidx.compose.foundation.lazy.staggeredgrid.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.GridOn
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Search
@@ -56,6 +57,8 @@ fun GalleryScreen(
     state: GalleryUiState,
     onRequestPermission: () -> Unit,
     onRefresh: () -> Unit,
+    onOpenAlbum: (String) -> Unit,
+    onBackToAlbums: () -> Unit,
     onOpenMedia: (MediaItem) -> Unit,
     onTrashMedia: (MediaItem) -> Unit,
     onToggleGridMode: () -> Unit,
@@ -64,67 +67,54 @@ fun GalleryScreen(
     onFilterChanged: (MediaFilter) -> Unit,
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
+    val inAlbum = state.selectedAlbum != null
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             Column {
                 TopAppBar(
+                    navigationIcon = {
+                        if (inAlbum) {
+                            IconButton(onClick = onBackToAlbums) {
+                                Icon(Icons.Outlined.ArrowBack, contentDescription = "Назад к альбомам")
+                            }
+                        }
+                    },
                     title = {
                         Column {
-                            Text("FGallery", fontWeight = FontWeight.SemiBold)
+                            Text(text = state.selectedAlbum ?: "FGallery", fontWeight = FontWeight.SemiBold)
                             Text(
-                                "${state.visibleItems.size} объектов",
+                                text = if (inAlbum) "${state.visibleItems.size} объектов" else "${state.albums.size} альбомов",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
                             )
                         }
                     },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.background
-                    ),
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
                     actions = {
                         IconButton(onClick = onToggleSearch) {
                             Icon(Icons.Outlined.Search, contentDescription = "Поиск")
                         }
-                        IconButton(onClick = onToggleGridMode) {
-                            Icon(
-                                if (state.gridMode == GridMode.MOSAIC) Icons.Outlined.GridOn else Icons.Outlined.ViewQuilt,
-                                contentDescription = "Вид сетки",
-                            )
+                        if (inAlbum) {
+                            IconButton(onClick = onToggleGridMode) {
+                                Icon(
+                                    if (state.gridMode == GridMode.MOSAIC) Icons.Outlined.GridOn else Icons.Outlined.ViewQuilt,
+                                    contentDescription = "Вид сетки",
+                                )
+                            }
                         }
                         Box {
                             IconButton(onClick = { menuExpanded = true }) {
                                 Icon(Icons.Outlined.MoreVert, contentDescription = "Меню")
                             }
-                            DropdownMenu(
-                                expanded = menuExpanded,
-                                onDismissRequest = { menuExpanded = false },
-                            ) {
-                                fun closeAnd(action: () -> Unit) {
-                                    menuExpanded = false
-                                    action()
-                                }
-                                DropdownMenuItem(
-                                    text = { Text("Все файлы") },
-                                    onClick = { closeAnd { onFilterChanged(MediaFilter.ALL) } },
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("Фото") },
-                                    onClick = { closeAnd { onFilterChanged(MediaFilter.PHOTOS) } },
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("Видео") },
-                                    onClick = { closeAnd { onFilterChanged(MediaFilter.VIDEOS) } },
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("RAW") },
-                                    onClick = { closeAnd { onFilterChanged(MediaFilter.RAW) } },
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("Обновить") },
-                                    onClick = { closeAnd(onRefresh) },
-                                )
+                            DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                                fun apply(action: () -> Unit) { menuExpanded = false; action() }
+                                DropdownMenuItem(text = { Text("Все файлы") }, onClick = { apply { onFilterChanged(MediaFilter.ALL) } })
+                                DropdownMenuItem(text = { Text("Фото") }, onClick = { apply { onFilterChanged(MediaFilter.PHOTOS) } })
+                                DropdownMenuItem(text = { Text("Видео") }, onClick = { apply { onFilterChanged(MediaFilter.VIDEOS) } })
+                                DropdownMenuItem(text = { Text("RAW") }, onClick = { apply { onFilterChanged(MediaFilter.RAW) } })
+                                DropdownMenuItem(text = { Text("Обновить") }, onClick = { apply(onRefresh) })
                             }
                         }
                     },
@@ -135,43 +125,29 @@ fun GalleryScreen(
                         value = state.query,
                         onValueChange = onQueryChanged,
                         singleLine = true,
-                        placeholder = { Text("Поиск по файлам и альбомам") },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                        placeholder = { Text(if (inAlbum) "Поиск в альбоме" else "Поиск альбома") },
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
                     )
                 }
             }
         },
     ) { innerPadding ->
         when {
-            !state.hasPermission -> Box(
-                Modifier.fillMaxSize().padding(innerPadding),
-                contentAlignment = Alignment.Center,
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("Нужен доступ к фото и видео")
-                    TextButton(onClick = onRequestPermission) { Text("Разрешить доступ") }
-                }
-            }
-
-            state.isLoading -> Box(
-                Modifier.fillMaxSize().padding(innerPadding),
-                contentAlignment = Alignment.Center,
-            ) { Text("Загрузка…") }
-
-            state.visibleItems.isEmpty() -> Box(
-                Modifier.fillMaxSize().padding(innerPadding),
-                contentAlignment = Alignment.Center,
-            ) { Text("Медиа не найдено") }
-
+            !state.hasPermission -> PermissionState(innerPadding, onRequestPermission)
+            state.isLoading -> MessageState("Загрузка…", innerPadding)
+            !inAlbum && state.albums.isEmpty() -> MessageState("Альбомы не найдены", innerPadding)
+            inAlbum && state.visibleItems.isEmpty() -> MessageState("Медиа не найдено", innerPadding)
+            !inAlbum -> AlbumsGrid(
+                albums = state.albums,
+                modifier = Modifier.fillMaxSize().padding(innerPadding),
+                onOpenAlbum = onOpenAlbum,
+            )
             state.gridMode == GridMode.MOSAIC -> MosaicGrid(
                 items = state.visibleItems,
                 modifier = Modifier.fillMaxSize().padding(innerPadding),
                 onOpenMedia = onOpenMedia,
                 onTrashMedia = onTrashMedia,
             )
-
             else -> UniformGrid(
                 items = state.visibleItems,
                 modifier = Modifier.fillMaxSize().padding(innerPadding),
@@ -182,14 +158,58 @@ fun GalleryScreen(
     }
 }
 
+@Composable
+private fun PermissionState(innerPadding: PaddingValues, onRequestPermission: () -> Unit) {
+    Box(Modifier.fillMaxSize().padding(innerPadding), contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("Нужен доступ к фото и видео")
+            TextButton(onClick = onRequestPermission) { Text("Разрешить доступ") }
+        }
+    }
+}
+
+@Composable
+private fun MessageState(text: String, innerPadding: PaddingValues) {
+    Box(Modifier.fillMaxSize().padding(innerPadding), contentAlignment = Alignment.Center) { Text(text) }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun MosaicGrid(
-    items: List<MediaItem>,
-    modifier: Modifier,
-    onOpenMedia: (MediaItem) -> Unit,
-    onTrashMedia: (MediaItem) -> Unit,
-) {
+private fun AlbumsGrid(albums: List<AlbumSummary>, modifier: Modifier, onOpenAlbum: (String) -> Unit) {
+    LazyVerticalGrid(
+        columns = GridCells.Adaptive(156.dp),
+        modifier = modifier,
+        contentPadding = PaddingValues(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        items(albums, key = { it.name }) { album ->
+            Box(
+                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp))
+                    .combinedClickable(onClick = { onOpenAlbum(album.name) }),
+            ) {
+                AsyncImage(
+                    model = album.cover.uri,
+                    contentDescription = album.name,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxWidth().height(156.dp).background(MaterialTheme.colorScheme.surfaceVariant),
+                )
+                Column(
+                    modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.background.copy(alpha = 0.72f))
+                        .padding(horizontal = 10.dp, vertical = 7.dp),
+                ) {
+                    Text(album.name, maxLines = 1, fontWeight = FontWeight.Medium)
+                    Text("${album.count}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f))
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun MosaicGrid(items: List<MediaItem>, modifier: Modifier, onOpenMedia: (MediaItem) -> Unit, onTrashMedia: (MediaItem) -> Unit) {
     LazyVerticalStaggeredGrid(
         columns = StaggeredGridCells.Adaptive(112.dp),
         modifier = modifier,
@@ -197,29 +217,15 @@ private fun MosaicGrid(
         horizontalArrangement = Arrangement.spacedBy(3.dp),
         verticalItemSpacing = 3.dp,
     ) {
-        itemsIndexed(items, key = { _, item -> item.id }) { index, item ->
-            MediaTile(
-                item = item,
-                aspectRatio = if (index % 13 == 0) {
-                    item.aspectRatio.coerceIn(1.2f, 2f)
-                } else {
-                    item.aspectRatio.coerceIn(0.62f, 1.65f)
-                },
-                onOpenMedia = onOpenMedia,
-                onTrashMedia = onTrashMedia,
-            )
+        itemsIndexed(items, key = { _, item -> item.id }) { _, item ->
+            MediaTile(item, item.aspectRatio.coerceIn(0.62f, 1.65f), onOpenMedia, onTrashMedia)
         }
     }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun UniformGrid(
-    items: List<MediaItem>,
-    modifier: Modifier,
-    onOpenMedia: (MediaItem) -> Unit,
-    onTrashMedia: (MediaItem) -> Unit,
-) {
+private fun UniformGrid(items: List<MediaItem>, modifier: Modifier, onOpenMedia: (MediaItem) -> Unit, onTrashMedia: (MediaItem) -> Unit) {
     LazyVerticalGrid(
         columns = GridCells.Adaptive(112.dp),
         modifier = modifier,
@@ -227,35 +233,24 @@ private fun UniformGrid(
         horizontalArrangement = Arrangement.spacedBy(3.dp),
         verticalArrangement = Arrangement.spacedBy(3.dp),
     ) {
-        items(items, key = { it.id }) { item ->
-            MediaTile(item, 1f, onOpenMedia, onTrashMedia)
-        }
+        items(items, key = { it.id }) { item -> MediaTile(item, 1f, onOpenMedia, onTrashMedia) }
     }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun MediaTile(
-    item: MediaItem,
-    aspectRatio: Float,
-    onOpenMedia: (MediaItem) -> Unit,
-    onTrashMedia: (MediaItem) -> Unit,
-) {
+private fun MediaTile(item: MediaItem, aspectRatio: Float, onOpenMedia: (MediaItem) -> Unit, onTrashMedia: (MediaItem) -> Unit) {
     Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(4.dp))
-            .combinedClickable(
-                onClick = { onOpenMedia(item) },
-                onDoubleClick = { onTrashMedia(item) },
-            ),
+        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(4.dp)).combinedClickable(
+            onClick = { onOpenMedia(item) },
+            onDoubleClick = { onTrashMedia(item) },
+        ),
     ) {
         AsyncImage(
             model = item.uri,
             contentDescription = item.name,
             contentScale = ContentScale.Crop,
-            modifier = Modifier
-                .fillMaxWidth()
+            modifier = Modifier.fillMaxWidth()
                 .height((112.dp / aspectRatio.coerceAtLeast(0.5f)).coerceIn(82.dp, 210.dp))
                 .background(MaterialTheme.colorScheme.surfaceVariant),
         )
@@ -268,13 +263,8 @@ private fun MediaTile(
         if (badge != null) {
             Text(
                 badge,
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(6.dp)
-                    .background(
-                        MaterialTheme.colorScheme.background.copy(alpha = 0.72f),
-                        RoundedCornerShape(4.dp),
-                    )
+                modifier = Modifier.align(Alignment.BottomStart).padding(6.dp)
+                    .background(MaterialTheme.colorScheme.background.copy(alpha = 0.72f), RoundedCornerShape(4.dp))
                     .padding(horizontal = 5.dp, vertical = 2.dp),
                 style = MaterialTheme.typography.labelSmall,
             )
