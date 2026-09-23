@@ -43,7 +43,9 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem as PlayerMediaItem
 import androidx.media3.exoplayer.ExoPlayer
@@ -52,6 +54,7 @@ import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import com.mistermikhail.fgallery.data.MediaItem
 import com.mistermikhail.fgallery.data.MediaKind
+import kotlin.math.min
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -250,27 +253,57 @@ private fun ZoomableImage(
     var scale by remember(item.id) { mutableFloatStateOf(1f) }
     var offsetX by remember(item.id) { mutableFloatStateOf(0f) }
     var offsetY by remember(item.id) { mutableFloatStateOf(0f) }
+    var viewportSize by remember(item.id) { mutableStateOf(IntSize.Zero) }
 
     val imageRequest = remember(item.uri) {
         ImageRequest.Builder(context)
             .data(item.uri)
-            // Decode substantially above display resolution so multi-megapixel JPEGs
-            // retain noticeably more detail while zooming. Full tiled decode comes next.
             .size(4096, 4096)
             .build()
+    }
+
+    fun maxOffsets(targetScale: Float): Pair<Float, Float> {
+        val viewportWidth = viewportSize.width.toFloat()
+        val viewportHeight = viewportSize.height.toFloat()
+        if (viewportWidth <= 0f || viewportHeight <= 0f) return 0f to 0f
+
+        val sourceWidth = item.width.takeIf { it > 0 }?.toFloat() ?: viewportWidth
+        val sourceHeight = item.height.takeIf { it > 0 }?.toFloat() ?: viewportHeight
+        val fitScale = min(viewportWidth / sourceWidth, viewportHeight / sourceHeight)
+        val fittedWidth = sourceWidth * fitScale
+        val fittedHeight = sourceHeight * fitScale
+
+        val maxX = ((fittedWidth * targetScale - viewportWidth) / 2f).coerceAtLeast(0f)
+        val maxY = ((fittedHeight * targetScale - viewportHeight) / 2f).coerceAtLeast(0f)
+        return maxX to maxY
+    }
+
+    fun clampOffsets(targetScale: Float) {
+        if (targetScale <= 1.01f) {
+            offsetX = 0f
+            offsetY = 0f
+            return
+        }
+
+        val (maxX, maxY) = maxOffsets(targetScale)
+        offsetX = offsetX.coerceIn(-maxX, maxX)
+        offsetY = offsetY.coerceIn(-maxY, maxY)
     }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .clipToBounds()
-            .pointerInput(item.id) {
-                // Multi-touch zoom/pan only consumes pointer changes when there are
-                // 2+ fingers or the image is already zoomed. At 1x, a one-finger
-                // horizontal drag remains available to HorizontalPager for swiping.
+            .onSizeChanged {
+                viewportSize = it
+                clampOffsets(scale)
+            }
+            .pointerInput(item.id, viewportSize) {
                 awaitEachGesture {
                     awaitFirstDown(requireUnconsumed = false)
-                    do {
+                    var gestureActive = true
+
+                    while (gestureActive) {
                         val event = awaitPointerEvent()
                         val pressedCount = event.changes.count { it.pressed }
                         val shouldTransform = pressedCount > 1 || scale > 1.01f
@@ -278,13 +311,14 @@ private fun ZoomableImage(
                         if (shouldTransform) {
                             val zoom = event.calculateZoom()
                             val pan = event.calculatePan()
-                            scale = (scale * zoom).coerceIn(1f, 8f)
+                            val newScale = (scale * zoom).coerceIn(1f, 8f)
+                            scale = newScale
 
-                            if (scale > 1.01f) {
+                            if (newScale > 1.01f) {
                                 offsetX += pan.x
                                 offsetY += pan.y
+                                clampOffsets(newScale)
                             } else {
-                                scale = 1f
                                 offsetX = 0f
                                 offsetY = 0f
                             }
@@ -293,10 +327,12 @@ private fun ZoomableImage(
                                 if (change.pressed) change.consume()
                             }
                         }
-                    } while (event.changes.any { it.pressed })
+
+                        gestureActive = event.changes.any { it.pressed }
+                    }
                 }
             }
-            .pointerInput(item.id, cleanupMode) {
+            .pointerInput(item.id, cleanupMode, viewportSize) {
                 detectTapGestures(
                     onTap = { onSingleTap() },
                     onDoubleTap = {
@@ -308,10 +344,7 @@ private fun ZoomableImage(
                                 scale < 5f -> 8f
                                 else -> 1f
                             }
-                            if (scale == 1f) {
-                                offsetX = 0f
-                                offsetY = 0f
-                            }
+                            clampOffsets(scale)
                         }
                     },
                 )
