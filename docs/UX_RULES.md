@@ -42,6 +42,12 @@ FGallery-specific addition:
 - mosaic presentation that respects source proportions and creates a less rigid visual rhythm than QuickPic's classic equal-tile grid.
 
 ### EXIF / details
+- EXIF information is not permanently overlaid on a newly opened image.
+- Single tap toggles the viewer chrome.
+- If the Quick EXIF setting is enabled, showing the viewer chrome also shows a compact EXIF summary over the open image.
+- A second single tap hides both the chrome and compact EXIF.
+- Quick EXIF can be disabled from Settings for users who do not want metadata over the image.
+- Disabling Quick EXIF affects only the compact overlay, never the full details view.
 - The opened-media viewer must provide an information/details action.
 - Details should surface EXIF and file metadata that actually exists in the source file.
 - Keep the information presentation compact, dark-theme friendly, and close in spirit to QuickPic's details/EXIF presentation.
