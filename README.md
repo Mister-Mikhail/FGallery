@@ -12,8 +12,8 @@ FGallery is a local-first Android gallery inspired by the speed and visual restr
 - Search by file name and album.
 - Filters for all media, photos, video and RAW.
 - Single tap opens the viewer.
-- Double tap on a grid tile sends the item to Android system Trash on Android 11+.
-- Full-screen image viewer with pinch zoom, pan and double-tap zoom.
+- Double tap on the opened media item sends it to Android system Trash on Android 11+.
+- Full-screen image viewer with pinch zoom and pan; double tap is reserved for the Trash shortcut.
 
 ## Active branch
 
