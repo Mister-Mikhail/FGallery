@@ -39,6 +39,8 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended:1.7.6")
 
     implementation("io.coil-kt.coil3:coil-compose:3.0.4")
+    implementation("androidx.media3:media3-exoplayer:1.9.3")
+    implementation("androidx.media3:media3-ui:1.9.3")
 
     debugImplementation("androidx.compose.ui:ui-tooling:1.7.6")
 }
