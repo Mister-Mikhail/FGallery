@@ -595,7 +595,19 @@ private fun VideoThumbnail(item: MediaItem, modifier: Modifier) {
             val retriever = MediaMetadataRetriever()
             try {
                 retriever.setDataSource(context, item.uri)
+                val durationMs = retriever
+                    .extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                    ?.toLongOrNull()
+                    ?: item.durationMillis
+                val middleUs = (durationMs.coerceAtLeast(2_000L) / 2L) * 1_000L
+
                 retriever.getFrameAtTime(
+                    middleUs,
+                    MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
+                ) ?: retriever.getFrameAtTime(
+                    1_000_000L,
+                    MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
+                ) ?: retriever.getFrameAtTime(
                     0L,
                     MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
                 )
