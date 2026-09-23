@@ -65,6 +65,9 @@ fun GalleryScreen(
     onQueryChanged: (String) -> Unit,
     onFilterChanged: (MediaFilter) -> Unit,
     onSortChanged: (SortMode) -> Unit,
+    onShowSettings: () -> Unit,
+    onHideSettings: () -> Unit,
+    onQuickExifChanged: (Boolean) -> Unit,
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
     val inAlbum = state.selectedAlbum != null
@@ -122,6 +125,7 @@ fun GalleryScreen(
                                     DropdownMenuItem(text = { Text("Сначала крупные") }, onClick = { apply { onSortChanged(SortMode.SIZE_DESC) } })
                                 }
                                 DropdownMenuItem(text = { Text("Обновить") }, onClick = { apply(onRefresh) })
+                                DropdownMenuItem(text = { Text("Настройки") }, onClick = { apply(onShowSettings) })
                             }
                         }
                     },
@@ -160,6 +164,14 @@ fun GalleryScreen(
                 onOpenMedia = onOpenMedia,
             )
         }
+    }
+
+    if (state.settingsVisible) {
+        SettingsSheet(
+            quickExifEnabled = state.quickExifEnabled,
+            onQuickExifChanged = onQuickExifChanged,
+            onDismiss = onHideSettings,
+        )
     }
 }
 
