@@ -186,11 +186,34 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
                 }
 
             viewModelScope.launch(Dispatchers.IO) {
-                preloadThumbnailBatches(albumCovers, batchSize = 12)
+                // Fast tier first so the UI fills immediately.
+                preloadThumbnailBatches(
+                    items = albumCovers,
+                    batchSize = 12,
+                    highQuality = false,
+                )
 
                 val coverIds = albumCovers.mapTo(hashSetOf()) { it.id }
                 val remaining = items.filterNot { it.id in coverIds }
-                preloadThumbnailBatches(remaining, batchSize = 24)
+
+                preloadThumbnailBatches(
+                    items = remaining,
+                    batchSize = 24,
+                    highQuality = false,
+                )
+
+                // Then progressively replace them with sharp previews.
+                preloadThumbnailBatches(
+                    items = albumCovers,
+                    batchSize = 8,
+                    highQuality = true,
+                )
+
+                preloadThumbnailBatches(
+                    items = remaining,
+                    batchSize = 12,
+                    highQuality = true,
+                )
             }
         }
     }
@@ -198,11 +221,13 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
     private suspend fun preloadThumbnailBatches(
         items: List<MediaItem>,
         batchSize: Int,
+        highQuality: Boolean,
     ) {
         items.chunked(batchSize).forEach { batch ->
             val generated = ThumbnailCache.preload(
                 context = getApplication<Application>(),
                 items = batch,
+                highQuality = highQuality,
             )
 
             if (generated > 0) {
@@ -218,7 +243,16 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
             .filter { it.album == name && it.uri.toString() !in _uiState.value.recycleBinUris }
 
         viewModelScope.launch(Dispatchers.IO) {
-            preloadThumbnailBatches(items, batchSize = 16)
+            preloadThumbnailBatches(
+                items = items,
+                batchSize = 16,
+                highQuality = false,
+            )
+            preloadThumbnailBatches(
+                items = items,
+                batchSize = 8,
+                highQuality = true,
+            )
         }
     }
 
