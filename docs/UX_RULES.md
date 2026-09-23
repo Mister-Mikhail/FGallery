@@ -9,6 +9,8 @@
 
 ### Thumbnail grid
 - Tap once: open media.
+- Long press: enter multi-selection mode and select that tile.
+- While selection mode is active, tap toggles additional selections instead of opening media.
 - Double tap: no destructive action.
 - Two views are supported:
   - uniform equal tiles;
@@ -17,17 +19,27 @@
 ### Open media
 - Horizontal swipe: previous/next item.
 - Pinch: zoom image.
-- Pan: move around a zoomed image.
-- Double tap: move the currently open media item to system Trash, after Android's required confirmation flow.
+- Pan: move around a zoomed image, but never beyond the actual scaled image edges.
+- In normal mode, double tap cycles first zoom -> maximum zoom -> fit-to-screen.
+- In Cleanup mode, double tap moves the currently open media item to system Trash after Android's required confirmation flow.
 - A visible Trash control may coexist with the gesture.
 
 ### Search
 - From album browser: search albums.
 - From inside an album: search media in the current album.
 
+### Multi-selection and file operations
+- Long press starts selection mode.
+- Tap toggles selection while selection mode is active.
+- The selection app bar shows the selected count.
+- Rename is available for one selected item.
+- Move, Share, and Trash may operate on multiple selected items.
+- File operations must preserve selection until the operation succeeds or the user cancels.
+
 ### Destructive actions
 - Use Android system confirmation/Trash mechanisms.
 - Do not silently permanently delete media when the system Trash API is available.
+- Cleanup mode must have a persistent red/orange visual indicator while active.
 
 ## Visual direction
 
