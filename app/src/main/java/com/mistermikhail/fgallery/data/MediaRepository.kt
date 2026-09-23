@@ -93,10 +93,17 @@ class MediaRepository(private val context: Context) {
                     val taken = it.getLong(takenC)
                     val added = it.getLong(addedC) * 1000L
 
+                    val itemCollection =
+                        if (mediaType == MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO) {
+                            MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+                        } else {
+                            MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+                        }
+
                     add(
                         MediaItem(
                             id = id,
-                            uri = ContentUris.withAppendedId(collection, id),
+                            uri = ContentUris.withAppendedId(itemCollection, id),
                             name = name,
                             mimeType = mime,
                             kind = kind,
