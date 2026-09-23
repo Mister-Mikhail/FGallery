@@ -6,7 +6,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -60,6 +59,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -68,9 +68,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.MediaItem as PlayerMediaItem
 import androidx.media3.common.Player
@@ -125,8 +128,10 @@ fun GalleryScreen(
     var activeLiveVideoId by remember { mutableStateOf<Long?>(null) }
 
     val inAlbum = state.selectedAlbum != null
-    val visibleMosaicRows = remember(state.visibleItems) {
-        buildMosaicRows(state.visibleItems)
+    val visibleItems = state.visibleItems
+    val albums = albums
+    val visibleMosaicRows = remember(visibleItems) {
+        buildMosaicRows(visibleItems)
     }
 
     val visibleVideoIds by remember(
@@ -141,7 +146,7 @@ fun GalleryScreen(
             } else {
                 when (state.gridMode) {
                     GridMode.UNIFORM -> uniformGridState.layoutInfo.visibleItemsInfo
-                        .mapNotNull { info -> state.visibleItems.getOrNull(info.index) }
+                        .mapNotNull { info -> visibleItems.getOrNull(info.index) }
                         .filter { it.kind == MediaKind.VIDEO }
                         .map { it.id }
 
@@ -181,7 +186,7 @@ fun GalleryScreen(
             index = (index + 1) % visibleVideoIds.size
         }
     }
-    val selectedItems = state.visibleItems.filter { it.id in selectedIds }
+    val selectedItems = visibleItems.filter { it.id in selectedIds }
     val selectionMode = selectedItems.isNotEmpty()
 
     Scaffold(
@@ -247,9 +252,9 @@ fun GalleryScreen(
                                 )
                                 Text(
                                     text = if (inAlbum) {
-                                        "${state.visibleItems.size} объектов"
+                                        "${visibleItems.size} объектов"
                                     } else {
-                                        "${state.albums.size} альбомов"
+                                        "${albums.size} альбомов"
                                     },
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
@@ -415,22 +420,21 @@ fun GalleryScreen(
         when {
             !state.hasPermission -> PermissionState(innerPadding, onRequestPermission)
             state.isLoading -> MessageState("Загрузка…", innerPadding)
-            !inAlbum && state.albums.isEmpty() -> MessageState("Альбомы не найдены", innerPadding)
-            inAlbum && state.visibleItems.isEmpty() -> MessageState("Медиа не найдено", innerPadding)
+            !inAlbum && albums.isEmpty() -> MessageState("Альбомы не найдены", innerPadding)
+            inAlbum && visibleItems.isEmpty() -> MessageState("Медиа не найдено", innerPadding)
 
             !inAlbum -> AlbumsGrid(
-                albums = state.albums,
+                albums = albums,
                 state = albumsGridState,
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding),
                 onOpenAlbum = onOpenAlbum,
-                thumbnailCacheVersion = state.thumbnailCacheVersion,
                 cleanupMode = cleanupMode,
             )
 
             state.gridMode == GridMode.MOSAIC -> MosaicGrid(
-                items = state.visibleItems,
+                rows = visibleMosaicRows,
                 state = mosaicListState,
                 modifier = Modifier
                     .fillMaxSize()
@@ -439,12 +443,11 @@ fun GalleryScreen(
                 cleanupMode = cleanupMode,
                 selectedIds = selectedIds,
                 onToggleSelection = onToggleSelection,
-                thumbnailCacheVersion = state.thumbnailCacheVersion,
                 activeLiveVideoId = activeLiveVideoId,
             )
 
             else -> UniformGrid(
-                items = state.visibleItems,
+                items = visibleItems,
                 state = uniformGridState,
                 modifier = Modifier
                     .fillMaxSize()
@@ -453,7 +456,6 @@ fun GalleryScreen(
                 cleanupMode = cleanupMode,
                 selectedIds = selectedIds,
                 onToggleSelection = onToggleSelection,
-                thumbnailCacheVersion = state.thumbnailCacheVersion,
                 activeLiveVideoId = activeLiveVideoId,
             )
         }
@@ -606,7 +608,6 @@ private fun AlbumsGrid(
     state: LazyGridState,
     modifier: Modifier,
     onOpenAlbum: (String) -> Unit,
-    thumbnailCacheVersion: Long,
     cleanupMode: Boolean,
 ) {
     LazyVerticalGrid(
@@ -631,7 +632,6 @@ private fun AlbumsGrid(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(156.dp),
-                    thumbnailCacheVersion = thumbnailCacheVersion,
                     livePreview = false,
                 )
                 Column(
@@ -688,66 +688,95 @@ private fun buildMosaicRows(items: List<MediaItem>): List<List<MediaItem>> {
     return rows
 }
 
+private data class MosaicRowLayout(
+    val items: List<MediaItem>,
+    val ratios: List<Float>,
+    val height: Dp,
+)
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun MosaicGrid(
-    items: List<MediaItem>,
+    rows: List<List<MediaItem>>,
     state: LazyListState,
     modifier: Modifier,
     onOpenMedia: (MediaItem) -> Unit,
     cleanupMode: Boolean,
     selectedIds: Set<Long>,
     onToggleSelection: (MediaItem) -> Unit,
-    thumbnailCacheVersion: Long,
     activeLiveVideoId: Long?,
 ) {
     val gap = if (cleanupMode) 5.dp else 3.dp
-    val rows = remember(items) { buildMosaicRows(items) }
+    val density = LocalDensity.current
+    var gridWidthPx by remember { mutableIntStateOf(0) }
+
+    val layouts = remember(rows, gridWidthPx, gap, density) {
+        rows.map { row ->
+            val ratios = row.map { it.aspectRatio.coerceIn(0.55f, 2.4f) }
+            val ratioSum = ratios.sum().coerceAtLeast(0.5f)
+
+            val height = if (gridWidthPx > 0) {
+                val gapPx = with(density) { gap.toPx() }
+                val availableWidthPx =
+                    (gridWidthPx - gapPx * (row.size - 1).coerceAtLeast(0))
+                        .coerceAtLeast(1f)
+
+                with(density) {
+                    (availableWidthPx / ratioSum).toDp()
+                }.coerceIn(108.dp, 225.dp)
+            } else {
+                160.dp
+            }
+
+            MosaicRowLayout(
+                items = row,
+                ratios = ratios,
+                height = height,
+            )
+        }
+    }
 
     LazyColumn(
         state = state,
-        modifier = modifier.background(
-            if (cleanupMode) Color(0xFFFF5A36) else Color.Transparent
-        ),
+        modifier = modifier
+            .background(
+                if (cleanupMode) Color(0xFFFF5A36) else Color.Transparent
+            )
+            .onSizeChanged { size ->
+                if (gridWidthPx != size.width) {
+                    gridWidthPx = size.width
+                }
+            },
         contentPadding = PaddingValues(gap),
         verticalArrangement = Arrangement.spacedBy(gap),
     ) {
         lazyItems(
-            items = rows,
-            key = { row -> row.joinToString(separator = ":") { it.id.toString() } },
-        ) { row ->
-            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-                val ratios = row.map { it.aspectRatio.coerceIn(0.55f, 2.4f) }
-                val ratioSum = ratios.sum().coerceAtLeast(0.5f)
-                val totalGap = gap.value * (row.size - 1).coerceAtLeast(0)
-                val availableWidth = (maxWidth.value - totalGap).coerceAtLeast(1f)
-                val rowHeight = (availableWidth / ratioSum)
-                    .dp
-                    .coerceIn(108.dp, 225.dp)
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(rowHeight),
-                ) {
-                    row.forEachIndexed { index, item ->
-                        if (index > 0) {
-                            Spacer(modifier = Modifier.width(gap))
-                        }
-
-                        MediaTile(
-                            item = item,
-                            modifier = Modifier
-                                .weight(ratios[index])
-                                .fillMaxHeight(),
-                            onOpenMedia = onOpenMedia,
-                            selected = item.id in selectedIds,
-                            selectionMode = selectedIds.isNotEmpty(),
-                            onToggleSelection = onToggleSelection,
-                            thumbnailCacheVersion = thumbnailCacheVersion,
-                            livePreview = false,
-                        )
+            items = layouts,
+            key = { layout ->
+                layout.items.joinToString(separator = ":") { it.id.toString() }
+            },
+        ) { layout ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(layout.height),
+            ) {
+                layout.items.forEachIndexed { index, item ->
+                    if (index > 0) {
+                        Spacer(modifier = Modifier.width(gap))
                     }
+
+                    MediaTile(
+                        item = item,
+                        modifier = Modifier
+                            .weight(layout.ratios[index])
+                            .fillMaxHeight(),
+                        onOpenMedia = onOpenMedia,
+                        selected = item.id in selectedIds,
+                        selectionMode = selectedIds.isNotEmpty(),
+                        onToggleSelection = onToggleSelection,
+                        livePreview = item.id == activeLiveVideoId,
+                    )
                 }
             }
         }
@@ -764,7 +793,6 @@ private fun UniformGrid(
     cleanupMode: Boolean,
     selectedIds: Set<Long>,
     onToggleSelection: (MediaItem) -> Unit,
-    thumbnailCacheVersion: Long,
     activeLiveVideoId: Long?,
 ) {
     val gap = if (cleanupMode) 5.dp else 3.dp
@@ -789,7 +817,6 @@ private fun UniformGrid(
                 selected = item.id in selectedIds,
                 selectionMode = selectedIds.isNotEmpty(),
                 onToggleSelection = onToggleSelection,
-                thumbnailCacheVersion = thumbnailCacheVersion,
                 livePreview = item.id == activeLiveVideoId,
             )
         }
@@ -805,7 +832,6 @@ private fun MediaTile(
     selected: Boolean,
     selectionMode: Boolean,
     onToggleSelection: (MediaItem) -> Unit,
-    thumbnailCacheVersion: Long,
     livePreview: Boolean,
 ) {
     val shape = RoundedCornerShape(4.dp)
@@ -838,7 +864,6 @@ private fun MediaTile(
         MediaPreview(
             item = item,
             modifier = Modifier.fillMaxSize(),
-            thumbnailCacheVersion = thumbnailCacheVersion,
             livePreview = livePreview,
         )
 
@@ -903,38 +928,26 @@ private fun MediaTile(
 private fun MediaPreview(
     item: MediaItem,
     modifier: Modifier,
-    thumbnailCacheVersion: Long,
     livePreview: Boolean,
 ) {
     val context = LocalContext.current
-    val fastCachedFile = remember(
-        item.id,
-        item.dateModifiedMillis,
-        thumbnailCacheVersion,
-    ) {
-        ThumbnailCache.fileFor(
-            context = context,
-            item = item,
-            highQuality = false,
-        )
-    }
-
-    val highCachedFile = remember(
-        item.id,
-        item.dateModifiedMillis,
-        thumbnailCacheVersion,
-    ) {
-        ThumbnailCache.fileFor(
+    val cachedModel = remember(item.id, item.dateModifiedMillis) {
+        val highCachedFile = ThumbnailCache.fileFor(
             context = context,
             item = item,
             highQuality = true,
         )
-    }
+        val fastCachedFile = ThumbnailCache.fileFor(
+            context = context,
+            item = item,
+            highQuality = false,
+        )
 
-    val cachedModel = when {
-        highCachedFile.exists() -> highCachedFile
-        fastCachedFile.exists() -> fastCachedFile
-        else -> null
+        when {
+            highCachedFile.exists() -> highCachedFile
+            fastCachedFile.exists() -> fastCachedFile
+            else -> null
+        }
     }
 
     when {
