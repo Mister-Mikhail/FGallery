@@ -129,7 +129,7 @@ fun GalleryScreen(
 
     val inAlbum = state.selectedAlbum != null
     val visibleItems = state.visibleItems
-    val albums = albums
+    val albums = state.albums
     val visibleMosaicRows = remember(visibleItems) {
         buildMosaicRows(visibleItems)
     }
@@ -137,7 +137,7 @@ fun GalleryScreen(
     val visibleVideoIds by remember(
         inAlbum,
         state.gridMode,
-        state.visibleItems,
+        visibleItems,
         visibleMosaicRows,
     ) {
         derivedStateOf {
