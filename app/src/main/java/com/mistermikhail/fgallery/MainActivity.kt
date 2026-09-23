@@ -90,6 +90,8 @@ class MainActivity : ComponentActivity() {
                 state = state,
                 onRequestPermission = { permissionLauncher.launch(requiredPermissions()) },
                 onRefresh = viewModel::refresh,
+                onOpenAlbum = viewModel::openAlbum,
+                onBackToAlbums = viewModel::closeAlbum,
                 onOpenMedia = { selectedItem = it },
                 onTrashMedia = ::requestTrash,
                 onToggleGridMode = viewModel::toggleGridMode,
