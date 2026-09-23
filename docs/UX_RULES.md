@@ -6,9 +6,12 @@
 - The primary structure is albums/folders, in the spirit of QuickPic.
 - Avoid a permanent bottom navigation bar.
 - Keep top-level controls compact.
+- Returning from an opened folder must restore the exact previous scroll position of the folder browser.
+- Sorting has its own top-bar button and is global across the folder browser and all opened folders.
 
 ### Thumbnail grid
 - Tap once: open media.
+- Mosaic mode must densely fill rows without large black gaps; source aspect ratios should drive varying tile widths/heights.
 - Long press: enter multi-selection mode and select that tile.
 - While selection mode is active, tap toggles additional selections instead of opening media.
 - Double tap: no destructive action.
@@ -70,6 +73,12 @@ FGallery-specific addition:
 - Details should surface EXIF and file metadata that actually exists in the source file.
 - Keep the information presentation compact, dark-theme friendly, and close in spirit to QuickPic's details/EXIF presentation.
 - Never synthesize camera, exposure, GPS, or other EXIF values that are not present.
+
+### Motion / perceived performance
+- QuickPic is the behavioral benchmark for perceived speed.
+- Opening a media file uses a short, subtle transition rather than an abrupt screen replacement.
+- Closing a media file returns smoothly to the preserved gallery position.
+- Thumbnail generation and video-frame extraction must be cached/off the scroll-critical path so fling/scroll remains smooth.
 
 ## Viewer priorities
 
