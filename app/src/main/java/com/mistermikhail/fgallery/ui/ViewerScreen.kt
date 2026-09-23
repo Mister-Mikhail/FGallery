@@ -305,7 +305,6 @@ private fun ZoomableImage(
         ImageRequest.Builder(context)
             .data(item.uri)
             .size(decodeEdge, decodeEdge)
-            .crossfade(100)
             .build()
     }
 
