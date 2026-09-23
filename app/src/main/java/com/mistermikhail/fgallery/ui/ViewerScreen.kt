@@ -5,6 +5,9 @@ import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.ViewGroup
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -32,22 +35,22 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem as PlayerMediaItem
 import androidx.media3.exoplayer.ExoPlayer
@@ -58,6 +61,7 @@ import coil3.request.ImageRequest
 import com.mistermikhail.fgallery.R
 import com.mistermikhail.fgallery.data.MediaItem
 import com.mistermikhail.fgallery.data.MediaKind
+import kotlinx.coroutines.launch
 import kotlin.math.min
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -79,10 +83,14 @@ fun ViewerScreen(
     var chromeVisible by remember { mutableStateOf(false) }
     var showDetails by remember { mutableStateOf(false) }
 
+    LaunchedEffect(items.size) {
+        if (items.isNotEmpty() && pagerState.currentPage > items.lastIndex) {
+            pagerState.scrollToPage(items.lastIndex)
+        }
+    }
+
     val currentItem = items.getOrNull(pagerState.currentPage)
 
-    // Keep chrome / Quick EXIF visibility unchanged while swiping between files.
-    // The overlay is keyed by currentItem and refreshes its metadata for each page.
     LaunchedEffect(currentItem?.id) {
         showDetails = false
     }
@@ -101,12 +109,16 @@ fun ViewerScreen(
             modifier = Modifier.fillMaxSize(),
         ) { page ->
             val item = items[page]
+            val activePage = page == pagerState.currentPage
 
             if (item.kind == MediaKind.VIDEO) {
                 VideoPlayer(
                     item = item,
+                    active = activePage,
                     onSingleTap = ::toggleChrome,
-                    onDoubleTap = { if (cleanupMode) onTrash(item) },
+                    onDoubleTap = {
+                        if (cleanupMode) onTrash(item)
+                    },
                 )
             } else {
                 ZoomableImage(
@@ -196,15 +208,15 @@ private fun MediaItem.isLikely360Video(): Boolean {
     val normalizedName = name.lowercase()
     val explicit360 =
         "360" in normalizedName ||
-        "spherical" in normalizedName ||
-        "equirect" in normalizedName ||
-        "vr360" in normalizedName
+            "spherical" in normalizedName ||
+            "equirect" in normalizedName ||
+            "vr360" in normalizedName
 
     val ratio = if (height > 0) width.toFloat() / height.toFloat() else 0f
     val highResolutionEquirectangular =
         width >= 1600 &&
-        height >= 700 &&
-        ratio in 1.88f..2.12f
+            height >= 700 &&
+            ratio in 1.88f..2.12f
 
     return explicit360 || highResolutionEquirectangular
 }
@@ -212,6 +224,7 @@ private fun MediaItem.isLikely360Video(): Boolean {
 @Composable
 private fun VideoPlayer(
     item: MediaItem,
+    active: Boolean,
     onSingleTap: () -> Unit,
     onDoubleTap: () -> Unit,
 ) {
@@ -224,7 +237,18 @@ private fun VideoPlayer(
         ExoPlayer.Builder(context).build().apply {
             setMediaItem(PlayerMediaItem.fromUri(item.uri))
             prepare()
-            playWhenReady = true
+            playWhenReady = false
+            volume = 0f
+        }
+    }
+
+    LaunchedEffect(active) {
+        if (active) {
+            player.volume = 1f
+            player.play()
+        } else {
+            player.pause()
+            player.volume = 0f
         }
     }
 
@@ -287,18 +311,23 @@ private fun ZoomableImage(
     onTrash: () -> Unit,
 ) {
     val context = LocalContext.current
-    var scale by remember(item.id) { mutableFloatStateOf(1f) }
-    var offsetX by remember(item.id) { mutableFloatStateOf(0f) }
-    var offsetY by remember(item.id) { mutableFloatStateOf(0f) }
+    val animationScope = rememberCoroutineScope()
+
+    val scale = remember(item.id) { Animatable(1f) }
+    val offsetX = remember(item.id) { Animatable(0f) }
+    val offsetY = remember(item.id) { Animatable(0f) }
+
     var viewportSize by remember(item.id) { mutableStateOf(IntSize.Zero) }
+    var highResRequested by remember(item.id) { mutableStateOf(false) }
 
     val isAnimatedGif = remember(item.name, item.mimeType) {
         item.name.endsWith(".gif", ignoreCase = true) ||
             item.mimeType.equals("image/gif", ignoreCase = true)
     }
+
     val decodeEdge = when {
         isAnimatedGif -> 2048
-        scale > 1.25f -> 4096
+        highResRequested -> 4096
         else -> 2048
     }
 
@@ -325,16 +354,61 @@ private fun ZoomableImage(
         return maxX to maxY
     }
 
-    fun clampOffsets(targetScale: Float) {
+    suspend fun snapOffsetsInsideBounds(targetScale: Float) {
         if (targetScale <= 1.01f) {
-            offsetX = 0f
-            offsetY = 0f
+            offsetX.snapTo(0f)
+            offsetY.snapTo(0f)
             return
         }
 
         val (maxX, maxY) = maxOffsets(targetScale)
-        offsetX = offsetX.coerceIn(-maxX, maxX)
-        offsetY = offsetY.coerceIn(-maxY, maxY)
+        offsetX.snapTo(offsetX.value.coerceIn(-maxX, maxX))
+        offsetY.snapTo(offsetY.value.coerceIn(-maxY, maxY))
+    }
+
+    fun animateDoubleTapZoom() {
+        if (cleanupMode) {
+            onTrash()
+            return
+        }
+
+        val targetScale = when {
+            scale.value < 1.5f -> 2.5f
+            scale.value < 5f -> 8f
+            else -> 1f
+        }
+
+        if (targetScale > 1.25f) {
+            highResRequested = true
+        }
+
+        animationScope.launch {
+            val spec = tween<Float>(
+                durationMillis = 240,
+                easing = FastOutSlowInEasing,
+            )
+
+            launch {
+                scale.animateTo(
+                    targetValue = targetScale,
+                    animationSpec = spec,
+                )
+            }
+
+            launch {
+                offsetX.animateTo(
+                    targetValue = 0f,
+                    animationSpec = spec,
+                )
+            }
+
+            launch {
+                offsetY.animateTo(
+                    targetValue = 0f,
+                    animationSpec = spec,
+                )
+            }
+        }
     }
 
     Box(
@@ -343,7 +417,9 @@ private fun ZoomableImage(
             .clipToBounds()
             .onSizeChanged {
                 viewportSize = it
-                clampOffsets(scale)
+                animationScope.launch {
+                    snapOffsetsInsideBounds(scale.value)
+                }
             }
             .pointerInput(item.id, viewportSize) {
                 awaitEachGesture {
@@ -363,24 +439,30 @@ private fun ZoomableImage(
 
                         val multiTouch = pressedCount > 1
                         val realPan =
-                            scale > 1.01f &&
+                            scale.value > 1.01f &&
                                 accumulatedPan.getDistance() > viewConfiguration.touchSlop
 
-                        // Do not consume a stationary one-finger tap while zoomed.
-                        // That lets single/double tap continue to control EXIF/chrome.
                         if (multiTouch || realPan || transforming) {
                             transforming = true
 
-                            val newScale = (scale * zoom).coerceIn(1f, 8f)
-                            scale = newScale
+                            val newScale = (scale.value * zoom).coerceIn(1f, 8f)
+                            if (newScale > 1.25f) {
+                                highResRequested = true
+                            }
+
+                            scale.snapTo(newScale)
 
                             if (newScale > 1.01f) {
-                                offsetX += pan.x
-                                offsetY += pan.y
-                                clampOffsets(newScale)
+                                val (maxX, maxY) = maxOffsets(newScale)
+                                offsetX.snapTo(
+                                    (offsetX.value + pan.x).coerceIn(-maxX, maxX)
+                                )
+                                offsetY.snapTo(
+                                    (offsetY.value + pan.y).coerceIn(-maxY, maxY)
+                                )
                             } else {
-                                offsetX = 0f
-                                offsetY = 0f
+                                offsetX.snapTo(0f)
+                                offsetY.snapTo(0f)
                             }
 
                             event.changes.forEach { change ->
@@ -394,18 +476,11 @@ private fun ZoomableImage(
             }
             .pointerInput(item.id, cleanupMode, viewportSize) {
                 detectTapGestures(
-                    onTap = { onSingleTap() },
+                    onTap = {
+                        onSingleTap()
+                    },
                     onDoubleTap = {
-                        if (cleanupMode) {
-                            onTrash()
-                        } else {
-                            scale = when {
-                                scale < 1.5f -> 2.5f
-                                scale < 5f -> 8f
-                                else -> 1f
-                            }
-                            clampOffsets(scale)
-                        }
+                        animateDoubleTapZoom()
                     },
                 )
             },
@@ -418,10 +493,10 @@ private fun ZoomableImage(
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer {
-                    scaleX = scale
-                    scaleY = scale
-                    translationX = offsetX
-                    translationY = offsetY
+                    scaleX = scale.value
+                    scaleY = scale.value
+                    translationX = offsetX.value
+                    translationY = offsetY.value
                 },
         )
     }
