@@ -15,6 +15,8 @@ data class MediaItem(
     val height: Int,
     val durationMillis: Long,
     val album: String,
+    val relativePath: String,
+    val sizeBytes: Long,
 ) {
     val aspectRatio: Float
         get() = if (width > 0 && height > 0) width.toFloat() / height.toFloat() else 1f
