@@ -5,63 +5,52 @@ import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.ViewGroup
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.calculatePan
-import androidx.compose.foundation.gestures.calculateZoom
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowBack
-import androidx.compose.material.icons.outlined.DeleteOutline
-import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.Crop
-import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.DriveFileMove
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material3.Icon
+import androidx.compose.material.icons.outlined.Menu
+import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem as PlayerMediaItem
@@ -69,13 +58,16 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import coil3.compose.AsyncImage
-import coil3.request.ImageRequest
 import com.mistermikhail.fgallery.R
 import com.mistermikhail.fgallery.data.MediaItem
 import com.mistermikhail.fgallery.data.MediaKind
 import com.mistermikhail.fgallery.data.ThumbnailCache
-import kotlinx.coroutines.launch
-import kotlin.math.min
+import kotlinx.coroutines.delay
+import me.saket.telephoto.zoomable.DoubleClickToZoomListener
+import me.saket.telephoto.zoomable.ZoomSpec
+import me.saket.telephoto.zoomable.rememberZoomableImageState
+import me.saket.telephoto.zoomable.rememberZoomableState
+import me.saket.telephoto.zoomable.coil3.ZoomableAsyncImage
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -103,6 +95,7 @@ fun ViewerScreen(
     var renameText by remember { mutableStateOf("") }
     var moveTarget by remember { mutableStateOf<MediaItem?>(null) }
     var movePath by remember { mutableStateOf("") }
+    var videoMenuExpanded by remember { mutableStateOf(false) }
 
     LaunchedEffect(items.size) {
         if (items.isNotEmpty() && pagerState.currentPage > items.lastIndex) {
@@ -111,9 +104,19 @@ fun ViewerScreen(
     }
 
     val currentItem = items.getOrNull(pagerState.currentPage)
+    val currentIsVideo = currentItem?.kind == MediaKind.VIDEO
 
     LaunchedEffect(currentItem?.id) {
         showDetails = false
+        videoMenuExpanded = false
+    }
+
+    // Video controls and the compact file-actions button use the same short lifetime.
+    LaunchedEffect(chromeVisible, currentIsVideo, videoMenuExpanded, currentItem?.id) {
+        if (chromeVisible && currentIsVideo && !videoMenuExpanded) {
+            delay(2_000L)
+            chromeVisible = false
+        }
     }
 
     fun toggleChrome() {
@@ -142,7 +145,7 @@ fun ViewerScreen(
                     },
                 )
             } else {
-                ZoomableImage(
+                TiledZoomableImage(
                     item = item,
                     onSingleTap = ::toggleChrome,
                     cleanupMode = cleanupMode,
@@ -157,65 +160,160 @@ fun ViewerScreen(
             exit = fadeOut(),
             modifier = Modifier.align(Alignment.TopCenter),
         ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color.Black.copy(alpha = 0.55f))
-                    .statusBarsPadding(),
-            ) {
-                IconButton(
-                    onClick = onBack,
+            if (currentIsVideo) {
+                // Video mode: no wide top toolbar. Keep only back + compact actions menu.
+                Box(
                     modifier = Modifier
-                        .align(Alignment.CenterStart)
-                        .padding(start = 4.dp),
+                        .fillMaxWidth()
+                        .statusBarsPadding()
+                        .padding(horizontal = 4.dp),
                 ) {
-                    Icon(
-                        Icons.Outlined.ArrowBack,
-                        contentDescription = "Назад",
-                        tint = Color.White,
-                    )
-                }
-
-                if (currentItem != null) {
-                    Row(
-                        modifier = Modifier
-                            .align(Alignment.CenterEnd)
-                            .padding(end = 4.dp),
+                    IconButton(
+                        onClick = onBack,
+                        modifier = Modifier.align(Alignment.CenterStart),
                     ) {
-                        IconButton(onClick = { onShare(currentItem) }) {
-                            Icon(Icons.Outlined.Share, contentDescription = "Отправить", tint = Color.White)
+                        Icon(
+                            Icons.Outlined.ArrowBack,
+                            contentDescription = "Назад",
+                            tint = Color.White,
+                        )
+                    }
+
+                    Box(
+                        modifier = Modifier.align(Alignment.CenterEnd),
+                    ) {
+                        IconButton(onClick = { videoMenuExpanded = true }) {
+                            Icon(
+                                Icons.Outlined.Menu,
+                                contentDescription = "Действия с файлом",
+                                tint = Color.White,
+                            )
                         }
-                        if (currentItem.kind != MediaKind.VIDEO) {
-                            IconButton(onClick = { onCrop(currentItem) }) {
-                                Icon(Icons.Outlined.Crop, contentDescription = "Кадрировать", tint = Color.White)
+
+                        if (currentItem != null) {
+                            DropdownMenu(
+                                expanded = videoMenuExpanded,
+                                onDismissRequest = { videoMenuExpanded = false },
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Отправить") },
+                                    onClick = {
+                                        videoMenuExpanded = false
+                                        onShare(currentItem)
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Переименовать") },
+                                    onClick = {
+                                        videoMenuExpanded = false
+                                        renameTarget = currentItem
+                                        renameText = currentItem.name
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Переместить") },
+                                    onClick = {
+                                        videoMenuExpanded = false
+                                        moveTarget = currentItem
+                                        movePath = currentItem.relativePath
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Сведения") },
+                                    onClick = {
+                                        videoMenuExpanded = false
+                                        showDetails = true
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("В корзину") },
+                                    onClick = {
+                                        videoMenuExpanded = false
+                                        onTrash(currentItem)
+                                    },
+                                )
                             }
                         }
-                        IconButton(onClick = {
-                            renameTarget = currentItem
-                            renameText = currentItem.name
-                        }) {
-                            Icon(Icons.Outlined.Edit, contentDescription = "Переименовать", tint = Color.White)
-                        }
-                        IconButton(onClick = {
-                            moveTarget = currentItem
-                            movePath = currentItem.relativePath
-                        }) {
-                            Icon(Icons.Outlined.DriveFileMove, contentDescription = "Переместить", tint = Color.White)
-                        }
-                        IconButton(onClick = { showDetails = true }) {
-                            Icon(
-                                Icons.Outlined.Info,
-                                contentDescription = "Полные сведения / EXIF",
-                                tint = Color.White,
-                            )
-                        }
+                    }
+                }
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color.Black.copy(alpha = 0.55f))
+                        .statusBarsPadding(),
+                ) {
+                    IconButton(
+                        onClick = onBack,
+                        modifier = Modifier
+                            .align(Alignment.CenterStart)
+                            .padding(start = 4.dp),
+                    ) {
+                        Icon(
+                            Icons.Outlined.ArrowBack,
+                            contentDescription = "Назад",
+                            tint = Color.White,
+                        )
+                    }
 
-                        IconButton(onClick = { onTrash(currentItem) }) {
-                            Icon(
-                                Icons.Outlined.DeleteOutline,
-                                contentDescription = "В корзину",
-                                tint = Color.White,
-                            )
+                    if (currentItem != null) {
+                        Row(
+                            modifier = Modifier
+                                .align(Alignment.CenterEnd)
+                                .padding(end = 4.dp),
+                        ) {
+                            IconButton(onClick = { onShare(currentItem) }) {
+                                Icon(
+                                    Icons.Outlined.Share,
+                                    contentDescription = "Отправить",
+                                    tint = Color.White,
+                                )
+                            }
+                            IconButton(onClick = { onCrop(currentItem) }) {
+                                Icon(
+                                    Icons.Outlined.Crop,
+                                    contentDescription = "Кадрировать",
+                                    tint = Color.White,
+                                )
+                            }
+                            IconButton(
+                                onClick = {
+                                    renameTarget = currentItem
+                                    renameText = currentItem.name
+                                },
+                            ) {
+                                Icon(
+                                    Icons.Outlined.Edit,
+                                    contentDescription = "Переименовать",
+                                    tint = Color.White,
+                                )
+                            }
+                            IconButton(
+                                onClick = {
+                                    moveTarget = currentItem
+                                    movePath = currentItem.relativePath
+                                },
+                            ) {
+                                Icon(
+                                    Icons.Outlined.DriveFileMove,
+                                    contentDescription = "Переместить",
+                                    tint = Color.White,
+                                )
+                            }
+                            IconButton(onClick = { showDetails = true }) {
+                                Icon(
+                                    Icons.Outlined.Info,
+                                    contentDescription = "Полные сведения / EXIF",
+                                    tint = Color.White,
+                                )
+                            }
+                            IconButton(onClick = { onTrash(currentItem) }) {
+                                Icon(
+                                    Icons.Outlined.DeleteOutline,
+                                    contentDescription = "В корзину",
+                                    tint = Color.White,
+                                )
+                            }
                         }
                     }
                 }
@@ -255,15 +353,23 @@ fun ViewerScreen(
                 )
             },
             confirmButton = {
-                TextButton(onClick = {
-                    val value = renameText.trim()
-                    if (value.isNotBlank()) {
-                        onRename(item, value)
-                        renameTarget = null
-                    }
-                }) { Text("Переименовать") }
+                TextButton(
+                    onClick = {
+                        val value = renameText.trim()
+                        if (value.isNotBlank()) {
+                            onRename(item, value)
+                            renameTarget = null
+                        }
+                    },
+                ) {
+                    Text("Переименовать")
+                }
             },
-            dismissButton = { TextButton(onClick = { renameTarget = null }) { Text("Отмена") } },
+            dismissButton = {
+                TextButton(onClick = { renameTarget = null }) {
+                    Text("Отмена")
+                }
+            },
         )
     }
 
@@ -283,15 +389,23 @@ fun ViewerScreen(
                 }
             },
             confirmButton = {
-                TextButton(onClick = {
-                    val value = movePath.trim()
-                    if (value.isNotBlank()) {
-                        onMove(item, value)
-                        moveTarget = null
-                    }
-                }) { Text("Переместить") }
+                TextButton(
+                    onClick = {
+                        val value = movePath.trim()
+                        if (value.isNotBlank()) {
+                            onMove(item, value)
+                            moveTarget = null
+                        }
+                    },
+                ) {
+                    Text("Переместить")
+                }
             },
-            dismissButton = { TextButton(onClick = { moveTarget = null }) { Text("Отмена") } },
+            dismissButton = {
+                TextButton(onClick = { moveTarget = null }) {
+                    Text("Отмена")
+                }
+            },
         )
     }
 }
@@ -383,6 +497,8 @@ private fun VideoPlayer(
 
             view.apply {
                 this.player = player
+                controllerShowTimeoutMs = 2_000
+                controllerAutoShow = true
                 layoutParams = ViewGroup.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT,
@@ -393,44 +509,29 @@ private fun VideoPlayer(
                 }
             }
         },
-        modifier = Modifier.fillMaxSize().navigationBarsPadding(),
+        update = { view ->
+            view.controllerShowTimeoutMs = 2_000
+        },
+        modifier = Modifier
+            .fillMaxSize()
+            .navigationBarsPadding(),
     )
 }
 
 @Composable
-private fun ZoomableImage(
+private fun TiledZoomableImage(
     item: MediaItem,
     onSingleTap: () -> Unit,
     cleanupMode: Boolean,
     onTrash: () -> Unit,
 ) {
     val context = LocalContext.current
-    val animationScope = rememberCoroutineScope()
+    var doubleTapStage by remember(item.id) { mutableIntStateOf(0) }
 
-    var scale by remember(item.id) { mutableFloatStateOf(1f) }
-    var offsetX by remember(item.id) { mutableFloatStateOf(0f) }
-    var offsetY by remember(item.id) { mutableFloatStateOf(0f) }
-
-    var viewportSize by remember(item.id) { mutableStateOf(IntSize.Zero) }
-    var highResRequested by remember(item.id) { mutableStateOf(false) }
-
-    val isAnimatedGif = remember(item.name, item.mimeType) {
-        item.name.endsWith(".gif", ignoreCase = true) ||
-            item.mimeType.equals("image/gif", ignoreCase = true)
-    }
-
-    val decodeEdge = when {
-        isAnimatedGif -> 2048
-        highResRequested -> 4096
-        else -> 2048
-    }
-
-    val imageRequest = remember(item.uri, decodeEdge) {
-        ImageRequest.Builder(context)
-            .data(item.uri)
-            .size(decodeEdge, decodeEdge)
-            .build()
-    }
+    val zoomableState = rememberZoomableState(
+        zoomSpec = ZoomSpec(maxZoomFactor = 8f),
+    )
+    val imageState = rememberZoomableImageState(zoomableState)
 
     val fastPreview = remember(item.id, item.dateModifiedMillis) {
         ThumbnailCache.fileFor(
@@ -446,193 +547,83 @@ private fun ZoomableImage(
             highQuality = true,
         )
     }
-    val cachedPreview = when {
-        highPreview.exists() -> highPreview
-        fastPreview.exists() -> fastPreview
-        else -> null
+    val cachedPreview = remember(
+        item.id,
+        item.dateModifiedMillis,
+        fastPreview.exists(),
+        highPreview.exists(),
+    ) {
+        when {
+            highPreview.exists() -> highPreview
+            fastPreview.exists() -> fastPreview
+            else -> null
+        }
     }
 
-    var sourceLoaded by remember(item.id, decodeEdge) { mutableStateOf(false) }
-    val sourceAlpha by animateFloatAsState(
-        targetValue = if (sourceLoaded) 1f else 0f,
+    val tiledAlpha by animateFloatAsState(
+        targetValue = if (imageState.isImageDisplayed) 1f else 0f,
         animationSpec = tween(durationMillis = 120),
-        label = "full-image-fade",
+        label = "tiled-image-fade",
     )
 
-    fun maxOffsets(targetScale: Float): Pair<Float, Float> {
-        val viewportWidth = viewportSize.width.toFloat()
-        val viewportHeight = viewportSize.height.toFloat()
-        if (viewportWidth <= 0f || viewportHeight <= 0f) return 0f to 0f
-
-        val sourceWidth = item.width.takeIf { it > 0 }?.toFloat() ?: viewportWidth
-        val sourceHeight = item.height.takeIf { it > 0 }?.toFloat() ?: viewportHeight
-        val fitScale = min(viewportWidth / sourceWidth, viewportHeight / sourceHeight)
-        val fittedWidth = sourceWidth * fitScale
-        val fittedHeight = sourceHeight * fitScale
-
-        val maxX = ((fittedWidth * targetScale - viewportWidth) / 2f).coerceAtLeast(0f)
-        val maxY = ((fittedHeight * targetScale - viewportHeight) / 2f).coerceAtLeast(0f)
-        return maxX to maxY
-    }
-
-    fun clampOffsets(targetScale: Float = scale) {
-        if (targetScale <= 1.01f) {
-            offsetX = 0f
-            offsetY = 0f
-            return
-        }
-
-        val (maxX, maxY) = maxOffsets(targetScale)
-        offsetX = offsetX.coerceIn(-maxX, maxX)
-        offsetY = offsetY.coerceIn(-maxY, maxY)
-    }
-
-    fun animateDoubleTapZoom() {
-        if (cleanupMode) {
-            onTrash()
-            return
-        }
-
-        val targetScale = when {
-            scale < 1.5f -> 2.5f
-            scale < 5f -> 8f
-            else -> 1f
-        }
-
-        if (targetScale > 1.25f) {
-            highResRequested = true
-        }
-
-        val startScale = scale
-        val startOffsetX = offsetX
-        val startOffsetY = offsetY
-
-        animationScope.launch {
-            animate(
-                initialValue = 0f,
-                targetValue = 1f,
-                animationSpec = tween(
-                    durationMillis = 240,
-                    easing = FastOutSlowInEasing,
-                ),
-            ) { progress, _ ->
-                scale = startScale + (targetScale - startScale) * progress
-                offsetX = startOffsetX * (1f - progress)
-                offsetY = startOffsetY * (1f - progress)
-                clampOffsets(scale)
+    val doubleClick = remember(item.id, cleanupMode) {
+        DoubleClickToZoomListener { state, centroid ->
+            if (cleanupMode) {
+                onTrash()
+                return@DoubleClickToZoomListener
             }
 
-            scale = targetScale
-            if (targetScale <= 1.01f) {
-                offsetX = 0f
-                offsetY = 0f
-            } else {
-                clampOffsets(targetScale)
+            when (doubleTapStage) {
+                0 -> {
+                    state.zoomTo(
+                        zoomFactor = 2.5f,
+                        centroid = centroid,
+                        animationSpec = tween(durationMillis = 240),
+                    )
+                    doubleTapStage = 1
+                }
+
+                1 -> {
+                    state.zoomTo(
+                        zoomFactor = 8f,
+                        centroid = centroid,
+                        animationSpec = tween(durationMillis = 260),
+                    )
+                    doubleTapStage = 2
+                }
+
+                else -> {
+                    state.resetZoom(
+                        animationSpec = tween(durationMillis = 260),
+                    )
+                    doubleTapStage = 0
+                }
             }
         }
     }
 
     Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .clipToBounds()
-            .onSizeChanged {
-                viewportSize = it
-                clampOffsets(scale)
-            }
-            .pointerInput(item.id, viewportSize) {
-                awaitEachGesture {
-                    awaitFirstDown(requireUnconsumed = false)
-
-                    var gestureActive = true
-                    var transforming = false
-                    var accumulatedPan = Offset.Zero
-
-                    while (gestureActive) {
-                        val event = awaitPointerEvent()
-                        val pressedCount = event.changes.count { it.pressed }
-                        val zoom = event.calculateZoom()
-                        val pan = event.calculatePan()
-
-                        accumulatedPan += pan
-
-                        val multiTouch = pressedCount > 1
-                        val realPan =
-                            scale > 1.01f &&
-                                accumulatedPan.getDistance() > viewConfiguration.touchSlop
-
-                        if (multiTouch || realPan || transforming) {
-                            transforming = true
-
-                            val newScale = (scale * zoom).coerceIn(1f, 8f)
-                            if (newScale > 1.25f) {
-                                highResRequested = true
-                            }
-
-                            scale = newScale
-
-                            if (newScale > 1.01f) {
-                                val (maxX, maxY) = maxOffsets(newScale)
-                                offsetX = (offsetX + pan.x).coerceIn(-maxX, maxX)
-                                offsetY = (offsetY + pan.y).coerceIn(-maxY, maxY)
-                            } else {
-                                offsetX = 0f
-                                offsetY = 0f
-                            }
-
-                            event.changes.forEach { change ->
-                                if (change.pressed) change.consume()
-                            }
-                        }
-
-                        gestureActive = event.changes.any { it.pressed }
-                    }
-                }
-            }
-            .pointerInput(item.id, cleanupMode, viewportSize) {
-                detectTapGestures(
-                    onTap = {
-                        onSingleTap()
-                    },
-                    onDoubleTap = {
-                        animateDoubleTapZoom()
-                    },
-                )
-            },
+        modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center,
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer {
-                    scaleX = scale
-                    scaleY = scale
-                    translationX = offsetX
-                    translationY = offsetY
-                },
-            contentAlignment = Alignment.Center,
-        ) {
-            if (cachedPreview != null) {
-                AsyncImage(
-                    model = cachedPreview,
-                    contentDescription = item.name,
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
-
+        if (cachedPreview != null) {
             AsyncImage(
-                model = imageRequest,
+                model = cachedPreview,
                 contentDescription = item.name,
                 contentScale = ContentScale.Fit,
-                onSuccess = { sourceLoaded = true },
-                onLoading = { sourceLoaded = false },
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer {
-                        alpha = if (cachedPreview == null) 1f else sourceAlpha
-                    },
+                modifier = Modifier.fillMaxSize(),
             )
         }
+
+        ZoomableAsyncImage(
+            model = item.uri,
+            contentDescription = item.name,
+            state = imageState,
+            contentScale = ContentScale.Fit,
+            onClick = { onSingleTap() },
+            onDoubleClick = doubleClick,
+            alpha = if (cachedPreview == null) 1f else tiledAlpha,
+            modifier = Modifier.fillMaxSize(),
+        )
     }
 }
