@@ -106,6 +106,7 @@ fun GalleryScreen(
     onHideSettings: () -> Unit,
     onQuickExifChanged: (Boolean) -> Unit,
     onOpenRecycleBin: () -> Unit,
+    livePreviewEnabled: Boolean,
     cleanupMode: Boolean,
     onCleanupModeChanged: (Boolean) -> Unit,
     selectedIds: Set<Long>,
@@ -168,10 +169,10 @@ fun GalleryScreen(
         }
     }
 
-    LaunchedEffect(visibleVideoIds, mediaGridScrolling) {
+    LaunchedEffect(visibleVideoIds, mediaGridScrolling, livePreviewEnabled) {
         activeLiveVideoId = null
 
-        if (mediaGridScrolling || visibleVideoIds.isEmpty()) {
+        if (!livePreviewEnabled || mediaGridScrolling || visibleVideoIds.isEmpty()) {
             return@LaunchedEffect
         }
 
