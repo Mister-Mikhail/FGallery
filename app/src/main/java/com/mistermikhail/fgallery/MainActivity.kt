@@ -13,6 +13,7 @@ import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
 import android.provider.MediaStore
+import android.provider.DocumentsContract
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -44,7 +45,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import com.mistermikhail.fgallery.data.MediaItem
+import com.mistermikhail.fgallery.ui.AlbumSummary
 import com.mistermikhail.fgallery.ui.GalleryScreen
+import com.mistermikhail.fgallery.ui.MoveDestinationScreen
 import com.mistermikhail.fgallery.ui.GalleryViewModel
 import com.mistermikhail.fgallery.ui.RecycleBinScreen
 import com.mistermikhail.fgallery.ui.ViewerScreen
@@ -56,6 +59,11 @@ import com.canhub.cropper.CropImageView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+
+private data class PendingTreeMove(
+    val sourceItems: List<MediaItem>,
+    val copiedUris: List<Uri>,
+)
 
 private sealed interface PendingWriteOperation {
     data class Rename(
@@ -88,6 +96,10 @@ class MainActivity : ComponentActivity() {
         var selectedIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
         var pendingWrite by remember { mutableStateOf<PendingWriteOperation?>(null) }
         var pendingPermanentDeleteUris by remember { mutableStateOf<Set<String>>(emptySet()) }
+        var pendingMoveItems by remember { mutableStateOf<List<MediaItem>>(emptyList()) }
+        var moveQuery by remember { mutableStateOf("") }
+        var moveDestinationAlbum by remember { mutableStateOf<AlbumSummary?>(null) }
+        var pendingTreeMove by remember { mutableStateOf<PendingTreeMove?>(null) }
         var pendingCropItem by remember { mutableStateOf<MediaItem?>(null) }
         var pendingCropSave by remember { mutableStateOf<Pair<MediaItem, Uri>?>(null) }
         val uiScope = rememberCoroutineScope()
@@ -246,6 +258,9 @@ class MainActivity : ComponentActivity() {
                 val success = runCatching { executeWrite(operation) }.getOrDefault(false)
                 if (success) {
                     selectedIds = emptySet()
+                    pendingMoveItems = emptyList()
+                    moveQuery = ""
+                    moveDestinationAlbum = null
                     viewModel.refresh()
                 }
             }
@@ -290,6 +305,168 @@ class MainActivity : ComponentActivity() {
                     writeLauncher.launch(IntentSenderRequest.Builder(sender).build())
                 }
             }
+        }
+
+        fun rollbackTreeCopies(uris: List<Uri>) {
+            uris.forEach { uri ->
+                runCatching { contentResolver.delete(uri, null, null) }
+            }
+        }
+
+        val treeMoveDeleteLauncher = rememberLauncherForActivityResult(
+            ActivityResultContracts.StartIntentSenderForResult(),
+        ) { result ->
+            val pending = pendingTreeMove
+            pendingTreeMove = null
+
+            if (pending == null) return@rememberLauncherForActivityResult
+
+            if (result.resultCode == Activity.RESULT_OK) {
+                pendingMoveItems = emptyList()
+                moveQuery = ""
+                moveDestinationAlbum = null
+                selectedIds = emptySet()
+                viewModel.refresh()
+            } else {
+                rollbackTreeCopies(pending.copiedUris)
+                Toast.makeText(
+                    this@MainActivity,
+                    "Перемещение отменено",
+                    Toast.LENGTH_SHORT,
+                ).show()
+            }
+        }
+
+        suspend fun copyItemsToTree(
+            items: List<MediaItem>,
+            treeUri: Uri,
+        ): List<Uri>? = withContext(Dispatchers.IO) {
+            val parentDocumentUri = runCatching {
+                DocumentsContract.buildDocumentUriUsingTree(
+                    treeUri,
+                    DocumentsContract.getTreeDocumentId(treeUri),
+                )
+            }.getOrNull() ?: return@withContext null
+
+            val copied = mutableListOf<Uri>()
+
+            for (item in items) {
+                val destinationUri = runCatching {
+                    DocumentsContract.createDocument(
+                        contentResolver,
+                        parentDocumentUri,
+                        item.mimeType ?: "application/octet-stream",
+                        item.name,
+                    )
+                }.getOrNull()
+
+                if (destinationUri == null) {
+                    rollbackTreeCopies(copied)
+                    return@withContext null
+                }
+
+                val success = runCatching {
+                    contentResolver.openInputStream(item.uri)?.use { input ->
+                        contentResolver.openOutputStream(destinationUri, "w")?.use { output ->
+                            input.copyTo(output)
+                        } ?: error("Cannot open destination")
+                    } ?: error("Cannot open source")
+                    true
+                }.getOrDefault(false)
+
+                if (!success) {
+                    runCatching { contentResolver.delete(destinationUri, null, null) }
+                    rollbackTreeCopies(copied)
+                    return@withContext null
+                }
+
+                copied += destinationUri
+            }
+
+            copied
+        }
+
+        fun finishTreeMove(
+            sourceItems: List<MediaItem>,
+            copiedUris: List<Uri>,
+        ) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                runCatching {
+                    pendingTreeMove = PendingTreeMove(sourceItems, copiedUris)
+                    val pendingIntent = MediaStore.createDeleteRequest(
+                        contentResolver,
+                        sourceItems.map { it.uri },
+                    )
+                    treeMoveDeleteLauncher.launch(
+                        IntentSenderRequest.Builder(pendingIntent.intentSender).build()
+                    )
+                }.onFailure {
+                    pendingTreeMove = null
+                    rollbackTreeCopies(copiedUris)
+                }
+                return
+            }
+
+            val deleted = sourceItems.all { item ->
+                runCatching {
+                    contentResolver.delete(item.uri, null, null) > 0
+                }.getOrDefault(false)
+            }
+
+            if (deleted) {
+                pendingMoveItems = emptyList()
+                moveQuery = ""
+                moveDestinationAlbum = null
+                selectedIds = emptySet()
+                viewModel.refresh()
+            } else {
+                rollbackTreeCopies(copiedUris)
+                Toast.makeText(
+                    this@MainActivity,
+                    "Не удалось завершить перемещение",
+                    Toast.LENGTH_SHORT,
+                ).show()
+            }
+        }
+
+        val folderPickerLauncher = rememberLauncherForActivityResult(
+            ActivityResultContracts.OpenDocumentTree(),
+        ) { treeUri ->
+            val items = pendingMoveItems
+            if (treeUri == null || items.isEmpty()) {
+                return@rememberLauncherForActivityResult
+            }
+
+            runCatching {
+                contentResolver.takePersistableUriPermission(
+                    treeUri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                        Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                )
+            }
+
+            uiScope.launch {
+                val copied = copyItemsToTree(items, treeUri)
+                if (copied == null) {
+                    Toast.makeText(
+                        this@MainActivity,
+                        "Не удалось скопировать файлы в выбранную папку",
+                        Toast.LENGTH_SHORT,
+                    ).show()
+                } else {
+                    finishTreeMove(items, copied)
+                }
+            }
+        }
+
+        fun beginMove(items: List<MediaItem>) {
+            if (items.isEmpty()) return
+            pendingMoveItems = items
+            moveQuery = ""
+            moveDestinationAlbum = null
+            selectedItem = null
+            selectedIds = emptySet()
+            viewModel.closeAlbum()
         }
 
         val deleteForeverLauncher = rememberLauncherForActivityResult(
@@ -384,6 +561,15 @@ class MainActivity : ComponentActivity() {
             selectedItem = null
         }
 
+        BackHandler(enabled = current == null && pendingMoveItems.isNotEmpty()) {
+            if (moveDestinationAlbum != null) {
+                moveDestinationAlbum = null
+            } else {
+                pendingMoveItems = emptyList()
+                moveQuery = ""
+            }
+        }
+
         BackHandler(enabled = current == null && selectedIds.isNotEmpty()) {
             selectedIds = emptySet()
         }
@@ -406,7 +592,33 @@ class MainActivity : ComponentActivity() {
         }
 
         Box(modifier = Modifier.fillMaxSize()) {
-            if (state.recycleBinVisible) {
+            if (pendingMoveItems.isNotEmpty()) {
+                MoveDestinationScreen(
+                    albums = state.albums,
+                    movingCount = pendingMoveItems.size,
+                    query = moveQuery,
+                    selectedAlbum = moveDestinationAlbum,
+                    onQueryChanged = { moveQuery = it },
+                    onSelectAlbum = { moveDestinationAlbum = it },
+                    onBackFromAlbum = { moveDestinationAlbum = null },
+                    onCancel = {
+                        pendingMoveItems = emptyList()
+                        moveQuery = ""
+                        moveDestinationAlbum = null
+                    },
+                    onMoveHere = { album ->
+                        requestWrite(
+                            PendingWriteOperation.Move(
+                                items = pendingMoveItems,
+                                relativePath = album.cover.relativePath,
+                            )
+                        )
+                    },
+                    onChooseOtherFolder = {
+                        folderPickerLauncher.launch(null)
+                    },
+                )
+            } else if (state.recycleBinVisible) {
                 RecycleBinScreen(
                     items = state.recycleBinItems,
                     selectedIds = selectedIds,
@@ -461,7 +673,7 @@ class MainActivity : ComponentActivity() {
                     onShowSettings = viewModel::showSettings,
                     onHideSettings = viewModel::hideSettings,
                     onQuickExifChanged = viewModel::setQuickExifEnabled,
-                    livePreviewEnabled = current == null,
+                    livePreviewEnabled = current == null && pendingMoveItems.isEmpty(),
                     onOpenRecycleBin = {
                         selectedIds = emptySet()
                         selectedItem = null
@@ -487,14 +699,7 @@ class MainActivity : ComponentActivity() {
                             )
                         )
                     },
-                    onMoveSelected = { items, path ->
-                        requestWrite(
-                            PendingWriteOperation.Move(
-                                items = items,
-                                relativePath = path,
-                            )
-                        )
-                    },
+                    onMoveSelected = ::beginMove,
                 )
             }
 
@@ -537,8 +742,8 @@ class MainActivity : ComponentActivity() {
                         onRename = { item, name ->
                             requestWrite(PendingWriteOperation.Rename(item, name))
                         },
-                        onMove = { item, path ->
-                            requestWrite(PendingWriteOperation.Move(listOf(item), path))
+                        onMove = { item ->
+                            beginMove(listOf(item))
                         },
                     )
                 }
