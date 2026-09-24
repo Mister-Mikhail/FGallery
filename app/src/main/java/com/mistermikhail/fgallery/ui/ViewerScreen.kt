@@ -12,7 +12,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -81,7 +80,7 @@ fun ViewerScreen(
     onShare: (MediaItem) -> Unit,
     onCrop: (MediaItem) -> Unit,
     onRename: (MediaItem, String) -> Unit,
-    onMove: (MediaItem, String) -> Unit,
+    onMove: (MediaItem) -> Unit,
 ) {
     val initialPage = items.indexOfFirst { it.id == initialItem.id }.coerceAtLeast(0)
     val pagerState = rememberPagerState(
@@ -93,8 +92,6 @@ fun ViewerScreen(
     var showDetails by remember { mutableStateOf(false) }
     var renameTarget by remember { mutableStateOf<MediaItem?>(null) }
     var renameText by remember { mutableStateOf("") }
-    var moveTarget by remember { mutableStateOf<MediaItem?>(null) }
-    var movePath by remember { mutableStateOf("") }
     var videoMenuExpanded by remember { mutableStateOf(false) }
 
     LaunchedEffect(items.size) {
@@ -214,8 +211,7 @@ fun ViewerScreen(
                                     text = { Text("Переместить") },
                                     onClick = {
                                         videoMenuExpanded = false
-                                        moveTarget = currentItem
-                                        movePath = currentItem.relativePath
+                                        onMove(currentItem)
                                     },
                                 )
                                 DropdownMenuItem(
@@ -289,10 +285,7 @@ fun ViewerScreen(
                                 )
                             }
                             IconButton(
-                                onClick = {
-                                    moveTarget = currentItem
-                                    movePath = currentItem.relativePath
-                                },
+                                onClick = { onMove(currentItem) },
                             ) {
                                 Icon(
                                     Icons.Outlined.DriveFileMove,
@@ -373,41 +366,7 @@ fun ViewerScreen(
         )
     }
 
-    moveTarget?.let { item ->
-        AlertDialog(
-            onDismissRequest = { moveTarget = null },
-            title = { Text("Переместить файл") },
-            text = {
-                Column {
-                    Text("Папка относительно памяти телефона")
-                    OutlinedTextField(
-                        value = movePath,
-                        onValueChange = { movePath = it },
-                        singleLine = true,
-                        label = { Text("Например Pictures/Travel/") },
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        val value = movePath.trim()
-                        if (value.isNotBlank()) {
-                            onMove(item, value)
-                            moveTarget = null
-                        }
-                    },
-                ) {
-                    Text("Переместить")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { moveTarget = null }) {
-                    Text("Отмена")
-                }
-            },
-        )
-    }
+
 }
 
 private fun MediaItem.isLikely360Video(): Boolean {
