@@ -457,7 +457,7 @@ private fun VideoPlayer(
             view.apply {
                 this.player = player
                 controllerShowTimeoutMs = 2_000
-                controllerAutoShow = true
+                controllerAutoShow = false
                 layoutParams = ViewGroup.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT,
