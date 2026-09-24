@@ -89,6 +89,7 @@ fun ViewerScreen(
     )
 
     var chromeVisible by remember { mutableStateOf(false) }
+    var chromeEpoch by remember { mutableIntStateOf(0) }
     var showDetails by remember { mutableStateOf(false) }
     var renameTarget by remember { mutableStateOf<MediaItem?>(null) }
     var renameText by remember { mutableStateOf("") }
@@ -103,21 +104,34 @@ fun ViewerScreen(
     val currentItem = items.getOrNull(pagerState.currentPage)
     val currentIsVideo = currentItem?.kind == MediaKind.VIDEO
 
-    LaunchedEffect(currentItem?.id) {
+    LaunchedEffect(currentItem?.id, currentIsVideo) {
         showDetails = false
         videoMenuExpanded = false
+        if (currentIsVideo) {
+            chromeVisible = true
+            chromeEpoch += 1
+        }
     }
 
-    // Video controls and the compact file-actions button use the same short lifetime.
-    LaunchedEffect(chromeVisible, currentIsVideo, videoMenuExpanded, currentItem?.id) {
+    // One clock owns both PlayerView controls and the Compose file chrome.
+    LaunchedEffect(chromeVisible, currentIsVideo, videoMenuExpanded, chromeEpoch) {
         if (chromeVisible && currentIsVideo && !videoMenuExpanded) {
-            delay(2_000L)
+            delay(1_500L)
             chromeVisible = false
         }
     }
 
     fun toggleChrome() {
-        chromeVisible = !chromeVisible
+        if (currentIsVideo) {
+            if (chromeVisible) {
+                chromeVisible = false
+            } else {
+                chromeVisible = true
+                chromeEpoch += 1
+            }
+        } else {
+            chromeVisible = !chromeVisible
+        }
     }
 
     Box(
@@ -136,6 +150,7 @@ fun ViewerScreen(
                 VideoPlayer(
                     item = item,
                     active = activePage,
+                    controlsVisible = activePage && chromeVisible,
                     onSingleTap = ::toggleChrome,
                     onDoubleTap = {
                         if (cleanupMode) onTrash(item)
@@ -392,6 +407,7 @@ private fun MediaItem.isLikely360Video(): Boolean {
 private fun VideoPlayer(
     item: MediaItem,
     active: Boolean,
+    controlsVisible: Boolean,
     onSingleTap: () -> Unit,
     onDoubleTap: () -> Unit,
 ) {
@@ -456,7 +472,7 @@ private fun VideoPlayer(
 
             view.apply {
                 this.player = player
-                controllerShowTimeoutMs = 2_000
+                controllerShowTimeoutMs = 0
                 controllerAutoShow = false
                 layoutParams = ViewGroup.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
@@ -469,7 +485,8 @@ private fun VideoPlayer(
             }
         },
         update = { view ->
-            view.controllerShowTimeoutMs = 2_000
+            view.controllerShowTimeoutMs = 0
+            if (controlsVisible) view.showController() else view.hideController()
         },
         modifier = Modifier
             .fillMaxSize()
@@ -527,7 +544,7 @@ private fun TiledZoomableImage(
             when (doubleTapStage) {
                 0 -> {
                     state.zoomTo(
-                        zoomFactor = 2.5f,
+                        zoomFactor = 1.6f,
                         centroid = centroid,
                         animationSpec = tween(durationMillis = 240),
                     )
@@ -536,7 +553,7 @@ private fun TiledZoomableImage(
 
                 1 -> {
                     state.zoomTo(
-                        zoomFactor = 8f,
+                        zoomFactor = 4f,
                         centroid = centroid,
                         animationSpec = tween(durationMillis = 260),
                     )
