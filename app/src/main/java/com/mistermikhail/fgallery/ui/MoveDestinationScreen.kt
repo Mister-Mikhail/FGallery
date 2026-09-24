@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -91,6 +92,7 @@ fun MoveDestinationScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .navigationBarsPadding()
                         .padding(12.dp),
                 ) {
                     Button(
@@ -111,6 +113,7 @@ fun MoveDestinationScreen(
                     onClick = onChooseOtherFolder,
                     modifier = Modifier
                         .fillMaxWidth()
+                        .navigationBarsPadding()
                         .padding(8.dp),
                 ) {
                     Text("Найти или создать другую папку…")
@@ -178,7 +181,7 @@ fun MoveDestinationScreen(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(8.dp))
                                 .combinedClickable(
-                                    onClick = { onSelectAlbum(album) },
+                                    onClick = { onMoveHere(album) },
                                 ),
                         ) {
                             AsyncImage(
