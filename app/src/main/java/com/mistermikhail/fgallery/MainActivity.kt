@@ -274,24 +274,14 @@ class MainActivity : ComponentActivity() {
 
             if (uris.isEmpty()) return
 
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                runCatching {
-                    pendingWrite = operation
-                    val pendingIntent = MediaStore.createWriteRequest(
-                        contentResolver,
-                        uris,
-                    )
-                    writeLauncher.launch(
-                        IntentSenderRequest.Builder(pendingIntent.intentSender).build()
-                    )
-                }.onFailure {
-                    pendingWrite = null
-                }
-                return
-            }
-
             try {
+                // MediaStore-owned files can usually be renamed/moved directly. Only ask
+                // Android for consent when the direct write is actually rejected.
                 if (executeWrite(operation)) {
+                    pendingWrite = null
+                    pendingMoveItems = emptyList()
+                    moveQuery = ""
+                    moveDestinationAlbum = null
                     selectedIds = emptySet()
                     viewModel.refresh()
                 }
@@ -303,6 +293,19 @@ class MainActivity : ComponentActivity() {
                 if (sender != null) {
                     pendingWrite = operation
                     writeLauncher.launch(IntentSenderRequest.Builder(sender).build())
+                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    runCatching {
+                        pendingWrite = operation
+                        val pendingIntent = MediaStore.createWriteRequest(
+                            contentResolver,
+                            uris,
+                        )
+                        writeLauncher.launch(
+                            IntentSenderRequest.Builder(pendingIntent.intentSender).build()
+                        )
+                    }.onFailure {
+                        pendingWrite = null
+                    }
                 }
             }
         }
