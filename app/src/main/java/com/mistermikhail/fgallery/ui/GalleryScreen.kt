@@ -167,6 +167,8 @@ fun GalleryScreen(
         }
     }
 
+    val effectiveLiveVideoId = if (livePreviewEnabled) activeLiveVideoId else null
+
     LaunchedEffect(visibleVideoIds, mediaGridScrolling, livePreviewEnabled) {
         activeLiveVideoId = null
 
@@ -439,7 +441,7 @@ fun GalleryScreen(
                 cleanupMode = cleanupMode,
                 selectedIds = selectedIds,
                 onToggleSelection = onToggleSelection,
-                activeLiveVideoId = activeLiveVideoId,
+                activeLiveVideoId = effectiveLiveVideoId,
             )
 
             else -> UniformGrid(
@@ -452,7 +454,7 @@ fun GalleryScreen(
                 cleanupMode = cleanupMode,
                 selectedIds = selectedIds,
                 onToggleSelection = onToggleSelection,
-                activeLiveVideoId = activeLiveVideoId,
+                activeLiveVideoId = effectiveLiveVideoId,
             )
         }
     }
