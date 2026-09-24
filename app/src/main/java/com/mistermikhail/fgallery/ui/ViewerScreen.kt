@@ -533,26 +533,18 @@ private fun TiledZoomableImage(
     )
     val imageState = rememberZoomableImageState(zoomableState)
 
-    val fastPreview = remember(item.id, item.dateModifiedMillis) {
-        ThumbnailCache.fileFor(
-            context = context,
-            item = item,
-            highQuality = false,
-        )
-    }
-    val highPreview = remember(item.id, item.dateModifiedMillis) {
-        ThumbnailCache.fileFor(
+    val cachedPreview = remember(item.id, item.dateModifiedMillis) {
+        val highPreview = ThumbnailCache.fileFor(
             context = context,
             item = item,
             highQuality = true,
         )
-    }
-    val cachedPreview = remember(
-        item.id,
-        item.dateModifiedMillis,
-        fastPreview.exists(),
-        highPreview.exists(),
-    ) {
+        val fastPreview = ThumbnailCache.fileFor(
+            context = context,
+            item = item,
+            highQuality = false,
+        )
+
         when {
             highPreview.exists() -> highPreview
             fastPreview.exists() -> fastPreview
