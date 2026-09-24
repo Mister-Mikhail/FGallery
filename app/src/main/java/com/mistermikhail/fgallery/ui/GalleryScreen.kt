@@ -114,14 +114,12 @@ fun GalleryScreen(
     onClearSelection: () -> Unit,
     onTrashSelected: (List<MediaItem>) -> Unit,
     onRenameSelected: (MediaItem, String) -> Unit,
-    onMoveSelected: (List<MediaItem>, String) -> Unit,
+    onMoveSelected: (List<MediaItem>) -> Unit,
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
     var sortMenuExpanded by remember { mutableStateOf(false) }
     var renameTarget by remember { mutableStateOf<MediaItem?>(null) }
     var renameText by remember { mutableStateOf("") }
-    var moveDialogVisible by remember { mutableStateOf(false) }
-    var movePath by remember { mutableStateOf("") }
 
     val albumsGridState = rememberLazyGridState()
     val mosaicListState = rememberLazyListState()
@@ -212,10 +210,7 @@ fun GalleryScreen(
                         ),
                         actions = {
                             IconButton(
-                                onClick = {
-                                    movePath = selectedItems.firstOrNull()?.relativePath.orEmpty()
-                                    moveDialogVisible = true
-                                },
+                                onClick = { onMoveSelected(selectedItems) },
                             ) {
                                 Icon(Icons.Outlined.DriveFileMove, contentDescription = "Переместить")
                             }
@@ -489,55 +484,6 @@ fun GalleryScreen(
             },
             dismissButton = {
                 TextButton(onClick = { renameTarget = null }) {
-                    Text("Отмена")
-                }
-            },
-        )
-    }
-
-    if (moveDialogVisible) {
-        AlertDialog(
-            onDismissRequest = { moveDialogVisible = false },
-            title = {
-                Text(
-                    if (selectedItems.size == 1) {
-                        "Переместить файл"
-                    } else {
-                        "Переместить ${selectedItems.size} файлов"
-                    }
-                )
-            },
-            text = {
-                Column {
-                    Text(
-                        text = "Укажи папку относительно памяти телефона. Например: Pictures/Travel/",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
-                        modifier = Modifier.padding(bottom = 10.dp),
-                    )
-                    OutlinedTextField(
-                        value = movePath,
-                        onValueChange = { movePath = it },
-                        singleLine = true,
-                        label = { Text("Папка") },
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        val value = movePath.trim()
-                        if (value.isNotBlank()) {
-                            onMoveSelected(selectedItems, value)
-                            moveDialogVisible = false
-                        }
-                    },
-                ) {
-                    Text("Переместить")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { moveDialogVisible = false }) {
                     Text("Отмена")
                 }
             },
