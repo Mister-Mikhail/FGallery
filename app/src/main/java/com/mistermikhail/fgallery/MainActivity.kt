@@ -6,6 +6,8 @@ import android.app.RecoverableSecurityException
 import android.content.ContentValues
 import android.content.Intent
 import android.content.IntentSender
+import android.graphics.Bitmap
+import android.net.Uri
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -28,12 +30,16 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
@@ -43,6 +49,13 @@ import com.mistermikhail.fgallery.ui.GalleryViewModel
 import com.mistermikhail.fgallery.ui.RecycleBinScreen
 import com.mistermikhail.fgallery.ui.ViewerScreen
 import com.mistermikhail.fgallery.ui.theme.FGalleryTheme
+import com.canhub.cropper.CropImageContract
+import com.canhub.cropper.CropImageContractOptions
+import com.canhub.cropper.CropImageOptions
+import com.canhub.cropper.CropImageView
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private sealed interface PendingWriteOperation {
     data class Rename(
@@ -75,6 +88,9 @@ class MainActivity : ComponentActivity() {
         var selectedIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
         var pendingWrite by remember { mutableStateOf<PendingWriteOperation?>(null) }
         var pendingPermanentDeleteUris by remember { mutableStateOf<Set<String>>(emptySet()) }
+        var pendingCropItem by remember { mutableStateOf<MediaItem?>(null) }
+        var pendingCropSave by remember { mutableStateOf<Pair<MediaItem, Uri>?>(null) }
+        val uiScope = rememberCoroutineScope()
 
         fun shareMedia(item: MediaItem) {
             val intent = Intent(Intent.ACTION_SEND).apply {
@@ -85,16 +101,81 @@ class MainActivity : ComponentActivity() {
             startActivity(Intent.createChooser(intent, "Отправить"))
         }
 
-        fun cropMedia(item: MediaItem) {
-            val intent = Intent(Intent.ACTION_EDIT).apply {
-                setDataAndType(item.uri, item.mimeType ?: "image/*")
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
-                putExtra("return-data", false)
-            }
-            runCatching { startActivity(Intent.createChooser(intent, "Кадрировать")) }
-                .onFailure {
-                    Toast.makeText(this@MainActivity, "На устройстве нет редактора для этого формата", Toast.LENGTH_SHORT).show()
+        suspend fun saveCroppedCopy(
+            source: MediaItem,
+            croppedUri: Uri,
+        ): Boolean = withContext(Dispatchers.IO) {
+            val baseName = source.name.substringBeforeLast('.', source.name)
+            val outputName = "${baseName}_crop_${System.currentTimeMillis()}.jpg"
+            val relativePath = source.relativePath.ifBlank { "Pictures/FGallery/" }
+
+            val values = ContentValues().apply {
+                put(MediaStore.Images.Media.DISPLAY_NAME, outputName)
+                put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    put(MediaStore.Images.Media.RELATIVE_PATH, relativePath)
+                    put(MediaStore.Images.Media.IS_PENDING, 1)
                 }
+            }
+
+            val outputUri = contentResolver.insert(
+                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                values,
+            ) ?: return@withContext false
+
+            val copied = runCatching {
+                contentResolver.openInputStream(croppedUri)?.use { input ->
+                    contentResolver.openOutputStream(outputUri, "w")?.use { output ->
+                        input.copyTo(output)
+                    } ?: error("Cannot open crop destination")
+                } ?: error("Cannot open crop result")
+                true
+            }.getOrDefault(false)
+
+            if (!copied) {
+                runCatching { contentResolver.delete(outputUri, null, null) }
+                return@withContext false
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val ready = ContentValues().apply {
+                    put(MediaStore.Images.Media.IS_PENDING, 0)
+                }
+                contentResolver.update(outputUri, ready, null, null)
+            }
+
+            true
+        }
+
+        val cropLauncher = rememberLauncherForActivityResult(
+            CropImageContract(),
+        ) { result ->
+            val source = pendingCropItem
+            pendingCropItem = null
+
+            if (result.isSuccessful && source != null && result.uriContent != null) {
+                pendingCropSave = source to result.uriContent!!
+            } else if (result.error != null) {
+                Toast.makeText(
+                    this@MainActivity,
+                    "Не удалось кадрировать изображение",
+                    Toast.LENGTH_SHORT,
+                ).show()
+            }
+        }
+
+        fun cropMedia(item: MediaItem) {
+            pendingCropItem = item
+            cropLauncher.launch(
+                CropImageContractOptions(
+                    uri = item.uri,
+                    cropImageOptions = CropImageOptions(
+                        guidelines = CropImageView.Guidelines.ON,
+                        outputCompressFormat = Bitmap.CompressFormat.JPEG,
+                        outputCompressQuality = 96,
+                    ),
+                )
+            )
         }
 
         val permissionLauncher = rememberLauncherForActivityResult(
@@ -380,6 +461,7 @@ class MainActivity : ComponentActivity() {
                     onShowSettings = viewModel::showSettings,
                     onHideSettings = viewModel::hideSettings,
                     onQuickExifChanged = viewModel::setQuickExifEnabled,
+                    livePreviewEnabled = current == null,
                     onOpenRecycleBin = {
                         selectedIds = emptySet()
                         selectedItem = null
@@ -461,6 +543,44 @@ class MainActivity : ComponentActivity() {
                     )
                 }
             }
+        }
+        pendingCropSave?.let { (source, croppedUri) ->
+            AlertDialog(
+                onDismissRequest = { pendingCropSave = null },
+                title = { Text("Сохранить кадрированную копию?") },
+                text = {
+                    Text(
+                        "Оригинал \"${source.name}\" останется без изменений. " +
+                            "Кадрированный вариант будет сохранён рядом как новый JPEG."
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            pendingCropSave = null
+                            uiScope.launch {
+                                val saved = saveCroppedCopy(source, croppedUri)
+                                if (saved) {
+                                    viewModel.refresh()
+                                } else {
+                                    Toast.makeText(
+                                        this@MainActivity,
+                                        "Не удалось сохранить кадрированную копию",
+                                        Toast.LENGTH_SHORT,
+                                    ).show()
+                                }
+                            }
+                        },
+                    ) {
+                        Text("Сохранить")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { pendingCropSave = null }) {
+                        Text("Отмена")
+                    }
+                },
+            )
         }
     }
 
