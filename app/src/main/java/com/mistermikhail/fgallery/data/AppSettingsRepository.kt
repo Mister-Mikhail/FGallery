@@ -16,6 +16,12 @@ class AppSettingsRepository(
     )
     val quickExifEnabled: StateFlow<Boolean> = _quickExifEnabled.asStateFlow()
 
+    private val _confirmMove = MutableStateFlow(preferences.getBoolean(KEY_CONFIRM_MOVE, false))
+    val confirmMove: StateFlow<Boolean> = _confirmMove.asStateFlow()
+
+    private val _confirmRename = MutableStateFlow(preferences.getBoolean(KEY_CONFIRM_RENAME, false))
+    val confirmRename: StateFlow<Boolean> = _confirmRename.asStateFlow()
+
     private val _sortModeName = MutableStateFlow(
         preferences.getString(KEY_SORT_MODE, DEFAULT_SORT_MODE) ?: DEFAULT_SORT_MODE
     )
