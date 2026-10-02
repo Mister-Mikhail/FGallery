@@ -3,6 +3,7 @@ package com.mistermikhail.fgallery
 import android.Manifest
 import android.app.Activity
 import android.app.RecoverableSecurityException
+import android.content.ContentUris
 import android.content.ContentValues
 import android.content.Intent
 import android.content.IntentSender
