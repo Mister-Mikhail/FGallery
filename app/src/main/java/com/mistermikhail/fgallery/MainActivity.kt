@@ -197,6 +197,12 @@ class MainActivity : ComponentActivity() {
             viewModel.onPermissionChanged(hasMediaPermission())
         }
 
+        fun writeTargetUri(item: MediaItem): Uri =
+            ContentUris.withAppendedId(
+                MediaStore.Files.getContentUri("external"),
+                item.id,
+            )
+
         fun executeWrite(operation: PendingWriteOperation): Boolean {
             return when (operation) {
                 is PendingWriteOperation.Rename -> {
@@ -220,12 +226,9 @@ class MainActivity : ComponentActivity() {
                         put(MediaStore.MediaColumns.DISPLAY_NAME, finalName)
                     }
 
-                    contentResolver.update(
-                        operation.item.uri,
-                        values,
-                        null,
-                        null,
-                    ) > 0
+                    val mediaStoreUri = writeTargetUri(operation.item)
+                    contentResolver.update(mediaStoreUri, values, null, null) > 0 ||
+                        contentResolver.update(operation.item.uri, values, null, null) > 0
                 }
 
                 is PendingWriteOperation.Move -> {
@@ -242,7 +245,9 @@ class MainActivity : ComponentActivity() {
                             val values = ContentValues().apply {
                                 put(MediaStore.MediaColumns.RELATIVE_PATH, normalized)
                             }
-                            contentResolver.update(item.uri, values, null, null) > 0
+                            val mediaStoreUri = writeTargetUri(item)
+                            contentResolver.update(mediaStoreUri, values, null, null) > 0 ||
+                                contentResolver.update(item.uri, values, null, null) > 0
                         }
                         .all { it }
                 }
@@ -263,6 +268,12 @@ class MainActivity : ComponentActivity() {
                     moveQuery = ""
                     moveDestinationAlbum = null
                     viewModel.refresh()
+                } else {
+                    Toast.makeText(
+                        this@MainActivity,
+                        "Не удалось завершить операцию",
+                        Toast.LENGTH_SHORT,
+                    ).show()
                 }
             }
         }
@@ -275,9 +286,18 @@ class MainActivity : ComponentActivity() {
 
             if (uris.isEmpty()) return
 
+            val needsConfirmation = when (operation) {
+                is PendingWriteOperation.Move -> state.confirmMove
+                is PendingWriteOperation.Rename -> state.confirmRename
+            }
+            if (!skipConfirmation && needsConfirmation) {
+                pendingWriteConfirmation = operation
+                return
+            }
+
             try {
-                // MediaStore-owned files can usually be renamed/moved directly. Only ask
-                // Android for consent when the direct write is actually rejected.
+                // Prefer a direct MediaStore.Files update. This avoids the system
+                // "modify file" dialog for files owned by the gallery database.
                 if (executeWrite(operation)) {
                     pendingWrite = null
                     pendingMoveItems = emptyList()
@@ -285,6 +305,20 @@ class MainActivity : ComponentActivity() {
                     moveDestinationAlbum = null
                     selectedIds = emptySet()
                     viewModel.refresh()
+                } else if (operation is PendingWriteOperation.Rename &&
+                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
+                ) {
+                    pendingWrite = operation
+                    val pendingIntent = MediaStore.createWriteRequest(contentResolver, uris)
+                    writeLauncher.launch(
+                        IntentSenderRequest.Builder(pendingIntent.intentSender).build()
+                    )
+                } else {
+                    Toast.makeText(
+                        this@MainActivity,
+                        "Не удалось переместить файл в выбранную папку",
+                        Toast.LENGTH_SHORT,
+                    ).show()
                 }
             } catch (securityException: SecurityException) {
                 val recoverable = securityException as? RecoverableSecurityException

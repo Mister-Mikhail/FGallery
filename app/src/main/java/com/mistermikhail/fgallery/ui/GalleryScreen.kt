@@ -954,8 +954,15 @@ private fun InlineVideoPreview(
             setMediaItem(PlayerMediaItem.fromUri(item.uri))
             volume = 0f
             repeatMode = Player.REPEAT_MODE_ONE
+            addListener(object : Player.Listener {
+                override fun onPlaybackStateChanged(playbackState: Int) {
+                    if (playbackState == Player.STATE_READY) {
+                        seekTo(750L)
+                        play()
+                    }
+                }
+            })
             prepare()
-            seekTo(750L)
             playWhenReady = true
         }
     }
