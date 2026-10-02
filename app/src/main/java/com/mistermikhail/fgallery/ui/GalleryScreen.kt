@@ -902,7 +902,7 @@ private fun MediaPreview(
     }
 
     when {
-        item.kind == MediaKind.VIDEO && livePreview -> {
+        false -> {
             InlineVideoPreview(
                 item = item,
                 modifier = modifier,
@@ -992,24 +992,38 @@ private fun VideoThumbnail(
     item: MediaItem,
     modifier: Modifier,
 ) {
-    val context = LocalContext.current
-    val frameMillis = if (item.durationMillis > 2_000L) {
-        item.durationMillis / 2L
+    val frame by produceState<Bitmap?>(
+        initialValue = null,
+        key1 = item.uri,
+        key2 = item.durationMillis,
+    ) {
+        value = withContext(Dispatchers.IO) {
+            runCatching {
+                MediaMetadataRetriever().use { retriever ->
+                    retriever.setDataSource(context, item.uri)
+                    val timeUs = (item.durationMillis / 2L).coerceAtLeast(0L) * 1_000L
+                    retriever.getFrameAtTime(
+                        timeUs,
+                        MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
+                    ) ?: retriever.getFrameAtTime(
+                        0L,
+                        MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
+                    )
+                }
+            }.getOrNull()
+        }
+    }
+
+    if (frame != null) {
+        androidx.compose.foundation.Image(
+            bitmap = frame!!.asImageBitmap(),
+            contentDescription = item.name,
+            contentScale = ContentScale.Crop,
+            modifier = modifier,
+        )
     } else {
-        1_000L
+        Box(
+            modifier = modifier.background(MaterialTheme.colorScheme.surfaceVariant),
+        )
     }
-
-    val request = remember(item.uri, frameMillis) {
-        ImageRequest.Builder(context)
-            .data(item.uri)
-            .videoFrameMillis(frameMillis)
-            .build()
-    }
-
-    AsyncImage(
-        model = request,
-        contentDescription = item.name,
-        contentScale = ContentScale.Crop,
-        modifier = modifier.background(MaterialTheme.colorScheme.surfaceVariant),
-    )
 }

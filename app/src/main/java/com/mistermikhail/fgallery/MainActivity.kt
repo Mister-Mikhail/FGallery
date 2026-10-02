@@ -329,19 +329,17 @@ class MainActivity : ComponentActivity() {
                 if (sender != null) {
                     pendingWrite = operation
                     writeLauncher.launch(IntentSenderRequest.Builder(sender).build())
-                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    runCatching {
-                        pendingWrite = operation
-                        val pendingIntent = MediaStore.createWriteRequest(
-                            contentResolver,
-                            uris,
-                        )
-                        writeLauncher.launch(
-                            IntentSenderRequest.Builder(pendingIntent.intentSender).build()
-                        )
-                    }.onFailure {
-                        pendingWrite = null
-                    }
+                } else {
+                    pendingWrite = null
+                    Toast.makeText(
+                        this@MainActivity,
+                        if (operation is PendingWriteOperation.Move) {
+                            "Android не разрешил перемещение этого файла"
+                        } else {
+                            "Android не разрешил изменение имени файла"
+                        },
+                        Toast.LENGTH_LONG,
+                    ).show()
                 }
             }
         }
