@@ -1,6 +1,9 @@
 name: Android CI
 
 on:
+  push:
+    branches:
+      - feature/quickpic-masonry-mvp
   pull_request:
     branches:
       - main
