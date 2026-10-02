@@ -105,6 +105,8 @@ fun GalleryScreen(
     onShowSettings: () -> Unit,
     onHideSettings: () -> Unit,
     onQuickExifChanged: (Boolean) -> Unit,
+    onConfirmMoveChanged: (Boolean) -> Unit,
+    onConfirmRenameChanged: (Boolean) -> Unit,
     onOpenRecycleBin: () -> Unit,
     livePreviewEnabled: Boolean,
     cleanupMode: Boolean,

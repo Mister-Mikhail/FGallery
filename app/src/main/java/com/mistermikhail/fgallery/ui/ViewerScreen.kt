@@ -419,6 +419,14 @@ private fun VideoPlayer(
     val player = remember(item.uri) {
         ExoPlayer.Builder(context).build().apply {
             setMediaItem(PlayerMediaItem.fromUri(item.uri))
+            addListener(object : Player.Listener {
+                override fun onPlaybackStateChanged(playbackState: Int) {
+                    if (playbackState == Player.STATE_READY) {
+                        seekTo(750L)
+                        play()
+                    }
+                }
+            })
             prepare()
             playWhenReady = false
             volume = 0f

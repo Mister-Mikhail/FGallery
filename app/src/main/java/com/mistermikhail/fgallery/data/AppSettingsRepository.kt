@@ -37,6 +37,16 @@ class AppSettingsRepository(
         _quickExifEnabled.value = enabled
     }
 
+    fun setConfirmMove(enabled: Boolean) {
+        preferences.edit().putBoolean(KEY_CONFIRM_MOVE, enabled).apply()
+        _confirmMove.value = enabled
+    }
+
+    fun setConfirmRename(enabled: Boolean) {
+        preferences.edit().putBoolean(KEY_CONFIRM_RENAME, enabled).apply()
+        _confirmRename.value = enabled
+    }
+
     fun setSortModeName(value: String) {
         preferences
             .edit()
@@ -73,6 +83,8 @@ class AppSettingsRepository(
     companion object {
         private const val PREFERENCES_NAME = "fgallery_settings"
         private const val KEY_QUICK_EXIF_ENABLED = "quick_exif_enabled"
+        private const val KEY_CONFIRM_MOVE = "confirm_move"
+        private const val KEY_CONFIRM_RENAME = "confirm_rename"
         private const val KEY_SORT_MODE = "sort_mode"
         private const val KEY_RECYCLE_BIN_URIS = "recycle_bin_uris"
         private const val DEFAULT_SORT_MODE = "DATE_DESC"

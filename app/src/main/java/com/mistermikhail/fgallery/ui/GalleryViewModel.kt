@@ -49,6 +49,8 @@ data class GalleryUiState(
     val sortMode: SortMode = SortMode.DATE_DESC,
     val selectedAlbum: String? = null,
     val quickExifEnabled: Boolean = true,
+    val confirmMove: Boolean = false,
+    val confirmRename: Boolean = false,
     val settingsVisible: Boolean = false,
     val recycleBinVisible: Boolean = false,
     val recycleBinUris: Set<String> = emptySet(),
@@ -347,6 +349,10 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
 
     fun setFilter(filter: MediaFilter) =
         _uiState.update { derive(it.copy(filter = filter)) }
+
+    fun setConfirmMove(enabled: Boolean) = settingsRepository.setConfirmMove(enabled)
+
+    fun setConfirmRename(enabled: Boolean) = settingsRepository.setConfirmRename(enabled)
 
     fun setSortMode(sortMode: SortMode) {
         _uiState.update { derive(it.copy(sortMode = sortMode)) }

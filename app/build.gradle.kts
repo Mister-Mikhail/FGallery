@@ -46,6 +46,8 @@ dependencies {
     implementation("androidx.exifinterface:exifinterface:1.3.7")
     implementation("androidx.media3:media3-exoplayer:1.9.3")
     implementation("androidx.media3:media3-ui:1.9.3")
+    implementation("androidx.media3:media3-transformer:1.9.3")
+    implementation("androidx.media3:media3-effect:1.9.3")
 
     debugImplementation("androidx.compose.ui:ui-tooling:1.7.6")
 }

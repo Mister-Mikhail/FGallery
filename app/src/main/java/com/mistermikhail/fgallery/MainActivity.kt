@@ -95,6 +95,7 @@ class MainActivity : ComponentActivity() {
         var cleanupMode by remember { mutableStateOf(false) }
         var selectedIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
         var pendingWrite by remember { mutableStateOf<PendingWriteOperation?>(null) }
+        var pendingWriteConfirmation by remember { mutableStateOf<PendingWriteOperation?>(null) }
         var pendingPermanentDeleteUris by remember { mutableStateOf<Set<String>>(emptySet()) }
         var pendingMoveItems by remember { mutableStateOf<List<MediaItem>>(emptyList()) }
         var moveQuery by remember { mutableStateOf("") }
@@ -266,7 +267,7 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        fun requestWrite(operation: PendingWriteOperation) {
+        fun requestWrite(operation: PendingWriteOperation, skipConfirmation: Boolean = false) {
             val uris = when (operation) {
                 is PendingWriteOperation.Rename -> listOf(operation.item.uri)
                 is PendingWriteOperation.Move -> operation.items.map { it.uri }
@@ -676,6 +677,8 @@ class MainActivity : ComponentActivity() {
                     onShowSettings = viewModel::showSettings,
                     onHideSettings = viewModel::hideSettings,
                     onQuickExifChanged = viewModel::setQuickExifEnabled,
+                    onConfirmMoveChanged = viewModel::setConfirmMove,
+                    onConfirmRenameChanged = viewModel::setConfirmRename,
                     livePreviewEnabled = current == null && pendingMoveItems.isEmpty(),
                     onOpenRecycleBin = {
                         selectedIds = emptySet()
@@ -752,6 +755,24 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+        pendingWriteConfirmation?.let { operation ->
+            val isMove = operation is PendingWriteOperation.Move
+            AlertDialog(
+                onDismissRequest = { pendingWriteConfirmation = null },
+                title = { Text(if (isMove) "Переместить файл?" else "Переименовать файл?") },
+                text = { Text(if (isMove) "Файл будет перемещён в выбранную папку." else "Имя файла будет изменено.") },
+                confirmButton = {
+                    TextButton(onClick = {
+                        pendingWriteConfirmation = null
+                        requestWrite(operation, skipConfirmation = true)
+                    }) { Text(if (isMove) "Переместить" else "Переименовать") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { pendingWriteConfirmation = null }) { Text("Отмена") }
+                },
+            )
+        }
+
         pendingCropSave?.let { (source, croppedUri) ->
             AlertDialog(
                 onDismissRequest = { pendingCropSave = null },

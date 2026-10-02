@@ -2,6 +2,7 @@ package com.mistermikhail.fgallery.data
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.media.MediaMetadataRetriever
 import android.os.Build
 import android.provider.MediaStore
 import android.util.Size
@@ -80,7 +81,25 @@ object ThumbnailCache {
         val jpegQuality = if (highQuality) 96 else 90
 
         val bitmap = runCatching {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            if (item.kind == MediaKind.VIDEO) {
+                val retriever = MediaMetadataRetriever()
+                try {
+                    retriever.setDataSource(context, item.uri)
+                    val times = longArrayOf(
+                        (item.durationMillis / 2L).coerceAtLeast(0L),
+                        1_000L,
+                        0L,
+                    )
+                    times.asSequence().mapNotNull { time ->
+                        retriever.getFrameAtTime(
+                            time * 1_000L,
+                            MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
+                        )
+                    }.firstOrNull()
+                } finally {
+                    retriever.release()
+                }
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 context.contentResolver.loadThumbnail(
                     item.uri,
                     Size(edge, edge),
