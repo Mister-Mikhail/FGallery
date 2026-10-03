@@ -1,32 +1,26 @@
 # FGallery
 
-FGallery is a local-first Android gallery inspired by the speed and visual restraint of QuickPic, with a more flexible photo layout and a modern viewer.
+FGallery is a fast, local-first Android gallery for browsing folders and viewing photos, videos, and other visual media. The interaction baseline is QuickPic: compact controls, fast navigation, and content-first screens. The app adds uniform and variable-size mosaic grids.
 
-## Current direction
+## Product goals
 
-- Kotlin + Jetpack Compose.
-- QuickPic-like minimal interface: content first, no permanent bottom navigation.
-- Two grid modes: **Mosaic** (variable-height tiles) and **Uniform** (classic square grid).
-- Local photo/video loading through `MediaStore`.
-- RAW recognition for DNG, CR2/CR3, NEF, ARW, ORF, RW2, RAF, PEF and more.
-- Search by file name and album.
-- Sort media by date, name, or file size.
-- Filters for all media, photos, video and RAW.
-- Single tap opens the viewer.
-- Double tap on the opened media item sends it to Android system Trash on Android 11+.
-- Full-screen image viewer with pinch zoom and pan; double tap is reserved for the Trash shortcut.
-- EXIF / media details sheet from the opened-media viewer (camera, lens, exposure, ISO, GPS when present, file data, and video technical metadata).
-- Optional **Quick EXIF** overlay: hidden when media opens, shown only after a single tap together with viewer controls, and disableable in Settings without removing access to full details.
+- Kotlin and Jetpack Compose.
+- Folder-oriented browsing with uniform and dense mosaic grid modes.
+- Smooth scrolling, quick viewer entry/exit, image swipe, pinch zoom, and bounded pan.
+- Common image formats, animated GIF, RAW discovery/previews, video, and 360° video.
+- Reliable file operations with clear Android permission and confirmation flows.
+- Full media details and EXIF when metadata exists.
+- No required account, cloud service, or network connection for core gallery use.
 
-## Active branch
+## Source of truth
 
-`feature/quickpic-masonry-mvp`
+- [Product specification](docs/PRODUCT_SPEC.md) — agreed features and product behavior.
+- [UX rules](docs/UX_RULES.md) — gestures, navigation, and presentation.
+- [Open bugs and release blockers](docs/OPEN_BUGS.md) — latest user-tested status and pass criteria.
+- [Project instructions](AGENTS.md) — workflow, verification, and APK delivery rules.
 
-## Next milestones
+Read these documents before implementation. User-reported failures remain open until the documented checks pass on a device.
 
-1. Video playback with Media3.
-2. Album/folder browser in the QuickPic style.
-3. Better RAW preview fallback for formats the platform decoder cannot render.
-4. Date grouping and sorting controls.
-5. Favorites, hidden folders and recycle-bin management.
-6. Viewer polish: preloading, metadata, share/edit actions and tiled rendering for very large images.
+## Active implementation
+
+The current Android app implementation and open PR are on `feature/quickpic-masonry-mvp`. The default `main` branch is currently only the initial project scaffold. Check the current branch and CI status before building or distributing an APK.
