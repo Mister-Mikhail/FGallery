@@ -67,3 +67,34 @@ Do not close a blocker based only on compilation, screenshots of the happy path,
 - any acceptance check that remains untested.
 
 The current GitHub default branch is only the initial project scaffold. The active app work is in `feature/quickpic-masonry-mvp` and PR #2; check the repository before changing branches or treating the PR as merged.
+
+
+## Additional requirements recovered from earlier FGallery chats
+
+These requirements remain in scope even if a later APK or PR description claimed completion. Reopen them when the user reports a regression.
+
+### Move picker and file operation details
+- Destination selection must expose all folders, including empty folders, with search and create-folder actions. “Other folder” and “Move here” controls must stay above system navigation insets.
+- The operation must execute after destination selection. Default move confirmation is off; a Settings toggle can enable it. If enabled, the prompt says “Перемещение”.
+- Preserve selection while an operation is running and until success or user cancellation. Never show success if the URI operation did not complete.
+- Rename is single-file only, defaults to no extra confirmation, and any prompt says “Переименование”.
+
+### Image/video edit details
+- Image crop must provide a functional editor and save result. If overwriting the original, explicitly ask first. RAW crop produces a JPEG copy.
+- Video crop has two paths: save as a separate file, or replace the original with a separate warning/confirmation.
+- Share uses Android Sharesheet; Samsung Quick Share should be reachable through that sheet.
+
+### Viewer, video, and performance regressions to watch
+- Ordinary double-tap zoom cycle is Fit → medium → maximum → Fit; pinch zoom remains available. Cleanup is a separate toggle, globally available on album root and inside folders.
+- Video playback controls and file actions are synchronized. Show initially and after a tap, then hide together after 1.5 seconds.
+- Do not let audio from a neighboring/precomposed video leak while a photo or different video is open.
+- User reported jerky first folder entry, delayed thumbnail population, pixelated large DSLR previews/zoom, loss of scroll position, cleanup viewer closing instead of advancing, and incorrect full-screen rotation behavior. Retest these when changing caches, preloading, viewer paging, or orientation code.
+- Large JPEG/RAW support must be tested with high-resolution camera files including Canon 5DSR where available. Use cached preview tiers/background decoding; do not block scrolling with frame extraction or file I/O.
+- Earlier user requirement asks muted live previews, one video at a time, rotating about every 5 seconds. Latest black-square failure remains open; satisfy the requested preview behavior without audio leakage and with a useful fallback.
+
+### Future backlog after release blockers
+- Favorites; hidden folders/media; date grouping/navigation; complete recycle-bin screen (restore, multi-select, Select All, Clear Bin with Android protected permanent-delete confirmation); share and edit/open-in-editor actions; fast sharp decoding of very large stills and RAW.
+- DWG and Phase One support are explicitly deferred. Do not add them to the current scope unless the user changes that instruction.
+
+## Current build gate (2026-10-03)
+The latest GitHub Actions run for head SHA `f9132e060449a8ac7d9d3eb6e4bf0a9f1664ccde` completed with `failure`; no APK artifact was uploaded. The PR merge build failed in Kotlin compilation at `app/src/main/java/com/mistermikhail/fgallery/ui/GalleryScreen.kt:995` with unresolved references including `produceState`, `Bitmap`, `withContext`, `Dispatchers`, `MediaMetadataRetriever`, `asImageBitmap`, and related inferred types. Treat this as an open P0 build blocker. Inspect actual file imports and code before changing it; rebuild and verify CI on the resulting exact SHA before distributing an APK.
