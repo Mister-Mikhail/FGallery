@@ -2,6 +2,7 @@ pluginManagement {
     repositories {
         google()
         mavenCentral()
+        maven("https://jitpack.io") { content { includeGroup("com.github.dburckh"); includeGroup("com.github.dburckh.AndroidLibRaw") } }
         gradlePluginPortal()
     }
 }
@@ -10,7 +11,9 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        maven("https://jitpack.io") { content { includeGroup("com.github.dburckh"); includeGroup("com.github.dburckh.AndroidLibRaw") } }
     }
 }
 rootProject.name = "FGallery"
 include(":app")
+

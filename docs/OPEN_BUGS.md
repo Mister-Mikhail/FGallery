@@ -155,3 +155,14 @@ All items remain open until repeatable acceptance checks pass.
 
 
 0.2.3 first verification: commit 4fd861d built successfully with unit checks, but Android TIFF decoding crashed the process (5 earlier emulator checks passed). Do not treat that artifact as verified. The third-party JNI wrapper installs process-wide SIGSEGV handlers incompatible with ART. Replacement under verification uses libtiff directly through a small JNI bridge, bounded strip/tile decoding and orientation handling, without that wrapper or signal handlers. Added real PDF/SVG gestures, EXIF JPEG pixel-scale and video crop/trim/export checks.
+
+
+## Latest S23 device report — after 0.2.3 (2026-10-04)
+The user report supersedes emulator success.
+- Confirmed on device: double-tap cycle restarts after pinch-to-fit; PDF/SVG zoom no longer crashes; transparent PNG no longer retains a static duplicate.
+- Still open: first/second double-tap magnification differs from expected 30%/90%; clarify percent basis while retaining agreed gesture cycle.
+- TIFF discovery/thumbnail/opening work, but zoom detail is incomplete. Canon/Nikon/Samsung RAW zoom is pixelated; Phase One files now show a thumbnail only. Full-resolution RAW decoding is required (user now explicitly includes Phase One viewing).
+- Video corner handles work, but save controls extend beyond the display. Check compact/landscape/large-font layouts and actually persist output on device.
+- Icon is larger; user asks for slightly tighter artwork coverage while retaining corner brackets.
+- One PDF does not open despite working in other apps. Existing generic error incorrectly suggests protection without establishing it; implement precise errors and a compatible rendering fallback.
+- User requires SD-card and USB/external drive browsing and file operations, including mounted volumes and persisted document-tree access where direct storage access is unavailable. Current primary-folder picker and copy destination do not constitute complete removable-storage support.

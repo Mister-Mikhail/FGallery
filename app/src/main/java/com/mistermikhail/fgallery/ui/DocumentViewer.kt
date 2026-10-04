@@ -66,8 +66,12 @@ internal fun PdfViewer(item: MediaItem, onTap: () -> Unit) {
             kotlinx.coroutines.awaitCancellation()
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
-        } catch (_: Exception) {
-            error = "Не удалось открыть PDF. Проверьте доступ к файлу; защищённый PDF нужно открыть в другом приложении."
+        } catch (e: Exception) {
+            error = when {
+                e is SecurityException -> "Нет доступа к PDF. Выберите файл повторно или разрешите доступ к накопителю."
+                e.javaClass.simpleName.contains("Password", true) -> "Для открытия PDF нужен пароль."
+                else -> "Не удалось прочитать PDF. ${e.localizedMessage.orEmpty()}"
+            }
         } finally {
             withContext(Dispatchers.IO + NonCancellable) { session?.close() }
         }

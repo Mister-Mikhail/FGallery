@@ -78,7 +78,10 @@ class TiffDecoder(private val result: SourceFetchResult) : Decoder {
 internal object TiffNative {
     init {
         System.loadLibrary("tiff")
+        System.loadLibrary("tiffconverter")
         System.loadLibrary("fgallery_tiff")
     }
     external fun decode(path: String, edge: Int): IntArray?
+    external fun metadata(path: String): IntArray?
+    external fun writePng(source: String, destination: String): Boolean
 }

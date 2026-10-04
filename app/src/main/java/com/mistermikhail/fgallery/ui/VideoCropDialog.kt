@@ -156,12 +156,12 @@ internal fun VideoCropDialog(item: MediaItem, onDismiss: () -> Unit, onExported:
             error = "Не удалось начать экспорт: ${e.localizedMessage}"
         }
     }
-    Dialog(onDismissRequest = ::cancel, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(Modifier.fillMaxSize().systemBarsPadding()) {
+    Dialog(onDismissRequest = ::cancel, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+        Surface(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
             Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                     TextButton(onClick = ::cancel) { Text("Отмена") }
-                    Text("Кадрировать видео", style = MaterialTheme.typography.titleMedium)
+                    Text("Кадрировать видео", style = MaterialTheme.typography.titleMedium, maxLines = 1, modifier = Modifier.weight(1f).padding(horizontal = 8.dp), overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                     TextButton(enabled = !exporting && clipDuration > 0, onClick = {
                         if (playing) player.pause() else {
                             if (player.currentPosition < (window.start * clipDuration).toLong() || player.currentPosition >= (window.end * clipDuration).toLong()) player.seekTo((window.start * clipDuration).toLong())
@@ -172,8 +172,8 @@ internal fun VideoCropDialog(item: MediaItem, onDismiss: () -> Unit, onExported:
                 Text(item.name, maxLines = 1, style = MaterialTheme.typography.bodySmall)
                 BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().padding(vertical = 12.dp).background(Color.Black), contentAlignment = Alignment.Center) {
                     val ratio = aspect.takeIf { it.isFinite() && it > 0f } ?: 1f
-                    val videoModifier = if (maxWidth / maxHeight > ratio) Modifier.height(maxHeight).aspectRatio(ratio)
-                        else Modifier.width(maxWidth).aspectRatio(ratio)
+                    val videoWidth = minOf(maxWidth, maxHeight * ratio)
+                    val videoModifier = Modifier.size(videoWidth, videoWidth / ratio)
                     Box(videoModifier) {
                         AndroidView(factory = { ctx ->
                             (android.view.LayoutInflater.from(ctx).inflate(com.mistermikhail.fgallery.R.layout.player_view_preview, null, false) as PlayerView).apply {

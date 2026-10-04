@@ -4,6 +4,23 @@
 #include <vector>
 #include <algorithm>
 #include <memory>
+#include <cstdio>
+#include <setjmp.h>
+
+struct PngApi {
+    void* library = dlopen("libtiffconverter.so", RTLD_NOW | RTLD_LOCAL);
+    void* (*create)(const char*, void*, void*, void*) = symbol<decltype(create)>("png_create_write_struct");
+    void* (*info)(void*) = symbol<decltype(info)>("png_create_info_struct");
+    void (*init)(void*, FILE*) = symbol<decltype(init)>("png_init_io");
+    void (*header)(void*, void*, uint32_t, uint32_t, int, int, int, int, int) = symbol<decltype(header)>("png_set_IHDR");
+    void (*writeInfo)(void*, void*) = symbol<decltype(writeInfo)>("png_write_info");
+    void (*row)(void*, const unsigned char*) = symbol<decltype(row)>("png_write_row");
+    void (*end)(void*, void*) = symbol<decltype(end)>("png_write_end");
+    void (*destroy)(void**, void**) = symbol<decltype(destroy)>("png_destroy_write_struct");
+    jmp_buf* (*jump)(void*, void (*)(jmp_buf, int), size_t) = symbol<decltype(jump)>("png_set_longjmp_fn");
+    template<class T> T symbol(const char* name) { return library ? reinterpret_cast<T>(dlsym(library, name)) : nullptr; }
+    bool valid() const { return create && info && init && header && writeInfo && row && end && destroy && jump; }
+};
 
 // Use libtiff directly. The third-party Android wrapper installs process-wide
 // SIGSEGV handlers that conflict with ART; none of those entry points are used.
@@ -78,4 +95,90 @@ Java_com_mistermikhail_fgallery_data_TiffNative_decode(JNIEnv* env, jobject, jst
         if (output) env->SetIntArrayRegion(output, 0, static_cast<jsize>(pixels.size()), pixels.data());
         return output;
     } catch (...) { return nullptr; }
+}
+
+extern "C" JNIEXPORT jintArray JNICALL
+Java_com_mistermikhail_fgallery_data_TiffNative_metadata(JNIEnv* env, jobject, jstring path) {
+    static TiffApi api;
+    if (!api.valid()) return nullptr;
+    const char* text = env->GetStringUTFChars(path, nullptr);
+    if (!text) return nullptr;
+    void* image = api.open(text, "r");
+    env->ReleaseStringUTFChars(path, text);
+    if (!image) return nullptr;
+    std::unique_ptr<void, decltype(api.close)> owner(image, api.close);
+    uint32_t width = 0, height = 0; uint16_t orientation = 1;
+    api.get(image, 256, &width); api.get(image, 257, &height); api.get(image, 274, &orientation);
+    jint values[] = {static_cast<jint>(width), static_cast<jint>(height), orientation};
+    auto output = env->NewIntArray(3);
+    if (output) env->SetIntArrayRegion(output, 0, 3, values);
+    return output;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_mistermikhail_fgallery_data_TiffNative_writePng(JNIEnv* env, jobject, jstring source, jstring destination) {
+    static TiffApi tiff; static PngApi png;
+    if (!tiff.valid() || !png.valid()) return JNI_FALSE;
+    const char* input = env->GetStringUTFChars(source, nullptr);
+    if (!input) return JNI_FALSE;
+    void* image = tiff.open(input, "r");
+    env->ReleaseStringUTFChars(source, input);
+    if (!image) return JNI_FALSE;
+    std::unique_ptr<void, decltype(tiff.close)> owner(image, tiff.close);
+    uint32_t width = 0, height = 0;
+    tiff.get(image, 256, &width); tiff.get(image, 257, &height);
+    if (!width || !height || width > 100000 || height > 100000) return JNI_FALSE;
+    tiff.set(image, 274, 1); // The original orientation is preserved as PNG EXIF by Kotlin.
+    const char* output = env->GetStringUTFChars(destination, nullptr);
+    if (!output) return JNI_FALSE;
+    FILE* file = fopen(output, "wb");
+    env->ReleaseStringUTFChars(destination, output);
+    if (!file) return JNI_FALSE;
+    void* writer = png.create("1.6.0", nullptr, nullptr, nullptr);
+    void* info = writer ? png.info(writer) : nullptr;
+    if (!writer || !info) { if (writer) png.destroy(&writer, &info); fclose(file); return JNI_FALSE; }
+    std::vector<uint32_t> block, band;
+    auto* jump = png.jump(writer, longjmp, sizeof(jmp_buf));
+    if (!jump || setjmp(*jump)) { png.destroy(&writer, &info); fclose(file); return JNI_FALSE; }
+    bool success = false;
+    try {
+        png.init(writer, file);
+        png.header(writer, info, width, height, 8, 6, 0, 0, 0);
+        png.writeInfo(writer, info);
+        if (tiff.tiled(image)) {
+            uint32_t tw = 0, th = 0;
+            tiff.get(image, 322, &tw); tiff.get(image, 323, &th);
+            if (tw && th && uint64_t(width) * th + uint64_t(tw) * th <= 12000000) {
+                block.resize(size_t(tw) * th); band.resize(size_t(width) * th);
+                success = true;
+                for (uint32_t y = 0; y < height && success; y += th) {
+                    uint32_t rows = std::min(th, height - y);
+                    for (uint32_t x = 0; x < width && success; x += tw) {
+                        if (!tiff.tile(image, x, y, block.data())) { success = false; break; }
+                        uint32_t cols = std::min(tw, width - x);
+                        for (uint32_t row = 0; row < rows; ++row)
+                            std::copy_n(block.data() + size_t(th - 1 - row) * tw, cols, band.data() + size_t(row) * width + x);
+                    }
+                    if (success) for (uint32_t row = 0; row < rows; ++row)
+                        png.row(writer, reinterpret_cast<unsigned char*>(band.data() + size_t(row) * width));
+                }
+            }
+        } else {
+            uint32_t rows = height;
+            tiff.get(image, 278, &rows); rows = std::min(rows, height);
+            if (rows && uint64_t(width) * rows <= 12000000) {
+                block.resize(size_t(width) * rows);
+                success = true;
+                for (uint32_t y = 0; y < height && success; y += rows) {
+                    if (!tiff.strip(image, y, block.data())) { success = false; break; }
+                    uint32_t actual = std::min(rows, height - y);
+                    for (uint32_t row = 0; row < actual; ++row)
+                        png.row(writer, reinterpret_cast<unsigned char*>(block.data() + size_t(actual - 1 - row) * width));
+                }
+            }
+        }
+        if (success) png.end(writer, info);
+    } catch (...) { success = false; }
+    png.destroy(&writer, &info); fclose(file);
+    return success ? JNI_TRUE : JNI_FALSE;
 }

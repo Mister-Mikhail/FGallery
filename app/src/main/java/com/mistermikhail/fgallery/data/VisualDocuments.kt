@@ -18,6 +18,7 @@ class PdfSession(context: Context, uri: Uri) : Closeable {
     private val file = File.createTempFile("pdf_", ".pdf", context.cacheDir)
     private var descriptor: ParcelFileDescriptor? = null
     private var renderer: PdfRenderer? = null
+    private var compatible: io.legere.pdfiumandroid.PdfDocument? = null
 
     val pageCount: Int
     init {
@@ -26,8 +27,15 @@ class PdfSession(context: Context, uri: Uri) : Closeable {
                 FileOutputStream(file).use { output -> input.copyTo(output) }
             } ?: error("Нет доступа к PDF")
             descriptor = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
-            renderer = PdfRenderer(descriptor!!)
-            pageCount = renderer!!.pageCount
+            try {
+                renderer = PdfRenderer(descriptor!!)
+            } catch (_: Exception) {
+                descriptor?.close()
+                descriptor = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
+                compatible = io.legere.pdfiumandroid.PdfiumCore(context).newDocument(descriptor!!, "")
+            }
+            pageCount = renderer?.pageCount ?: compatible!!.getPageCount()
+            require(pageCount > 0) { "PDF не содержит страниц" }
         } catch (e: Exception) {
             close()
             throw e
@@ -36,6 +44,20 @@ class PdfSession(context: Context, uri: Uri) : Closeable {
 
     @Synchronized
     fun render(index: Int, edge: Int): Bitmap {
+        if (renderer == null) {
+            val document = compatible ?: error("PDF закрыт")
+            return requireNotNull(document.openPage(index)).use { page ->
+                val width = page.getPageWidthPoint().coerceAtLeast(1)
+                val height = page.getPageHeightPoint().coerceAtLeast(1)
+                val scale = edge.toFloat() / maxOf(width, height)
+                val bitmap = Bitmap.createBitmap((width * scale).toInt().coerceAtLeast(1),
+                    (height * scale).toInt().coerceAtLeast(1), Bitmap.Config.ARGB_8888)
+                try {
+                    page.renderPageBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, true)
+                    bitmap
+                } catch (e: Exception) { bitmap.recycle(); throw e }
+            }
+        }
         val pdf = renderer ?: error("PDF закрыт")
         return pdf.openPage(index).use { page ->
             val scale = edge.toFloat() / maxOf(page.width, page.height)
@@ -57,6 +79,8 @@ class PdfSession(context: Context, uri: Uri) : Closeable {
 
     @Synchronized
     override fun close() {
+        compatible?.close()
+        compatible = null
         renderer?.close()
         renderer = null
         descriptor?.close()

@@ -184,6 +184,7 @@ fun ViewerScreen(
                     onSingleTap = ::toggleChrome,
                     cleanupMode = cleanupMode,
                     onTrash = { onTrash(item) },
+                    active = activePage,
                 )
             }
         }
@@ -565,9 +566,22 @@ internal fun TiledZoomableImage(
     onSingleTap: () -> Unit,
     cleanupMode: Boolean,
     onTrash: () -> Unit,
+    active: Boolean = true,
 ) {
     val context = LocalContext.current
     var imageFailed by remember(item.uri) { mutableStateOf(false) }
+    var fullSource by remember(item.uri) { mutableStateOf<java.io.File?>(null) }
+    var fullError by remember(item.uri) { mutableStateOf<String?>(null) }
+    val needsFullSource = item.kind == MediaKind.RAW || com.mistermikhail.fgallery.data.TiffImages.isTiff(item.name, item.mimeType)
+    LaunchedEffect(item.uri, active) {
+        if (needsFullSource && active && fullSource == null) {
+            try {
+                fullSource = com.mistermikhail.fgallery.data.FullResolutionFiles.prepare(context, item)
+                imageFailed = false
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (e: Exception) { fullError = e.localizedMessage ?: "Не удалось прочитать исходные данные" }
+        }
+    }
     var maximum by remember(item.uri) { mutableFloatStateOf(8f) }
 
     val zoomableState = rememberZoomableState(
@@ -609,7 +623,7 @@ internal fun TiledZoomableImage(
                 return@DoubleClickToZoomListener
             }
 
-            if (!imageState.isImageDisplayed || !state.contentTransformation.isSpecified || state.isAnimationRunning) return@DoubleClickToZoomListener
+            if ((needsFullSource && fullSource == null) || !imageState.isImageDisplayed || !state.contentTransformation.isSpecified || state.isAnimationRunning) return@DoubleClickToZoomListener
             val transformation = state.contentTransformation
             val fit = maxOf(transformation.scaleMetadata.initialScale.scaleX, transformation.scaleMetadata.initialScale.scaleY)
             val current = maxOf(transformation.scale.scaleX, transformation.scale.scaleY)
@@ -623,7 +637,7 @@ internal fun TiledZoomableImage(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center,
     ) {
-        if (cachedPreview != null && !imageState.isImageDisplayed) {
+        if (cachedPreview != null && (!imageState.isImageDisplayed || (needsFullSource && fullSource == null))) {
             AsyncImage(
                 model = cachedPreview,
                 contentDescription = item.name,
@@ -633,9 +647,13 @@ internal fun TiledZoomableImage(
         }
 
         if (imageFailed && cachedPreview == null) Text("Не удалось открыть изображение. Формат может не поддерживаться декодером устройства.", color = Color.White, modifier = Modifier.padding(24.dp))
+        if (needsFullSource && fullSource == null) {
+            if (fullError == null && active) CircularProgressIndicator(Modifier.align(Alignment.BottomCenter).padding(24.dp))
+            fullError?.let { Text("Не удалось загрузить полный размер: $it", color = Color.White, modifier = Modifier.align(Alignment.BottomCenter).padding(24.dp)) }
+        }
         ZoomableAsyncImage(
-            model = coil3.request.ImageRequest.Builder(context).data(if (imageFailed && cachedPreview != null) cachedPreview else item.uri)
-                .memoryCacheKey("${item.uri}/${item.dateModifiedMillis}/${if (imageFailed) "fallback" else "source"}")
+            model = coil3.request.ImageRequest.Builder(context).data(fullSource ?: if (needsFullSource) cachedPreview else if (imageFailed && cachedPreview != null) cachedPreview else item.uri)
+                .memoryCacheKey("${item.uri}/${item.dateModifiedMillis}/${if (fullSource != null) "full" else if (imageFailed || needsFullSource) "fallback" else "source"}")
                 .listener(onError = { _, _ -> imageFailed = true })
                 .build(),
             contentDescription = item.name,
@@ -646,7 +664,7 @@ internal fun TiledZoomableImage(
             alpha = 1f,
             modifier = Modifier.fillMaxSize().semantics {
                 stateDescription = "Zoom ${(zoomableState.contentTransformation.scaleMetadata.userZoom * 100).toInt()}%"
-                this[ViewerImageReady] = imageState.isImageDisplayed
+                this[ViewerImageReady] = imageState.isImageDisplayed && (!needsFullSource || fullSource != null)
             }.testTag("viewer-image"),
         )
     }
