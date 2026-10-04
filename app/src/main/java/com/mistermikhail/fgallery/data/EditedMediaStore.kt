@@ -11,8 +11,14 @@ class EditedMediaStore(private val context: Context) {
     private val resolver = context.contentResolver
 
     fun saveCopy(source: MediaItem, edited: Uri, mime: String, extension: String): Uri {
-        if (StorageFolders.hasFileAccess()) return saveCopyFile(source, edited, extension)
-        val collection = if (mime.startsWith("video/")) MediaStore.Video.Media.EXTERNAL_CONTENT_URI else MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+        if (StorageAccess.file(context, source)?.parentFile?.canWrite() == true) return saveCopyFile(source, edited, extension)
+        if (android.provider.DocumentsContract.isDocumentUri(context, source.uri) || source.folderTarget.startsWith("content://")) {
+            val parent = StorageAccess.parent(context, source)
+            val destination = StorageAccess.create(context, parent, "${source.name.substringBeforeLast('.')}_crop_${java.util.UUID.randomUUID().toString().take(8)}.$extension", mime)
+            try { copy(edited, destination); return destination }
+            catch (e: Exception) { runCatching { StorageAccess.delete(context, destination) }; throw e }
+        }
+        val collection = if (mime.startsWith("video/")) MediaStore.Video.Media.getContentUri(source.storageId) else MediaStore.Images.Media.getContentUri(source.storageId)
         val values = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, "${source.name.substringBeforeLast('.')}_crop_${System.currentTimeMillis()}.$extension")
             put(MediaStore.MediaColumns.MIME_TYPE, mime)
@@ -32,7 +38,7 @@ class EditedMediaStore(private val context: Context) {
 
     /** Permission is obtained before this call. Keep a complete backup until verified. */
     fun replace(source: MediaItem, edited: Uri, mime: String, extension: String) {
-        if (StorageFolders.hasFileAccess()) {
+        if (StorageAccess.file(context, source)?.canWrite() == true) {
             replaceFile(source, edited, extension)
             return
         }
@@ -46,7 +52,10 @@ class EditedMediaStore(private val context: Context) {
             } ?: error("Не удалось создать резервную копию")
             originalTouched = true
             copy(edited, source.uri)
-            check(resolver.update(source.uri, ContentValues().apply {
+            if (android.provider.DocumentsContract.isDocumentUri(context, source.uri)) {
+                val same = source.name.substringAfterLast('.', "").lowercase().let { it == extension || (extension == "jpg" && it == "jpeg") }
+                if (!same) check(android.provider.DocumentsContract.renameDocument(resolver, source.uri, "${source.name.substringBeforeLast('.')}.$extension") != null)
+            } else check(resolver.update(source.uri, ContentValues().apply {
                 put(MediaStore.MediaColumns.MIME_TYPE, mime)
                 put(MediaStore.MediaColumns.DISPLAY_NAME, "${source.name.substringBeforeLast('.')}.$extension")
             }, null, null) == 1)
@@ -60,9 +69,7 @@ class EditedMediaStore(private val context: Context) {
     }
 
     private fun replaceFile(source: MediaItem, edited: Uri, extension: String) {
-        val path = if (source.uri.scheme == "file") source.uri.path else resolver.query(source.uri, arrayOf(MediaStore.MediaColumns.DATA), null, null, null)?.use {
-            if (it.moveToFirst()) it.getString(0) else null
-        }
+        val path = StorageAccess.file(context, source)?.path
         val original = File(path ?: error("Не найден оригинал")).canonicalFile
         val parent = original.parentFile ?: error("Не найдена папка оригинала")
         val originalExtension = original.extension.lowercase()
@@ -94,9 +101,7 @@ class EditedMediaStore(private val context: Context) {
     }
 
     private fun saveCopyFile(source: MediaItem, edited: Uri, extension: String): Uri {
-        val path = if (source.uri.scheme == "file") source.uri.path else resolver.query(source.uri, arrayOf(MediaStore.MediaColumns.DATA), null, null, null)?.use {
-            if (it.moveToFirst()) it.getString(0) else null
-        }
+        val path = StorageAccess.file(context, source)?.path
         val original = File(path ?: error("Не найден исходный файл")).canonicalFile
         val parent = original.parentFile ?: error("Не найдена папка")
         val destination = File(parent, "${original.nameWithoutExtension}_crop_${java.util.UUID.randomUUID().toString().take(8)}.$extension")

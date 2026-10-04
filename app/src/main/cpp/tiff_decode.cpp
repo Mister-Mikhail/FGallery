@@ -9,6 +9,7 @@
 
 struct PngApi {
     void* library = dlopen("libtiffconverter.so", RTLD_NOW | RTLD_LOCAL);
+    const char* (*version)(void*) = symbol<decltype(version)>("png_get_libpng_ver");
     void* (*create)(const char*, void*, void*, void*) = symbol<decltype(create)>("png_create_write_struct");
     void* (*info)(void*) = symbol<decltype(info)>("png_create_info_struct");
     void (*init)(void*, FILE*) = symbol<decltype(init)>("png_init_io");
@@ -19,7 +20,7 @@ struct PngApi {
     void (*destroy)(void**, void**) = symbol<decltype(destroy)>("png_destroy_write_struct");
     jmp_buf* (*jump)(void*, void (*)(jmp_buf, int), size_t) = symbol<decltype(jump)>("png_set_longjmp_fn");
     template<class T> T symbol(const char* name) { return library ? reinterpret_cast<T>(dlsym(library, name)) : nullptr; }
-    bool valid() const { return create && info && init && header && writeInfo && row && end && destroy && jump; }
+    bool valid() const { return version && create && info && init && header && writeInfo && row && end && destroy && jump; }
 };
 
 // Use libtiff directly. The third-party Android wrapper installs process-wide
@@ -134,7 +135,7 @@ Java_com_mistermikhail_fgallery_data_TiffNative_writePng(JNIEnv* env, jobject, j
     FILE* file = fopen(output, "wb");
     env->ReleaseStringUTFChars(destination, output);
     if (!file) return JNI_FALSE;
-    void* writer = png.create("1.6.0", nullptr, nullptr, nullptr);
+    void* writer = png.create(png.version(nullptr), nullptr, nullptr, nullptr);
     void* info = writer ? png.info(writer) : nullptr;
     if (!writer || !info) { if (writer) png.destroy(&writer, &info); fclose(file); return JNI_FALSE; }
     std::vector<uint32_t> block, band;

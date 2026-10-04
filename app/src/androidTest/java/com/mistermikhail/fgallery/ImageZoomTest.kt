@@ -18,6 +18,7 @@ import com.mistermikhail.fgallery.data.MediaKind
 import com.mistermikhail.fgallery.data.ThumbnailCache
 import com.mistermikhail.fgallery.ui.TiledZoomableImage
 import com.mistermikhail.fgallery.ui.ViewerImageReady
+import com.mistermikhail.fgallery.ui.ViewerZoomRange
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -55,7 +56,12 @@ class ImageZoomTest {
         rule.waitUntil(15000) { runCatching { node.fetchSemanticsNode().config[ViewerImageReady] }.getOrDefault(false) }
         node.performTouchInput { doubleClick(Offset(width * .8f, height * .7f)) }
         rule.waitForIdle()
-        node.assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Zoom 130%"))
+        run {
+            val (fit, maximum) = node.fetchSemanticsNode().config[ViewerZoomRange]
+            val actual = node.fetchSemanticsNode().config[SemanticsProperties.StateDescription].removePrefix("Zoom ").removeSuffix("%").toInt()
+            val expected = (fit + (maximum - fit) * .30f) / fit * 100f
+            assertTrue("30% of scale range: $actual vs $expected", kotlin.math.abs(actual - expected) < 2f)
+        }
         node.performTouchInput { doubleClick(Offset(width * .8f, height * .7f)) }
         rule.waitForIdle()
         val pixels = node.captureToImage().toPixelMap()
@@ -72,7 +78,7 @@ class ImageZoomTest {
         val bitmap = Bitmap.createBitmap(4000, 3000, Bitmap.Config.ARGB_8888)
         val canvas = android.graphics.Canvas(bitmap)
         canvas.drawColor(android.graphics.Color.WHITE)
-        canvas.drawRect(1500f, 1000f, 2500f, 2000f, android.graphics.Paint().apply { color = android.graphics.Color.RED })
+        canvas.drawRect(1900f, 1400f, 2100f, 1600f, android.graphics.Paint().apply { color = android.graphics.Color.RED })
         file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.JPEG, 95, it) }
         bitmap.recycle()
         androidx.exifinterface.media.ExifInterface(file).apply {
@@ -88,11 +94,13 @@ class ImageZoomTest {
             return (0 until pixels.width).count { x -> val c = pixels[x, pixels.height / 2]; c.red > .8f && c.green < .2f }
         }
         val before = redWidth()
-        assertTrue(before > 20)
+        assertTrue(before > 10)
+        val (fit, maximum) = node.fetchSemanticsNode().config[ViewerZoomRange]
+        val expected = (fit + (maximum - fit) * .30f) / fit
         node.performTouchInput { doubleClick(center) }
         rule.waitForIdle()
         val ratio = redWidth().toFloat() / before
-        assertTrue("First zoom must change visible pixels by 30%, got $ratio", ratio in 1.25f..1.35f)
+        assertTrue("First zoom must change visible pixels by 30%, got $ratio, expected $expected", kotlin.math.abs(ratio - expected) < expected * .08f)
         node.performTouchInput {
             pinch(start0 = center - Offset(100f, 0f), end0 = center - Offset(10f, 0f), start1 = center + Offset(100f, 0f), end1 = center + Offset(10f, 0f), durationMillis = 600)
         }
@@ -100,7 +108,12 @@ class ImageZoomTest {
         node.assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Zoom 100%"))
         node.performTouchInput { doubleClick(center) }
         rule.waitForIdle()
-        node.assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Zoom 130%"))
+        run {
+            val (fit, maximum) = node.fetchSemanticsNode().config[ViewerZoomRange]
+            val actual = node.fetchSemanticsNode().config[SemanticsProperties.StateDescription].removePrefix("Zoom ").removeSuffix("%").toInt()
+            val expected = (fit + (maximum - fit) * .30f) / fit * 100f
+            assertTrue("30% of scale range: $actual vs $expected", kotlin.math.abs(actual - expected) < 2f)
+        }
     }
 
 }

@@ -18,6 +18,10 @@ data class MediaItem(
     val relativePath: String,
     val sizeBytes: Long,
     val dateModifiedMillis: Long = 0L,
+    val storageId: String = "external_primary",
+    val storageName: String = "Внутренняя память",
+    val folderTarget: String = "",
+    val sourcePath: String = "",
 ) {
     val uriKey: String = uri.toString()
 

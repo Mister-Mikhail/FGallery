@@ -3,6 +3,8 @@ package com.mistermikhail.fgallery.ui
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.mistermikhail.fgallery.data.DriveLibrary
+import com.mistermikhail.fgallery.data.DriveRecycleBin
 import com.mistermikhail.fgallery.data.DocumentLibrary
 import com.mistermikhail.fgallery.data.AppSettingsRepository
 import com.mistermikhail.fgallery.data.MediaItem
@@ -55,9 +57,12 @@ data class GalleryUiState(
     val settingsVisible: Boolean = false,
     val recycleBinVisible: Boolean = false,
     val recycleBinUris: Set<String> = emptySet(),
+    val physicalBinUris: Set<String> = emptySet(),
 )
 
 class GalleryViewModel(application: Application) : AndroidViewModel(application) {
+    private val driveBin = DriveRecycleBin(application)
+    private var refreshJob: kotlinx.coroutines.Job? = null
     private val repository = MediaRepository(application)
     private val settingsRepository = AppSettingsRepository(application)
     private val _uiState = MutableStateFlow(GalleryUiState())
@@ -120,7 +125,7 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
      */
     private fun derive(state: GalleryUiState): GalleryUiState {
         val available = state.allItems.asSequence()
-            .filterNot { it.uriKey in state.recycleBinUris }
+            .filterNot { it.uriKey in (state.recycleBinUris + state.physicalBinUris) }
             .filter { item ->
                 when (state.filter) {
                     MediaFilter.ALL -> true
@@ -147,7 +152,7 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
         )
 
         val recycle = sortItems(
-            state.allItems.filter { it.uriKey in state.recycleBinUris },
+            state.allItems.filter { it.uriKey in (state.recycleBinUris + state.physicalBinUris) },
             state.sortMode,
         )
 
@@ -195,23 +200,23 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun refresh() {
-
-        viewModelScope.launch {
+        refreshJob?.cancel()
+        refreshJob = viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
 
-            val items = runCatching {
+            val normal = try {
                 val media = if (_uiState.value.hasPermission) repository.loadMedia() else emptyList()
-                media + DocumentLibrary(getApplication()).load()
-            }.getOrDefault(emptyList())
-
-            settingsRepository.retainRecycleBin(
-                items.mapTo(mutableSetOf()) { it.uriKey }
-            )
+                val documents = DocumentLibrary(getApplication()).load()
+                (media + documents + DriveLibrary.load(getApplication(), media + documents)).distinctBy { it.uriKey }
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { _uiState.value.allItems.filterNot { it.uriKey in _uiState.value.physicalBinUris } }
+            val recycled = driveBin.load()
+            val items = normal + recycled
 
             _uiState.update { current ->
                 derive(
                     current.copy(
                         allItems = items,
+                        physicalBinUris = recycled.mapTo(mutableSetOf()) { it.uriKey },
                         isLoading = false,
                     )
                 )
@@ -277,7 +282,7 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
     private fun prewarmAlbum(name: String) {
         val snapshot = _uiState.value
         val items = snapshot.allItems.filter {
-            it.album == name && it.uriKey !in snapshot.recycleBinUris
+            it.album == name && it.uriKey !in (snapshot.recycleBinUris + snapshot.physicalBinUris)
         }
 
         viewModelScope.launch(Dispatchers.IO) {
@@ -301,23 +306,23 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun moveToRecycleBin(items: List<MediaItem>) {
-        if (items.isEmpty()) return
-        settingsRepository.addToRecycleBin(
-            items.map { it.uriKey }
-        )
+    suspend fun moveToRecycleBin(items: List<MediaItem>) {
+        try { driveBin.trash(items) } finally { refresh() }
     }
 
-    fun restoreFromRecycleBin(items: List<MediaItem>) {
-        if (items.isEmpty()) return
-        settingsRepository.removeFromRecycleBin(
-            items.map { it.uriKey }
-        )
+    suspend fun restoreFromRecycleBin(items: List<MediaItem>) {
+        try {
+            driveBin.restore(items)
+            settingsRepository.removeFromRecycleBin(items.map { it.uriKey })
+        } finally { refresh() }
     }
 
     fun onPermanentlyDeleted(uris: Collection<String>) {
-        settingsRepository.removeFromRecycleBin(uris)
-        refresh()
+        viewModelScope.launch {
+            driveBin.deleted(uris)
+            settingsRepository.removeFromRecycleBin(uris)
+            refresh()
+        }
     }
 
     fun openRecycleBin() {

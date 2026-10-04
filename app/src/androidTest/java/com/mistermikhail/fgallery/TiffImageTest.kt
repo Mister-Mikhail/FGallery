@@ -53,7 +53,7 @@ class TiffImageTest {
         rule.waitUntil(15000) { runCatching { node.fetchSemanticsNode().config[ViewerImageReady] }.getOrDefault(false) }
         node.performTouchInput { doubleClick(center) }
         rule.waitForIdle()
-        node.assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Zoom 130%"))
+        node.assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Zoom 310%"))
         node.performTouchInput { doubleClick(center) }
         rule.waitForIdle()
         val maximum = node.fetchSemanticsNode().config[SemanticsProperties.StateDescription].removePrefix("Zoom ").removeSuffix("%").toInt()

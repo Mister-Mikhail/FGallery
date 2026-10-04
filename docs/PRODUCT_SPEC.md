@@ -258,3 +258,7 @@ Use the user's 1000267911.jpg artwork itself: metallic gold/silver F on black, w
 - Video spatial crop uses draggable corner handles. Time trim uses a filmstrip and pauses/seeks the real preview at the moved boundary. Save copy/original choices authorize the operation once.
 - TIFF discovery, thumbnails and viewer use native TIFF decoding with bounded bitmap memory.
 - Launcher icon uses the complete supplied artwork without another adaptive foreground inset.
+
+
+### User clarification for 0.2.4
+Device: Samsung Galaxy S23, Android 16. Zoom stops are 30% and 90% of the linear scale range between fit and configured maximum: fit + (maximum − fit) ×0.30 / ×0.90, then fit. This supersedes all earlier fit ×1.30 wording. SD cards and USB drives must refresh the library when connected/removed, and Cleanup must create a separate on-volume recycle bin for each drive. Disconnected drive records must survive removal and reappear when reconnected.

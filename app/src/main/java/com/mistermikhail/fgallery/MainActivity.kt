@@ -62,6 +62,9 @@ import com.mistermikhail.fgallery.ui.ViewerScreen
 import com.mistermikhail.fgallery.ui.theme.FGalleryTheme
 import com.mistermikhail.fgallery.data.MediaKind
 import com.mistermikhail.fgallery.data.EditedMediaStore
+import com.mistermikhail.fgallery.data.DriveLibrary
+import com.mistermikhail.fgallery.data.StorageAccess
+import com.mistermikhail.fgallery.data.StorageFolder
 import com.mistermikhail.fgallery.data.DocumentLibrary
 import com.mistermikhail.fgallery.ui.VideoCropDialog
 import kotlinx.coroutines.Dispatchers
@@ -119,18 +122,20 @@ class MainActivity : ComponentActivity() {
         var pendingAccessWrite by remember { mutableStateOf<PendingWriteOperation?>(null) }
         var waitingAccessWrite by remember { mutableStateOf<PendingWriteOperation?>(null) }
         var createFolderVisible by remember { mutableStateOf(false) }
-        var createFolderPath by remember { mutableStateOf("Pictures/Новая папка") }
+        var createFolderPath by remember { mutableStateOf("Новая папка") }
         var folderRevision by remember { mutableStateOf(0) }
+        var directDeleteItems by remember { mutableStateOf<List<MediaItem>>(emptyList()) }
         var operationBusy by remember { mutableStateOf(false) }
         var operationMessage by remember { mutableStateOf("Операция с файлами") }
         var videoCropItem by remember { mutableStateOf<MediaItem?>(null) }
         val uiScope = rememberCoroutineScope()
-        val extraFolders by produceState<List<String>>(emptyList(), pendingMoveItems.isNotEmpty(), folderRevision) {
-            if (pendingMoveItems.isNotEmpty()) value = withContext(Dispatchers.IO) { StorageFolders.primaryFolders() }
+        val extraFolders by produceState<List<StorageFolder>>(emptyList(), pendingMoveItems.isNotEmpty(), folderRevision) {
+            if (pendingMoveItems.isNotEmpty()) value = withContext(Dispatchers.IO) { DriveLibrary.folders(this@MainActivity) }
         }
-        fun emptyAlbum(path: String): AlbumSummary = AlbumSummary(
-            name = path.trimEnd('/').substringAfterLast('/'),
-            cover = MediaItem(-path.hashCode().toLong(), Uri.EMPTY, "", null, MediaKind.IMAGE, 0L, 0, 0, 0L, "", path, 0L),
+        fun emptyAlbum(folder: StorageFolder): AlbumSummary = AlbumSummary(
+            name = folder.name,
+            cover = MediaItem(StorageAccess.stableId(folder.target), Uri.EMPTY, "", null, MediaKind.IMAGE, 0L, 0, 0, 0L, "", "", 0L,
+                storageId = folder.storageId, folderTarget = folder.target),
             count = 0, newestDateMillis = 0L, totalSizeBytes = 0L,
         )
 
@@ -208,7 +213,7 @@ class MainActivity : ComponentActivity() {
             viewModel.onPermissionChanged(hasMediaPermission())
         }
 
-        fun executeWrite(operation: PendingWriteOperation) {
+        suspend fun executeWrite(operation: PendingWriteOperation) {
             when (operation) {
                 is PendingWriteOperation.Replace -> EditedMediaStore(this@MainActivity).replace(operation.item, operation.editedUri, operation.mime, operation.extension)
                 is PendingWriteOperation.Rename -> {
@@ -220,12 +225,15 @@ class MainActivity : ComponentActivity() {
                     check(contentResolver.update(operation.item.uri, values, null, null) == 1) { "Переименование не выполнено" }
                 }
                 is PendingWriteOperation.Move -> {
-                    val path = operation.relativePath.trim().replace('\\', '/').trim('/') + "/"
-                    require(path != "/" && path.split('/').none { it == ".." || it == "." }) { "Недопустимая папка" }
+                    val rawPath = operation.relativePath.trim()
+                    val qualified = rawPath.startsWith("/") || rawPath.startsWith("content://")
+                    val path = if (qualified) rawPath else rawPath.replace('\\', '/').trim('/') + "/"
+                    require(path.isNotBlank() && path != "/") { "Недопустимая папка" }
                     var firstFailure: Exception? = null
                     val remaining = mutableListOf<MediaItem>()
                     for (item in operation.items) {
                         try {
+                            if (qualified) { StorageAccess.move(this@MainActivity, item, path); continue }
                             if (item.relativePath == path) continue
                             if (StorageFolders.hasFileAccess()) {
                                 StorageFolders.move(this@MainActivity, item, path)
@@ -285,7 +293,7 @@ class MainActivity : ComponentActivity() {
                 is PendingWriteOperation.Replace -> false // Explicit overwrite dialog already accepted.
             }
             if (!skipConfirmation && needsConfirmation) { pendingWriteConfirmation = operation; return }
-            if (operation is PendingWriteOperation.Move && Build.VERSION.SDK_INT >= 30 && !StorageFolders.hasFileAccess()) {
+            if (operation is PendingWriteOperation.Move && !operation.relativePath.startsWith("content://") && Build.VERSION.SDK_INT >= 30 && !StorageFolders.hasFileAccess()) {
                 pendingAccessWrite = operation
                 return
             }
@@ -511,26 +519,18 @@ class MainActivity : ComponentActivity() {
                 )
             }
 
-            val documentId = runCatching { DocumentsContract.getTreeDocumentId(treeUri) }.getOrDefault("")
-            if (documentId.startsWith("primary:") && documentId.substringAfter(':').isNotBlank()) {
-                requestWrite(PendingWriteOperation.Move(items, documentId.substringAfter(':') + "/"))
-                return@rememberLauncherForActivityResult
-            }
-            uiScope.launch {
-                operationBusy = true
-                operationMessage = "Перемещение в выбранную папку"
-                val copied = copyItemsToTree(items, treeUri)
-                operationBusy = false
-                if (copied == null) {
-                    Toast.makeText(
-                        this@MainActivity,
-                        "Не удалось скопировать файлы в выбранную папку",
-                        Toast.LENGTH_SHORT,
-                    ).show()
-                } else {
-                    finishTreeMove(items, copied)
-                }
-            }
+            StorageAccess.grant(this@MainActivity, treeUri)
+            folderRevision++
+            requestWrite(PendingWriteOperation.Move(items,
+                DocumentsContract.buildDocumentUriUsingTree(treeUri, DocumentsContract.getTreeDocumentId(treeUri)).toString()))
+        }
+        val storagePickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { tree ->
+            if (tree != null) runCatching {
+                contentResolver.takePersistableUriPermission(tree, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+                StorageAccess.grant(this@MainActivity, tree)
+                folderRevision++
+                viewModel.refresh()
+            }.onFailure { notify("Не удалось сохранить доступ: ${it.localizedMessage}") }
         }
 
         fun beginMove(items: List<MediaItem>) {
@@ -576,21 +576,36 @@ class MainActivity : ComponentActivity() {
                 null
             }
 
-            viewModel.moveToRecycleBin(items)
-            selectedItem = if (keepViewerOpen) nextViewerItem else null
-            selectedIds = emptySet()
+            if (operationBusy) return
+            uiScope.launch {
+                operationBusy = true
+                operationMessage = "Перемещение в корзину"
+                try {
+                    viewModel.moveToRecycleBin(items)
+                    selectedItem = if (keepViewerOpen) nextViewerItem else null
+                    selectedIds = emptySet()
+                } catch (e: Exception) { notify("Не удалось переместить в корзину: ${e.localizedMessage}") }
+                finally { operationBusy = false }
+            }
         }
 
         fun restoreFromRecycleBin(items: List<MediaItem>) {
             if (items.isEmpty()) return
 
-            viewModel.restoreFromRecycleBin(items)
-            selectedIds = emptySet()
+            if (operationBusy) return
+            uiScope.launch {
+                operationBusy = true
+                operationMessage = "Восстановление"
+                try { viewModel.restoreFromRecycleBin(items); selectedIds = emptySet() }
+                catch (e: Exception) { notify("Не удалось восстановить: ${e.localizedMessage}") }
+                finally { operationBusy = false }
+            }
         }
 
         fun deleteForever(items: List<MediaItem>) {
             if (items.isEmpty()) return
 
+            if (items.any { it.uri.scheme == "file" || DocumentsContract.isDocumentUri(this@MainActivity, it.uri) }) { directDeleteItems = items; return }
             val uriStrings = items.mapTo(mutableSetOf()) { it.uri.toString() }
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -636,6 +651,51 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        DisposableEffect(Unit) {
+            var refreshSignal: kotlinx.coroutines.Job? = null
+            fun changed() { refreshSignal?.cancel(); refreshSignal = uiScope.launch { kotlinx.coroutines.delay(300); folderRevision++; viewModel.refresh() } }
+            val receiver = object : android.content.BroadcastReceiver() {
+                override fun onReceive(context: android.content.Context?, intent: Intent?) { changed() }
+            }
+            val filter = android.content.IntentFilter().apply {
+                addAction(Intent.ACTION_MEDIA_MOUNTED); addAction(Intent.ACTION_MEDIA_UNMOUNTED)
+                addAction(Intent.ACTION_MEDIA_EJECT); addAction(Intent.ACTION_MEDIA_REMOVED); addAction(Intent.ACTION_MEDIA_BAD_REMOVAL)
+                addDataScheme("file")
+            }
+            androidx.core.content.ContextCompat.registerReceiver(this@MainActivity, receiver, filter, androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED)
+            val manager = getSystemService(android.os.storage.StorageManager::class.java)
+            val callback = if (Build.VERSION.SDK_INT >= 30) object : android.os.storage.StorageManager.StorageVolumeCallback() {
+                override fun onStateChanged(volume: android.os.storage.StorageVolume) { changed() }
+            } else null
+            if (Build.VERSION.SDK_INT >= 30 && callback != null) manager.registerStorageVolumeCallback(mainExecutor, callback)
+            val observer = object : android.database.ContentObserver(android.os.Handler(android.os.Looper.getMainLooper())) {
+                override fun onChange(selfChange: Boolean) { changed() }
+            }
+            contentResolver.registerContentObserver(MediaStore.Files.getContentUri("external"), true, observer)
+            onDispose { refreshSignal?.cancel(); contentResolver.unregisterContentObserver(observer); unregisterReceiver(receiver); if (Build.VERSION.SDK_INT >= 30 && callback != null) manager.unregisterStorageVolumeCallback(callback) }
+        }
+        if (directDeleteItems.isNotEmpty()) AlertDialog(
+            onDismissRequest = { directDeleteItems = emptyList() },
+            title = { Text("Удалить навсегда?") },
+            text = { Text("Файлы: ${directDeleteItems.size}. Восстановить их будет нельзя.") },
+            confirmButton = { TextButton(onClick = {
+                val deleting = directDeleteItems; directDeleteItems = emptyList()
+                uiScope.launch {
+                    operationBusy = true
+                    val removed = mutableListOf<String>()
+                    try {
+                        withContext(Dispatchers.IO) { for (item in deleting) {
+                            check(StorageAccess.delete(this@MainActivity, item.uri)) { "Не удалось удалить ${item.name}" }
+                            removed.add(item.uriKey)
+                        } }
+                        selectedIds = emptySet()
+                    } catch (e: Exception) { notify(e.localizedMessage ?: "Удаление не завершено") }
+                    finally { viewModel.onPermanentlyDeleted(removed); operationBusy = false }
+                }
+            }) { Text("Удалить") } },
+            dismissButton = { TextButton(onClick = { directDeleteItems = emptyList() }) { Text("Отмена") } },
+        )
+
         val current = selectedItem
 
         BackHandler(enabled = current != null) {
@@ -675,7 +735,7 @@ class MainActivity : ComponentActivity() {
         Box(modifier = Modifier.fillMaxSize()) {
             if (pendingMoveItems.isNotEmpty()) {
                 MoveDestinationScreen(
-                    albums = state.albums + extraFolders.filterNot { path -> state.albums.any { it.cover.relativePath == path } }.map(::emptyAlbum),
+                    albums = state.albums + extraFolders.filterNot { folder -> state.albums.any { it.cover.folderTarget == folder.target } }.map(::emptyAlbum),
                     movingCount = pendingMoveItems.size,
                     query = moveQuery,
                     selectedAlbum = moveDestinationAlbum,
@@ -691,13 +751,13 @@ class MainActivity : ComponentActivity() {
                         requestWrite(
                             PendingWriteOperation.Move(
                                 items = pendingMoveItems,
-                                relativePath = album.cover.relativePath,
+                                relativePath = album.cover.folderTarget.ifBlank { album.cover.relativePath },
                             )
                         )
                     },
                     onChooseOtherFolder = { folderPickerLauncher.launch(null) },
                     onCreateFolder = {
-                        if (StorageFolders.hasFileAccess()) createFolderVisible = true
+                        if (StorageFolders.hasFileAccess() || moveDestinationAlbum?.cover?.folderTarget?.startsWith("content://") == true) createFolderVisible = true
                         else openFileAccessSettings()
                     },
                 )
@@ -730,6 +790,7 @@ class MainActivity : ComponentActivity() {
                         permissionLauncher.launch(requiredPermissions())
                     },
                     onRefresh = viewModel::refresh,
+                    onAddStorage = { storagePickerLauncher.launch(null) },
                     onImportDocuments = { documentsLauncher.launch(arrayOf("application/pdf", "image/svg+xml", "image/tiff", "image/x-tiff")) },
                     onManageFileAccess = { openFileAccessSettings() },
                     onOpenAlbum = { album ->
@@ -856,14 +917,18 @@ class MainActivity : ComponentActivity() {
         if (createFolderVisible) AlertDialog(
             onDismissRequest = { createFolderVisible = false },
             title = { Text("Создать папку") },
-            text = { OutlinedTextField(createFolderPath, { createFolderPath = it }, label = { Text("Путь на основном накопителе") }) },
+            text = { OutlinedTextField(createFolderPath, { createFolderPath = it }, label = { Text("Имя папки") }) },
             confirmButton = { TextButton(onClick = {
                 uiScope.launch {
-                    val result = withContext(Dispatchers.IO) { runCatching { StorageFolders.create(createFolderPath) } }
+                    val result = withContext(Dispatchers.IO) { runCatching {
+                        val parent = moveDestinationAlbum?.cover?.folderTarget?.takeIf { it.isNotBlank() }
+                            ?: android.os.Environment.getExternalStorageDirectory().path
+                        StorageAccess.directory(this@MainActivity, parent, createFolderPath.trim())
+                    } }
                     result.onSuccess { path ->
                         createFolderVisible = false
                         folderRevision++
-                        moveDestinationAlbum = emptyAlbum(path)
+                        moveDestinationAlbum = emptyAlbum(StorageFolder(path, createFolderPath.trim(), moveDestinationAlbum?.cover?.storageId ?: "external_primary"))
                     }.onFailure { notify(it.localizedMessage ?: "Не удалось создать папку") }
                 }
             }) { Text("Создать") } },

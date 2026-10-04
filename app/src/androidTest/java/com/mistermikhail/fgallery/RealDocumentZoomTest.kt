@@ -36,7 +36,7 @@ class RealDocumentZoomTest {
         node.assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Zoom 100%"))
         node.performTouchInput { doubleClick(center) }
         rule.waitForIdle()
-        node.assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Zoom 130%"))
+        node.assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Zoom 310%"))
     }
 
     @Test fun realPdfPinchReleaseAndScroll() {

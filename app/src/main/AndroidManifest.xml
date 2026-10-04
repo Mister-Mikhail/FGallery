@@ -11,8 +11,8 @@
         android:name=".FGalleryApplication"
         android:requestLegacyExternalStorage="true"
         android:allowBackup="true"
-        android:icon="@drawable/fgallery_logo"
-        android:roundIcon="@drawable/fgallery_logo"
+        android:icon="@drawable/fgallery_icon_full"
+        android:roundIcon="@drawable/fgallery_icon_full"
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/Theme.FGallery">

@@ -166,3 +166,7 @@ The user report supersedes emulator success.
 - Icon is larger; user asks for slightly tighter artwork coverage while retaining corner brackets.
 - One PDF does not open despite working in other apps. Existing generic error incorrectly suggests protection without establishing it; implement precise errors and a compatible rendering fallback.
 - User requires SD-card and USB/external drive browsing and file operations, including mounted volumes and persisted document-tree access where direct storage access is unavailable. Current primary-folder picker and copy destination do not constitute complete removable-storage support.
+
+
+### User clarification for 0.2.4
+Device: Samsung Galaxy S23, Android 16. Zoom stops are 30% and 90% of the linear scale range between fit and configured maximum: fit + (maximum − fit) ×0.30 / ×0.90, then fit. This supersedes all earlier fit ×1.30 wording. SD cards and USB drives must refresh the library when connected/removed, and Cleanup must create a separate on-volume recycle bin for each drive. Disconnected drive records must survive removal and reappear when reconnected.

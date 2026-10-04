@@ -4,8 +4,8 @@ package com.mistermikhail.fgallery.ui
 internal fun nextDoubleTapZoom(current: Float, fit: Float, maximum: Float): Float {
     val base = fit.takeIf { it.isFinite() && it > 0f } ?: 1f
     val max = maximum.takeIf { it.isFinite() && it >= base } ?: base * 8f
-    val first = (base * 1.30f).coerceAtMost(max)
-    val second = (max * .90f).coerceAtLeast(first)
+    val first = base + (max - base) * .30f
+    val second = base + (max - base) * .90f
     val relative = current / base
     return when {
         !relative.isFinite() || relative <= 1.02f -> first

@@ -14,8 +14,7 @@ import java.util.concurrent.TimeUnit
 object StorageFolders {
     fun hasFileAccess(): Boolean = Build.VERSION.SDK_INT >= 30 && Environment.isExternalStorageManager()
 
-    fun roots(context: Context): List<File> = (listOf(Environment.getExternalStorageDirectory()) +
-        context.getExternalFilesDirs(null).mapNotNull { it?.absolutePath?.substringBefore("/Android/")?.let(::File) }).distinctBy { it.absolutePath }
+    fun roots(context: Context): List<File> = StorageAccess.mounted(context).mapNotNull { it.directory }
 
     fun primaryFolders(): List<String> {
         if (!hasFileAccess()) return emptyList()

@@ -3,6 +3,8 @@ package com.mistermikhail.fgallery.ui
 import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
 import android.net.Uri
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
@@ -158,7 +160,9 @@ internal fun VideoCropDialog(item: MediaItem, onDismiss: () -> Unit, onExported:
     }
     Dialog(onDismissRequest = ::cancel, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         Surface(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
-            Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
+            BoxWithConstraints(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
+            val footerLimit = maxHeight * .25f
+            Column(Modifier.fillMaxSize()) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                     TextButton(onClick = ::cancel) { Text("Отмена") }
                     Text("Кадрировать видео", style = MaterialTheme.typography.titleMedium, maxLines = 1, modifier = Modifier.weight(1f).padding(horizontal = 8.dp), overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
@@ -189,6 +193,7 @@ internal fun VideoCropDialog(item: MediaItem, onDismiss: () -> Unit, onExported:
                         CropFrame(crop, !exporting) { crop = it }
                     }
                 }
+                Column(Modifier.fillMaxWidth().heightIn(max = footerLimit).verticalScroll(rememberScrollState())) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text(videoTime((clipDuration * window.start).toLong()), style = MaterialTheme.typography.labelMedium)
                     Text(videoTime(shownMillis), style = MaterialTheme.typography.labelMedium)
@@ -197,10 +202,12 @@ internal fun VideoCropDialog(item: MediaItem, onDismiss: () -> Unit, onExported:
                 TrimTimeline(window, clipDuration, frames, shownMillis, !exporting, ::seekBoundary)
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
                 if (exporting) LinearProgressIndicator(Modifier.fillMaxWidth())
-                Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { player.pause(); export(false) }, enabled = !exporting && clipDuration > 0, modifier = Modifier.weight(1f)) { Text("Сохранить копию") }
-                    OutlinedButton(onClick = { player.pause(); export(true) }, enabled = !exporting && clipDuration > 0, modifier = Modifier.weight(1f)) { Text("Заменить оригинал") }
                 }
+                Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = { player.pause(); export(false) }, enabled = !exporting && clipDuration > 0, modifier = Modifier.weight(1f).testTag("video-save-copy")) { Text("Сохранить копию", maxLines = 2) }
+                    OutlinedButton(onClick = { player.pause(); export(true) }, enabled = !exporting && clipDuration > 0, modifier = Modifier.weight(1f).testTag("video-save-original")) { Text("Заменить оригинал", maxLines = 2) }
+                }
+            }
             }
         }
     }

@@ -97,6 +97,7 @@ fun GalleryScreen(
     onRequestPermission: () -> Unit,
     onRefresh: () -> Unit,
     onImportDocuments: () -> Unit,
+    onAddStorage: () -> Unit,
     onManageFileAccess: () -> Unit,
     onOpenAlbum: (String) -> Unit,
     onBackToAlbums: () -> Unit,
@@ -347,6 +348,10 @@ fun GalleryScreen(
                                     DropdownMenuItem(
                                         text = { Text("Доступ ко всем файлам…") },
                                         onClick = { apply(onManageFileAccess) },
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Подключить папку / накопитель…") },
+                                        onClick = { apply(onAddStorage) },
                                     )
                                     DropdownMenuItem(
                                         text = { Text("Добавить PDF / SVG…") },

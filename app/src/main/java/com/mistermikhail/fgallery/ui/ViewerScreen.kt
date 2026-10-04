@@ -558,6 +558,7 @@ private fun VideoPlayer(
 
 }
 
+internal val ViewerZoomRange = SemanticsPropertyKey<Pair<Float, Float>>("ViewerZoomRange")
 internal val ViewerImageReady = SemanticsPropertyKey<Boolean>("ViewerImageReady")
 
 @Composable
@@ -664,6 +665,8 @@ internal fun TiledZoomableImage(
             alpha = 1f,
             modifier = Modifier.fillMaxSize().semantics {
                 stateDescription = "Zoom ${(zoomableState.contentTransformation.scaleMetadata.userZoom * 100).toInt()}%"
+                val initial = zoomableState.contentTransformation.scaleMetadata.initialScale
+                this[ViewerZoomRange] = maxOf(initial.scaleX, initial.scaleY) to zoomableState.zoomSpec.maximum.factor
                 this[ViewerImageReady] = imageState.isImageDisplayed && (!needsFullSource || fullSource != null)
             }.testTag("viewer-image"),
         )

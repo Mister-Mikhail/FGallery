@@ -54,12 +54,15 @@ class DocumentLibrary(private val context: Context) {
                 val modified = local?.lastModified() ?: DocumentFile.fromSingleUri(context, uri)?.lastModified() ?: 0L
                 val documentId = runCatching { DocumentsContract.getDocumentId(uri) }.getOrDefault("")
                 val folder = if (local != null) StorageFolders.roots(context).firstOrNull { local.path.startsWith(it.path + "/") }?.let { local.parentFile?.relativeTo(it)?.invariantSeparatorsPath }.orEmpty() else documentId.substringAfter(':', "").substringBeforeLast('/', "")
+                val root = StorageAccess.mounted(context).firstOrNull { local != null && local.path.startsWith(it.directory!!.path + "/") }
                 MediaItem(
                     id = stableDocumentId(value), uri = uri, name = name, mimeType = mime,
                     kind = kind, dateTakenMillis = modified, width = 0, height = 0,
-                    durationMillis = 0, album = folder.substringAfterLast('/').ifBlank { "Документы" },
+                    durationMillis = 0, album = folder.substringAfterLast('/').ifBlank { "Документы" }.let { name -> if (root != null && root.id != "external_primary") "${root.name} · $name" else name },
                     relativePath = folder.takeIf { it.isNotBlank() }?.plus("/").orEmpty(),
                     sizeBytes = size, dateModifiedMillis = modified,
+                    storageId = root?.id ?: "external_primary", storageName = root?.name ?: "Документы",
+                    sourcePath = local?.path.orEmpty(), folderTarget = local?.parent.orEmpty(),
                 )
             }.getOrNull()
         }

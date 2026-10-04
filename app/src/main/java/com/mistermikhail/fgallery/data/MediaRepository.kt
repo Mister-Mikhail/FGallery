@@ -23,10 +23,15 @@ class MediaRepository(private val context: Context) {
         }
     }
 
-    private fun queryMedia(trashedOnly: Boolean): List<MediaItem> {
+    private fun queryMedia(trashedOnly: Boolean): List<MediaItem> = MediaStore.getExternalVolumeNames(context).flatMap { volume ->
+        runCatching { queryVolume(volume, trashedOnly) }.getOrDefault(emptyList())
+    }
+
+    private fun queryVolume(volume: String, trashedOnly: Boolean): List<MediaItem> {
         val resolver = context.contentResolver
-        val collection = MediaStore.Files.getContentUri("external")
+        val collection = MediaStore.Files.getContentUri(volume)
         val projection = arrayOf(
+            MediaStore.MediaColumns.DATA,
             MediaStore.Files.FileColumns._ID,
             MediaStore.Files.FileColumns.MEDIA_TYPE,
             MediaStore.MediaColumns.DISPLAY_NAME,
@@ -69,6 +74,9 @@ class MediaRepository(private val context: Context) {
 
         return buildList {
             cursor?.use {
+                val dataC = it.getColumnIndexOrThrow(MediaStore.MediaColumns.DATA)
+                val root = StorageAccess.mounted(context).firstOrNull { r -> r.id == volume }
+                    ?: StorageRoot(volume, volume, "")
                 val idC = it.getColumnIndexOrThrow(MediaStore.Files.FileColumns._ID)
                 val typeC = it.getColumnIndexOrThrow(MediaStore.Files.FileColumns.MEDIA_TYPE)
                 val nameC = it.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
@@ -84,6 +92,8 @@ class MediaRepository(private val context: Context) {
                 val albumC = it.getColumnIndexOrThrow(MediaStore.Images.ImageColumns.BUCKET_DISPLAY_NAME)
 
                 while (it.moveToNext()) {
+                    val sourcePath = it.getString(dataC).orEmpty()
+                    if (sourcePath.contains("/${StorageAccess.BIN}/") || (StorageFolders.hasFileAccess() && sourcePath.isNotBlank() && !java.io.File(sourcePath).exists())) continue
                     val id = it.getLong(idC)
                     val mediaType = it.getInt(typeC)
                     val name = it.getString(nameC).orEmpty()
@@ -99,16 +109,16 @@ class MediaRepository(private val context: Context) {
 
                     val itemCollection =
                         if (mediaType == MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO) {
-                            MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+                            MediaStore.Video.Media.getContentUri(volume)
                         } else if (mediaType == MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE) {
-                            MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+                            MediaStore.Images.Media.getContentUri(volume)
                         } else {
                             collection
                         }
 
                     add(
                         MediaItem(
-                            id = id,
+                            id = StorageAccess.stableId(ContentUris.withAppendedId(itemCollection, id).toString()),
                             uri = ContentUris.withAppendedId(itemCollection, id),
                             name = name,
                             mimeType = mime,
@@ -117,10 +127,12 @@ class MediaRepository(private val context: Context) {
                             width = it.getInt(widthC),
                             height = it.getInt(heightC),
                             durationMillis = it.getLong(durationC),
-                            album = it.getString(albumC).orEmpty().ifBlank { "Без альбома" },
+                            album = it.getString(albumC).orEmpty().ifBlank { "Без альбома" }.let { name -> if (volume == "external_primary") name else "${root.name} · $name" },
                             relativePath = it.getString(pathC).orEmpty(),
                             sizeBytes = it.getLong(sizeC),
                             dateModifiedMillis = it.getLong(modifiedC) * 1000L,
+                            storageId = volume, storageName = root.name, sourcePath = it.getString(dataC).orEmpty(),
+                            folderTarget = it.getString(dataC)?.let { path -> java.io.File(path).parent }.orEmpty(),
                         )
                     )
                 }
