@@ -50,6 +50,7 @@ fun MoveDestinationScreen(
     onCancel: () -> Unit,
     onMoveHere: (AlbumSummary) -> Unit,
     onChooseOtherFolder: () -> Unit,
+    onCreateFolder: () -> Unit,
 ) {
     val filtered = albums.filter {
         query.isBlank() || it.name.contains(query, ignoreCase = true)
@@ -78,10 +79,10 @@ fun MoveDestinationScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = onChooseOtherFolder) {
+                    IconButton(onClick = onCreateFolder) {
                         Icon(
                             Icons.Outlined.CreateNewFolder,
-                            contentDescription = "Другая или новая папка",
+                            contentDescription = "Создать папку",
                         )
                     }
                 },
@@ -176,12 +177,12 @@ fun MoveDestinationScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.fillMaxSize(),
                 ) {
-                    items(filtered, key = { it.name }) { album ->
+                    items(filtered, key = { it.cover.relativePath }) { album ->
                         Column(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(8.dp))
                                 .combinedClickable(
-                                    onClick = { onMoveHere(album) },
+                                    onClick = { onSelectAlbum(album) },
                                 ),
                         ) {
                             AsyncImage(
@@ -207,3 +208,4 @@ fun MoveDestinationScreen(
         }
     }
 }
+

@@ -103,3 +103,10 @@ Priorities:
 5. low memory pressure;
 6. predictable gestures with no conflict between zoom/navigation/Trash;
 7. neighboring precomposed video pages must never leak audio before they become current.
+
+
+## User clarification — 2026-10-04
+- First double-tap zoom: 30% of the fit-to-maximum range; second: maximum; third: fit.
+- On first launch explain all-files access and open its Android settings page. Permit denial and Back; keep the access entry in the menu.
+- With access granted and extra move confirmation disabled (default), choosing a destination starts the move. Folder creation is available from the destination toolbar.
+- Crop photo/video, then save a copy or explicitly confirm replacing the original; RAW has copy-only output.

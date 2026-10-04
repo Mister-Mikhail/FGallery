@@ -54,6 +54,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -94,6 +95,8 @@ fun GalleryScreen(
     state: GalleryUiState,
     onRequestPermission: () -> Unit,
     onRefresh: () -> Unit,
+    onImportDocuments: () -> Unit,
+    onManageFileAccess: () -> Unit,
     onOpenAlbum: (String) -> Unit,
     onBackToAlbums: () -> Unit,
     onOpenMedia: (MediaItem) -> Unit,
@@ -349,6 +352,14 @@ fun GalleryScreen(
                                     }
 
                                     DropdownMenuItem(
+                                        text = { Text("Доступ ко всем файлам…") },
+                                        onClick = { apply(onManageFileAccess) },
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Добавить PDF / SVG…") },
+                                        onClick = { apply(onImportDocuments) },
+                                    )
+                                    DropdownMenuItem(
                                         text = { Text("Все файлы") },
                                         onClick = { apply { onFilterChanged(MediaFilter.ALL) } },
                                     )
@@ -418,7 +429,13 @@ fun GalleryScreen(
         },
     ) { innerPadding ->
         when {
-            !state.hasPermission -> PermissionState(innerPadding, onRequestPermission)
+            !state.hasPermission && state.allItems.isEmpty() -> {
+                Column(Modifier.fillMaxSize().padding(innerPadding), horizontalAlignment = Alignment.CenterHorizontally) {
+                    TextButton(onClick = onManageFileAccess) { Text("Разрешить доступ ко всем файлам") }
+                    TextButton(onClick = onImportDocuments) { Text("Открыть PDF / SVG…") }
+                    PermissionState(PaddingValues(0.dp), onRequestPermission)
+                }
+            }
             state.isLoading -> MessageState("Загрузка…", innerPadding)
             !inAlbum && albums.isEmpty() -> MessageState("Альбомы не найдены", innerPadding)
             inAlbum && visibleItems.isEmpty() -> MessageState("Медиа не найдено", innerPadding)
@@ -498,6 +515,10 @@ fun GalleryScreen(
         SettingsSheet(
             quickExifEnabled = state.quickExifEnabled,
             onQuickExifChanged = onQuickExifChanged,
+            confirmMove = state.confirmMove,
+            confirmRename = state.confirmRename,
+            onConfirmMoveChanged = onConfirmMoveChanged,
+            onConfirmRenameChanged = onConfirmRenameChanged,
             onDismiss = onHideSettings,
         )
     }
@@ -854,7 +875,7 @@ private fun MediaTile(
                 )
             }
 
-            MediaKind.IMAGE -> Unit
+            MediaKind.IMAGE, MediaKind.SVG, MediaKind.PDF -> Unit
         }
 
         if (selected) {
@@ -882,64 +903,32 @@ private fun MediaPreview(
     livePreview: Boolean,
 ) {
     val context = LocalContext.current
-    val cachedModel = remember(item.id, item.dateModifiedMillis) {
-        val highCachedFile = ThumbnailCache.fileFor(
-            context = context,
-            item = item,
-            highQuality = true,
-        )
-        val fastCachedFile = ThumbnailCache.fileFor(
-            context = context,
-            item = item,
-            highQuality = false,
-        )
-
-        when {
-            highCachedFile.exists() -> highCachedFile
-            fastCachedFile.exists() -> fastCachedFile
-            else -> null
-        }
+    val cachedModel by produceState<java.io.File?>(null, item.uri, item.dateModifiedMillis) {
+        value = ThumbnailCache.fileFor(context, item, true).takeIf { it.exists() }
+            ?: ThumbnailCache.fileFor(context, item).takeIf { it.exists() }
+            ?: ThumbnailCache.ensure(context, item)
     }
-
+    var previewFailed by remember(item.uri) { mutableStateOf(false) }
     when {
-        false -> {
-            InlineVideoPreview(
-                item = item,
-                modifier = modifier,
-            )
-        }
-
-        cachedModel != null -> {
-            AsyncImage(
-                model = cachedModel,
-                contentDescription = item.name,
-                contentScale = ContentScale.Crop,
-                modifier = modifier.background(MaterialTheme.colorScheme.surfaceVariant),
-            )
-        }
-
-        else -> {
-            val fallbackRequest = remember(item.uri, item.dateModifiedMillis) {
-                ImageRequest.Builder(context)
-                    .data(item.uri)
-                    .size(960, 960)
-                    .build()
-            }
-
-            if (item.kind == MediaKind.VIDEO) {
-                VideoThumbnail(
-                    item = item,
-                    modifier = modifier,
-                )
-            } else {
-                AsyncImage(
-                    model = fallbackRequest,
-                    contentDescription = item.name,
-                    contentScale = ContentScale.Crop,
-                    modifier = modifier.background(MaterialTheme.colorScheme.surfaceVariant),
-                )
+        livePreview && item.kind == MediaKind.VIDEO -> InlineVideoPreview(item, modifier)
+        cachedModel != null -> AsyncImage(
+            model = cachedModel,
+            contentDescription = item.name,
+            contentScale = ContentScale.Crop,
+            modifier = modifier.background(MaterialTheme.colorScheme.surfaceVariant),
+        )
+        item.kind == MediaKind.VIDEO || item.kind == MediaKind.PDF || item.kind == MediaKind.SVG || previewFailed -> {
+            Box(modifier = modifier.background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
+                Text(if (item.kind == MediaKind.VIDEO) "Видео · нет превью" else item.name.substringAfterLast('.').uppercase(), style = MaterialTheme.typography.labelSmall)
             }
         }
+        else -> AsyncImage(
+            model = ImageRequest.Builder(context).data(item.uri).size(960, 960).build(),
+            contentDescription = item.name,
+            contentScale = ContentScale.Crop,
+            onError = { previewFailed = true },
+            modifier = modifier.background(MaterialTheme.colorScheme.surfaceVariant),
+        )
     }
 }
 
@@ -954,15 +943,8 @@ private fun InlineVideoPreview(
             setMediaItem(PlayerMediaItem.fromUri(item.uri))
             volume = 0f
             repeatMode = Player.REPEAT_MODE_ONE
-            addListener(object : Player.Listener {
-                override fun onPlaybackStateChanged(playbackState: Int) {
-                    if (playbackState == Player.STATE_READY) {
-                        seekTo(750L)
-                        play()
-                    }
-                }
-            })
             prepare()
+            seekTo(750L.coerceAtMost((item.durationMillis - 1L).coerceAtLeast(0L)))
             playWhenReady = true
         }
     }
@@ -975,7 +957,7 @@ private fun InlineVideoPreview(
 
     AndroidView(
         factory = { ctx ->
-            PlayerView(ctx).apply {
+            (android.view.LayoutInflater.from(ctx).inflate(com.mistermikhail.fgallery.R.layout.player_view_preview, null, false) as PlayerView).apply {
                 this.player = player
                 useController = false
                 resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
@@ -985,45 +967,4 @@ private fun InlineVideoPreview(
         },
         modifier = modifier,
     )
-}
-
-@Composable
-private fun VideoThumbnail(
-    item: MediaItem,
-    modifier: Modifier,
-) {
-    val frame by produceState<Bitmap?>(
-        initialValue = null,
-        key1 = item.uri,
-        key2 = item.durationMillis,
-    ) {
-        value = withContext(Dispatchers.IO) {
-            runCatching {
-                MediaMetadataRetriever().use { retriever ->
-                    retriever.setDataSource(context, item.uri)
-                    val timeUs = (item.durationMillis / 2L).coerceAtLeast(0L) * 1_000L
-                    retriever.getFrameAtTime(
-                        timeUs,
-                        MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
-                    ) ?: retriever.getFrameAtTime(
-                        0L,
-                        MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
-                    )
-                }
-            }.getOrNull()
-        }
-    }
-
-    if (frame != null) {
-        androidx.compose.foundation.Image(
-            bitmap = frame!!.asImageBitmap(),
-            contentDescription = item.name,
-            contentScale = ContentScale.Crop,
-            modifier = modifier,
-        )
-    } else {
-        Box(
-            modifier = modifier.background(MaterialTheme.colorScheme.surfaceVariant),
-        )
-    }
 }

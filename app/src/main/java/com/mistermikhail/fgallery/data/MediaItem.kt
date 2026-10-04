@@ -2,7 +2,7 @@ package com.mistermikhail.fgallery.data
 
 import android.net.Uri
 
-enum class MediaKind { IMAGE, VIDEO, RAW }
+enum class MediaKind { IMAGE, VIDEO, RAW, SVG, PDF }
 
 data class MediaItem(
     val id: Long,
@@ -24,3 +24,4 @@ data class MediaItem(
     val aspectRatio: Float
         get() = if (width > 0 && height > 0) width.toFloat() / height.toFloat() else 1f
 }
+

@@ -43,6 +43,7 @@ class MediaDetailsRepository(
         )
 
         when (item.kind) {
+            MediaKind.SVG, MediaKind.PDF -> Unit
             MediaKind.VIDEO -> loadVideoDetails(item)?.let(sections::add)
             MediaKind.IMAGE,
             MediaKind.RAW,
@@ -249,3 +250,4 @@ class MediaDetailsRepository(
         return rounded + suffix
     }
 }
+

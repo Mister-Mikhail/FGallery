@@ -4,6 +4,13 @@ import android.view.GestureDetector
 import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.ViewGroup
+import android.widget.FrameLayout
+import androidx.media3.exoplayer.video.spherical.ZoomableSphericalView
+import androidx.media3.ui.PlayerControlView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -157,6 +164,10 @@ fun ViewerScreen(
                         if (cleanupMode) onTrash(item)
                     },
                 )
+            } else if (item.kind == MediaKind.PDF) {
+                PdfViewer(item, ::toggleChrome)
+            } else if (item.kind == MediaKind.SVG) {
+                SvgViewer(item, ::toggleChrome)
             } else {
                 TiledZoomableImage(
                     item = item,
@@ -214,6 +225,10 @@ fun ViewerScreen(
                                         videoMenuExpanded = false
                                         onShare(currentItem)
                                     },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Кадрировать видео") },
+                                    onClick = { videoMenuExpanded = false; onCrop(currentItem) },
                                 )
                                 DropdownMenuItem(
                                     text = { Text("Переименовать") },
@@ -281,7 +296,7 @@ fun ViewerScreen(
                                     tint = Color.White,
                                 )
                             }
-                            IconButton(onClick = { onCrop(currentItem) }) {
+                            if (currentItem.kind != MediaKind.PDF && currentItem.kind != MediaKind.SVG) IconButton(onClick = { onCrop(currentItem) }) {
                                 Icon(
                                     Icons.Outlined.Crop,
                                     contentDescription = "Кадрировать",
@@ -413,6 +428,11 @@ private fun VideoPlayer(
     onDoubleTap: () -> Unit,
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val latestActive by rememberUpdatedState(active)
+    val latestSingleTap by rememberUpdatedState(onSingleTap)
+    val latestDoubleTap by rememberUpdatedState(onDoubleTap)
+    var sphericalView by remember(item.uri) { mutableStateOf<ZoomableSphericalView?>(null) }
     val spherical = remember(item.id, item.width, item.height, item.name) {
         item.isLikely360Video()
     }
@@ -420,14 +440,6 @@ private fun VideoPlayer(
     val player = remember(item.uri) {
         ExoPlayer.Builder(context).build().apply {
             setMediaItem(PlayerMediaItem.fromUri(item.uri))
-            addListener(object : Player.Listener {
-                override fun onPlaybackStateChanged(playbackState: Int) {
-                    if (playbackState == Player.STATE_READY) {
-                        seekTo(750L)
-                        play()
-                    }
-                }
-            })
             prepare()
             playWhenReady = false
             volume = 0f
@@ -435,10 +447,12 @@ private fun VideoPlayer(
     }
 
     LaunchedEffect(active) {
-        if (active) {
+        if (active && lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+            sphericalView?.onResume()
             player.volume = 1f
             player.play()
         } else {
+            sphericalView?.onPause()
             player.pause()
             player.volume = 0f
         }
@@ -449,58 +463,79 @@ private fun VideoPlayer(
             context,
             object : GestureDetector.SimpleOnGestureListener() {
                 override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
-                    onSingleTap()
-                    return false
+                    latestSingleTap()
+                    return true
                 }
 
                 override fun onDoubleTap(e: MotionEvent): Boolean {
-                    onDoubleTap()
+                    latestDoubleTap()
                     return true
                 }
             },
         )
     }
 
-    DisposableEffect(player) {
+    DisposableEffect(player, lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_PAUSE -> { player.pause(); sphericalView?.onPause() }
+                Lifecycle.Event.ON_RESUME -> if (latestActive) { player.volume = 1f; player.play(); sphericalView?.onResume() }
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            sphericalView?.onPause()
             player.release()
         }
     }
 
-    AndroidView(
-        factory = { ctx ->
-            val view = if (spherical) {
-                LayoutInflater.from(ctx)
-                    .inflate(R.layout.player_view_spherical, null, false) as PlayerView
-            } else {
+    if (spherical) {
+        AndroidView(
+            factory = { ctx ->
+                FrameLayout(ctx).apply {
+                    val surface = ZoomableSphericalView(ctx)
+                    sphericalView = surface
+                    surface.setUseSensorRotation(active)
+                    surface.setTapCallbacks({ latestSingleTap() }, { latestDoubleTap() })
+                    player.setVideoFrameMetadataListener(surface.videoFrameMetadataListener)
+                    player.setCameraMotionListener(surface.cameraMotionListener)
+                    surface.addVideoSurfaceListener(object : ZoomableSphericalView.VideoSurfaceListener {
+                        override fun onVideoSurfaceCreated(videoSurface: android.view.Surface) { player.setVideoSurface(videoSurface) }
+                        override fun onVideoSurfaceDestroyed(videoSurface: android.view.Surface) { player.clearVideoSurface(videoSurface) }
+                    })
+                    addView(surface, FrameLayout.LayoutParams(-1, -1))
+                    val controls = PlayerControlView(ctx).apply { this.player = player; showTimeoutMs = 0 }
+                    addView(controls, FrameLayout.LayoutParams(-1, -2, android.view.Gravity.BOTTOM))
+                    if (active && lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) surface.onResume() else surface.onPause()
+                }
+            },
+            update = { frame ->
+                val surface = frame.getChildAt(0) as ZoomableSphericalView
+                surface.setUseSensorRotation(active)
+                val controls = frame.getChildAt(1) as PlayerControlView
+                if (controlsVisible) controls.show() else controls.hide()
+            },
+            modifier = Modifier.fillMaxSize().navigationBarsPadding(),
+        )
+    } else {
+        AndroidView(
+            factory = { ctx ->
                 PlayerView(ctx).apply {
+                    this.player = player
                     resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                    useController = true
+                    controllerShowTimeoutMs = 0
+                    controllerAutoShow = false
+                    controllerHideOnTouch = false
+                    setOnTouchListener { _, event -> gestureDetector.onTouchEvent(event); true }
                 }
-            }
+            },
+            update = { view -> if (controlsVisible) view.showController() else view.hideController() },
+            modifier = Modifier.fillMaxSize().navigationBarsPadding(),
+        )
+    }
 
-            view.apply {
-                this.player = player
-                controllerShowTimeoutMs = 0
-                controllerAutoShow = false
-                layoutParams = ViewGroup.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                )
-                setOnTouchListener { _, event ->
-                    gestureDetector.onTouchEvent(event)
-                    false
-                }
-            }
-        },
-        update = { view ->
-            view.controllerShowTimeoutMs = 0
-            if (controlsVisible) view.showController() else view.hideController()
-        },
-        modifier = Modifier
-            .fillMaxSize()
-            .navigationBarsPadding(),
-    )
 }
 
 @Composable
@@ -553,7 +588,10 @@ private fun TiledZoomableImage(
             when (doubleTapStage) {
                 0 -> {
                     state.zoomTo(
-                        zoomFactor = 1.6f,
+                        zoomFactor = firstDoubleTapZoom(
+                            state.contentTransformation.scaleMetadata.initialScale.scaleX,
+                            state.zoomSpec.maximum.factor,
+                        ),
                         centroid = centroid,
                         animationSpec = tween(durationMillis = 240),
                     )
@@ -562,7 +600,7 @@ private fun TiledZoomableImage(
 
                 1 -> {
                     state.zoomTo(
-                        zoomFactor = 4f,
+                        zoomFactor = state.zoomSpec.maximum.factor,
                         centroid = centroid,
                         animationSpec = tween(durationMillis = 260),
                     )
@@ -604,3 +642,4 @@ private fun TiledZoomableImage(
         )
     }
 }
+

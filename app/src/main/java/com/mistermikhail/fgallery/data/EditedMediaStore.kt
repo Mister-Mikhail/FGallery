@@ -1,0 +1,72 @@
+package com.mistermikhail.fgallery.data
+
+import android.content.ContentValues
+import android.content.Context
+import android.net.Uri
+import android.provider.MediaStore
+import java.io.File
+import java.io.FileOutputStream
+
+class EditedMediaStore(private val context: Context) {
+    private val resolver = context.contentResolver
+
+    fun saveCopy(source: MediaItem, edited: Uri, mime: String, extension: String): Uri {
+        val collection = if (mime.startsWith("video/")) MediaStore.Video.Media.EXTERNAL_CONTENT_URI else MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+        val values = ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, "${source.name.substringBeforeLast('.')}_crop_${System.currentTimeMillis()}.$extension")
+            put(MediaStore.MediaColumns.MIME_TYPE, mime)
+            put(MediaStore.MediaColumns.RELATIVE_PATH, source.relativePath.ifBlank { if (mime.startsWith("video/")) "Movies/FGallery/" else "Pictures/FGallery/" })
+            put(MediaStore.MediaColumns.IS_PENDING, 1)
+        }
+        val destination = resolver.insert(collection, values) ?: error("Не удалось создать файл")
+        try {
+            copy(edited, destination)
+            check(resolver.update(destination, ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }, null, null) == 1)
+            return destination
+        } catch (e: Exception) {
+            runCatching { resolver.delete(destination, null, null) }
+            throw e
+        }
+    }
+
+    /** Permission is obtained before this call. Keep a complete backup until verified. */
+    fun replace(source: MediaItem, edited: Uri, mime: String, extension: String) {
+        // Open without truncation first. If this fails, Android permission is still needed.
+        resolver.openFileDescriptor(source.uri, "rw")?.use { } ?: error("Нет доступа к оригиналу")
+        val backup = File.createTempFile("original_", ".backup", context.filesDir)
+        var originalTouched = false
+        try {
+            resolver.openInputStream(source.uri)?.use { input ->
+                FileOutputStream(backup).use { output -> input.copyTo(output); output.fd.sync() }
+            } ?: error("Не удалось создать резервную копию")
+            originalTouched = true
+            copy(edited, source.uri)
+            check(resolver.update(source.uri, ContentValues().apply {
+                put(MediaStore.MediaColumns.MIME_TYPE, mime)
+                put(MediaStore.MediaColumns.DISPLAY_NAME, "${source.name.substringBeforeLast('.')}.$extension")
+            }, null, null) == 1)
+            backup.delete()
+        } catch (e: Exception) {
+            val restored = !originalTouched || runCatching { copy(Uri.fromFile(backup), source.uri); true }.getOrDefault(false)
+            if (restored) backup.delete()
+            else throw IllegalStateException("Оригинал не восстановлен. Резервная копия сохранена: ${backup.absolutePath}", e)
+            throw e
+        }
+    }
+
+    private fun copy(from: Uri, to: Uri) {
+        val expected = resolver.openAssetFileDescriptor(from, "r")?.use { it.length } ?: -1L
+        val written = resolver.openInputStream(from)?.use { input ->
+            resolver.openOutputStream(to, "wt")?.use { output -> input.copyTo(output) }
+                ?: error("Нет доступа к записи")
+        } ?: error("Нет доступа к источнику")
+        check(written > 0 && (expected < 0 || written == expected)) { "Неполная запись файла" }
+        val verified = resolver.openInputStream(to)?.use { input ->
+            val buffer = ByteArray(64 * 1024)
+            var count = 0L
+            while (true) { val n = input.read(buffer); if (n < 0) break; count += n }
+            count
+        } ?: error("Не удалось проверить сохранённый файл")
+        check(verified == written) { "Размер сохранённого файла не совпадает" }
+    }
+}

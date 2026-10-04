@@ -98,3 +98,29 @@ These requirements remain in scope even if a later APK or PR description claimed
 
 ## Current build gate (2026-10-03)
 The latest GitHub Actions run for head SHA `f9132e060449a8ac7d9d3eb6e4bf0a9f1664ccde` completed with `failure`; no APK artifact was uploaded. The PR merge build failed in Kotlin compilation at `app/src/main/java/com/mistermikhail/fgallery/ui/GalleryScreen.kt:995` with unresolved references including `produceState`, `Bitmap`, `withContext`, `Dispatchers`, `MediaMetadataRetriever`, `asImageBitmap`, and related inferred types. Treat this as an open P0 build blocker. Inspect actual file imports and code before changing it; rebuild and verify CI on the resulting exact SHA before distributing an APK.
+
+
+## Latest direct user report — 2026-10-04
+
+This report supersedes conflicting older entries above. The exact APK/commit and device were not supplied.
+- There are **no folder-entry jerks** in the user's current build; do not treat this as an active bug.
+- **Gallery scroll-position loss is resolved** according to the user.
+- Cleanup and screen rotation **appear to work**; retain regression checks without calling them current failures.
+- Image zoom works but the first double tap enlarges too much (about 80%). Required cycle: **30% of the fit-to-maximum zoom range → maximum → fit**.
+- The reported “notification permission” issue is actually **the move permission dialog**, not notifications. Android asks to modify a file, accepting does not move it, and Back cannot cancel cleanly.
+- Move must run after choosing a destination, without per-file confirmation; users must be able to create a missing destination folder.
+- Image crop still crashes/closes the app. Photo and video crop must save a copy or replace the original; RAW may save only a JPEG copy.
+- User authorizes requesting the necessary broad file access **on first launch after installation**, to support automatic file discovery and direct moves without repeat prompts.
+
+### Implementation under verification in this change
+- First-launch all-files access flow, automatic PDF/SVG discovery with that access, and document picker fallback.
+- Direct filesystem moves with destination/source verification and no per-file write dialog after all-files access; empty folders and create-folder UI.
+- Own image-crop activity with explicit controls, error state, FileProvider URIs, and JPEG/PNG saves; RAW embedded-preview fallback and copy-only output.
+- Video spatial crop and time trim via Media3 export, with copy or separately confirmed original replacement.
+- Backup before overwrite; partial SAF deletion never rolls back the only surviving destination copy.
+- First double tap uses 30% of the actual zoom range, second reaches the configured maximum, third resets.
+- Versioned video thumbnail cache, several frame positions, visible unavailable-preview fallback, one muted inline preview at a time.
+- Current-page-only video playback, lifecycle pause/resume, 360 touch/gyro with bounded pinch field of view.
+- SVG vector rendering and vertically paged PDF rendering/zoom with error states.
+
+These are code changes awaiting CI and device acceptance, **not verified bug closures**. Test with the exact APK/commit delivered in the chat. In particular check all-files permission grant/deny/Back, actual move results, crop saved pixels and playback, overwrite failure recovery, 360 sensor orientation, RAW samples, and large/password-protected PDFs.

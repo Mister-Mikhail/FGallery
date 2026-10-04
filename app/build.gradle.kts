@@ -12,8 +12,8 @@ android {
         applicationId = "com.mistermikhail.fgallery"
         minSdk = 29
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
     }
 
     buildFeatures { compose = true }
@@ -28,8 +28,10 @@ android {
 
 dependencies {
     implementation("androidx.core:core-ktx:1.15.0")
+    implementation("androidx.documentfile:documentfile:1.0.1")
     implementation("androidx.activity:activity-compose:1.10.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
 
     implementation("androidx.compose.ui:ui:1.7.6")
@@ -41,6 +43,8 @@ dependencies {
     implementation("io.coil-kt.coil3:coil-compose:3.1.0")
     implementation("io.coil-kt.coil3:coil-gif:3.1.0")
     implementation("io.coil-kt.coil3:coil-video:3.1.0")
+    implementation("com.caverock:androidsvg-aar:1.4")
+    testImplementation("junit:junit:4.13.2")
     implementation("me.saket.telephoto:zoomable-image-coil3:0.15.1")
     implementation("com.vanniktech:android-image-cropper:4.7.0")
     implementation("androidx.exifinterface:exifinterface:1.3.7")
@@ -51,3 +55,4 @@ dependencies {
 
     debugImplementation("androidx.compose.ui:ui-tooling:1.7.6")
 }
+

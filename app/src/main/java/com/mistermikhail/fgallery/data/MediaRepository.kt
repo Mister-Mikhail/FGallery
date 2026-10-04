@@ -42,11 +42,12 @@ class MediaRepository(private val context: Context) {
             MediaStore.Images.ImageColumns.BUCKET_DISPLAY_NAME,
         )
         val selection =
-            "${MediaStore.Files.FileColumns.MEDIA_TYPE}=? OR ${MediaStore.Files.FileColumns.MEDIA_TYPE}=?"
+            "${MediaStore.Files.FileColumns.MEDIA_TYPE}=? OR ${MediaStore.Files.FileColumns.MEDIA_TYPE}=?" +
+                if (StorageFolders.hasFileAccess()) RAW_EXTENSIONS.joinToString("", prefix = "") { " OR LOWER(${MediaStore.MediaColumns.DISPLAY_NAME}) LIKE ?" } else ""
         val args = arrayOf(
             MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString(),
             MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString(),
-        )
+        ) + if (StorageFolders.hasFileAccess()) RAW_EXTENSIONS.map { "%$it" }.toTypedArray() else emptyArray()
         val sort =
             "${MediaStore.MediaColumns.DATE_TAKEN} DESC, ${MediaStore.MediaColumns.DATE_ADDED} DESC"
 
@@ -89,6 +90,7 @@ class MediaRepository(private val context: Context) {
                     val mime = it.getString(mimeC)
                     val kind = when {
                         mediaType == MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO -> MediaKind.VIDEO
+                        mime == "image/svg+xml" || name.endsWith(".svg", true) -> MediaKind.SVG
                         isRaw(name, mime) -> MediaKind.RAW
                         else -> MediaKind.IMAGE
                     }
@@ -98,8 +100,10 @@ class MediaRepository(private val context: Context) {
                     val itemCollection =
                         if (mediaType == MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO) {
                             MediaStore.Video.Media.EXTERNAL_CONTENT_URI
-                        } else {
+                        } else if (mediaType == MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE) {
                             MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+                        } else {
+                            collection
                         }
 
                     add(
@@ -140,3 +144,4 @@ class MediaRepository(private val context: Context) {
         )
     }
 }
+

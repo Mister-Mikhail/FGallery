@@ -237,3 +237,9 @@ Current FGallery brand direction:
 - the compact upper F mark inside the frame is the launcher/app icon direction;
 - keep supporting brand words minimal: only "FAST" and "RAW READY";
 - do not use additional slogans or descriptive taglines in the current logo treatment.
+
+
+## User clarification — 2026-10-04
+- Normal double-tap zoom stops at 30% of the fit-to-maximum zoom range, then maximum, then fit.
+- Request all-files access at first launch after installation. Granting it enables automatic PDF/SVG discovery, empty-folder listing, folder creation, and direct file moves without repeat Android write prompts. Denial keeps basic browsing/document-picker fallback available.
+- Photo and video crop offer copy or original replacement (with explicit overwrite confirmation); RAW crop saves only a JPEG copy.

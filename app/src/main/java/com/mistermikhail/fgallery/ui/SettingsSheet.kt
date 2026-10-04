@@ -22,6 +22,10 @@ import androidx.compose.ui.unit.dp
 fun SettingsSheet(
     quickExifEnabled: Boolean,
     onQuickExifChanged: (Boolean) -> Unit,
+    confirmMove: Boolean,
+    confirmRename: Boolean,
+    onConfirmMoveChanged: (Boolean) -> Unit,
+    onConfirmRenameChanged: (Boolean) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -70,6 +74,9 @@ fun SettingsSheet(
                 )
             }
 
+            SettingSwitch("Подтверждать перемещение", "Дополнительный вопрос перед перемещением. Разрешение Android на чужие файлы может потребоваться отдельно.", confirmMove, onConfirmMoveChanged)
+            SettingSwitch("Подтверждать переименование", "Дополнительный вопрос перед изменением имени файла.", confirmRename, onConfirmRenameChanged)
+
             Text(
                 text = "Полные сведения о файле и EXIF всегда доступны через кнопку информации в просмотрщике.",
                 style = MaterialTheme.typography.bodySmall,
@@ -105,3 +112,4 @@ private fun SettingSwitch(
         Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }
+

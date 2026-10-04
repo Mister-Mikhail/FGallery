@@ -3,6 +3,7 @@ package com.mistermikhail.fgallery.ui
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.mistermikhail.fgallery.data.DocumentLibrary
 import com.mistermikhail.fgallery.data.AppSettingsRepository
 import com.mistermikhail.fgallery.data.MediaItem
 import com.mistermikhail.fgallery.data.MediaKind
@@ -63,6 +64,16 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
     val uiState: StateFlow<GalleryUiState> = _uiState.asStateFlow()
 
     init {
+        viewModelScope.launch {
+            settingsRepository.confirmMove.collect { value ->
+                _uiState.update { it.copy(confirmMove = value) }
+            }
+        }
+        viewModelScope.launch {
+            settingsRepository.confirmRename.collect { value ->
+                _uiState.update { it.copy(confirmRename = value) }
+            }
+        }
         viewModelScope.launch {
             settingsRepository.quickExifEnabled.collect { enabled ->
                 _uiState.update { it.copy(quickExifEnabled = enabled) }
@@ -180,17 +191,17 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
 
     fun onPermissionChanged(granted: Boolean) {
         _uiState.update { it.copy(hasPermission = granted) }
-        if (granted) refresh()
+        refresh()
     }
 
     fun refresh() {
-        if (!_uiState.value.hasPermission) return
 
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
 
             val items = runCatching {
-                repository.loadMedia()
+                val media = if (_uiState.value.hasPermission) repository.loadMedia() else emptyList()
+                media + DocumentLibrary(getApplication()).load()
             }.getOrDefault(emptyList())
 
             settingsRepository.retainRecycleBin(
@@ -393,3 +404,4 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
         settingsRepository.setQuickExifEnabled(enabled)
     }
 }
+
