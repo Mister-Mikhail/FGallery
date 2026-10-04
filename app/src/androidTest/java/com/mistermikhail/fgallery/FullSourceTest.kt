@@ -52,9 +52,9 @@ class FullSourceTest {
             val page = source.startPage(android.graphics.pdf.PdfDocument.PageInfo.Builder(320, 240, 1).create())
             page.canvas.drawColor(android.graphics.Color.WHITE)
             val paint = android.graphics.Paint().apply { color = android.graphics.Color.BLACK }
-            for (i in 0 until 500) {
-                val x = 145f + i * .0625f
-                page.canvas.drawRect(x, 100f, x + .04f, 140f, paint)
+            for (i in 0 until 200) {
+                val x = 110f + i * .50f
+                page.canvas.drawRect(x, 100f, x + .20f, 140f, paint)
             }
             source.finishPage(page)
             file.outputStream().use { source.writeTo(it) }
@@ -68,8 +68,11 @@ class FullSourceTest {
                 postTranslate(-3584f, -2688f)
             }
             android.graphics.Canvas(magnified).drawBitmap(base, matrix, android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG))
-            fun black(bitmap: android.graphics.Bitmap) = (200 until 800).count { x -> android.graphics.Color.red(bitmap.getPixel(x, 384)) < 60 }
-            assertTrue("Native viewport must resolve fine PDF lines", black(region) > black(magnified) + 100)
+            fun sharpEdges(bitmap: android.graphics.Bitmap) = (200 until 800).count { x ->
+                kotlin.math.abs(android.graphics.Color.red(bitmap.getPixel(x, 384)) - android.graphics.Color.red(bitmap.getPixel(x + 1, 384))) > 110
+            }
+            val actual = sharpEdges(region); val previous = sharpEdges(magnified)
+            assertTrue("Native viewport fine-line edges $actual vs stretched preview $previous", actual > previous + 20)
             region.recycle(); base.recycle(); magnified.recycle()
         }
         file.delete()

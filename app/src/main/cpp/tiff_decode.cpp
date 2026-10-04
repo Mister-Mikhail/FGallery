@@ -147,7 +147,7 @@ Java_com_mistermikhail_fgallery_data_TiffNative_writePng(JNIEnv* env, jobject, j
     bool success = false;
     try {
         png.init(writer, file);
-        if (png.compression) png.compression(writer, 1);
+        if (png.compression) png.compression(writer, 0);
         if (png.filter) png.filter(writer, 0, 8);
         png.header(writer, info, width, height, 8, 6, 0, 0, 0);
         png.writeInfo(writer, info);
@@ -191,7 +191,7 @@ Java_com_mistermikhail_fgallery_data_TiffNative_writePng(JNIEnv* env, jobject, j
 
 // ARGB_8888 is RGBA in Android's native little-endian bitmap memory.
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_mistermikhail_fgallery_data_TiffNative_writeBitmapPng(JNIEnv* env, jobject, jobject bitmap, jstring destination) {
+Java_com_mistermikhail_fgallery_data_TiffNative_writeBitmapPng(JNIEnv* env, jobject, jobject bitmap, jstring destination, jint compressionLevel) {
     static PngApi png;
     AndroidBitmapInfo dimensions{};
     if (!png.valid() || AndroidBitmap_getInfo(env, bitmap, &dimensions) != 0 ||
@@ -209,7 +209,7 @@ Java_com_mistermikhail_fgallery_data_TiffNative_writeBitmapPng(JNIEnv* env, jobj
     std::vector<unsigned char> straight(size_t(dimensions.width) * 4);
     if (info && jump && !setjmp(*jump)) {
         png.init(writer, file);
-        if (png.compression) png.compression(writer, 1);
+        if (png.compression) png.compression(writer, std::clamp<int>(compressionLevel, 0, 9));
         if (png.filter) png.filter(writer, 0, 8);
         png.header(writer, info, dimensions.width, dimensions.height, 8, 6, 0, 0, 0);
         png.writeInfo(writer, info);

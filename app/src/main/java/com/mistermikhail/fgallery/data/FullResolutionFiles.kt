@@ -59,7 +59,7 @@ object FullResolutionFiles {
                                 check(result == 0) { "RAW не удалось декодировать" }
                                 val bitmap = raw.getMutableBitmap(Bitmap.Config.ARGB_8888)
                                     ?: error("RAW не удалось преобразовать")
-                                try { check(TiffNative.writeBitmapPng(bitmap, output.absolutePath)) { "Не удалось сохранить полный размер RAW" } }
+                                try { check(TiffNative.writeBitmapPng(bitmap, output.absolutePath, 0)) { "Не удалось сохранить полный размер RAW" } }
                                 finally { bitmap.recycle() }
                             } finally { withContext(NonCancellable) { cancelDecode.cancelAndJoin() } }
                         }

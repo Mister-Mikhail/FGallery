@@ -57,5 +57,6 @@ class LibraryPerformanceTest {
         assertNull(ThumbnailCache.cached(context, item.copy(dateModifiedMillis = 556)))
         assertNull(ThumbnailCache.cached(context, item.copy(sizeBytes = item.sizeBytes + 1)))
         cached.delete()
+        Unit
     }
 }
