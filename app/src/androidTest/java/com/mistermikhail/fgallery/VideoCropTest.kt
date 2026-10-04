@@ -74,12 +74,21 @@ class VideoCropTest {
             val density = LocalDensity.current
             CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale.value)) { VideoCropDialog(item, {}, { _, _ -> }) }
         }
+        val preview = rule.onNodeWithTag("video-crop-preview")
+        rule.waitUntil(20000) { runCatching { preview.fetchSemanticsNode().config[SemanticsProperties.StateDescription].contains("Ready true") }.getOrDefault(false) }
         rule.waitForIdle()
         val display = context.resources.displayMetrics
         for (tag in listOf("video-save-copy", "video-save-original")) {
             val node = rule.onNodeWithTag(tag)
-            node.assertIsDisplayed()
             val bounds = node.fetchSemanticsNode().boundsInRoot
+            android.util.Log.i("VideoControls", "$tag bounds=$bounds screen=${display.widthPixels}x${display.heightPixels}")
+            try { node.assertIsDisplayed() } catch (error: AssertionError) {
+                instrumentation.uiAutomation.takeScreenshot()?.let { image ->
+                    File(context.filesDir, "video-controls-failure.png").outputStream().use { image.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+                    image.recycle()
+                }
+                throw error
+            }
             assertTrue("$tag must fit below navigation bar", bounds.bottom <= display.heightPixels)
             assertTrue("$tag must fit horizontally", bounds.right <= display.widthPixels)
         }
