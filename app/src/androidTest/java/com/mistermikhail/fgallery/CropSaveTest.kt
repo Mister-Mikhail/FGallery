@@ -40,16 +40,25 @@ class CropSaveTest {
         val file = fixture("editor-source.png", android.graphics.Color.RED)
         val source = FileProvider.getUriForFile(context, "${context.packageName}.files", file)
         val intent = Intent(context, ImageCropActivity::class.java).setData(source).putExtra("png", true)
-        ActivityScenario.launchActivityForResult<ImageCropActivity>(intent).use { scenario ->
+        CropTestHostActivity.result.set(null)
+        ActivityScenario.launch<CropTestHostActivity>(Intent(context, CropTestHostActivity::class.java)).use { scenario ->
+            scenario.onActivity { it.launchCrop(intent) }
+            fun withEditor(action: (ImageCropActivity) -> Unit) {
+                instrumentation.runOnMainSync {
+                    val activity = androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry.getInstance()
+                        .getActivitiesInStage(androidx.test.runner.lifecycle.Stage.RESUMED).filterIsInstance<ImageCropActivity>().firstOrNull()
+                    if (activity != null) action(activity)
+                }
+            }
             var ready = false
             val deadline = SystemClock.uptimeMillis() + 15000
             while (!ready && SystemClock.uptimeMillis() < deadline) {
-                scenario.onActivity { ready = it.findViewById<CropImageView>(R.id.crop_image_view)?.cropRect?.width()?.let { width -> width > 0 } == true }
+                withEditor { ready = it.findViewById<CropImageView>(R.id.crop_image_view)?.cropRect?.width()?.let { width -> width > 0 } == true }
                 if (!ready) SystemClock.sleep(100)
             }
             assertTrue("Image must load into editor", ready)
             for (right in listOf(false, true)) {
-                scenario.onActivity { activity ->
+                withEditor { activity ->
                     val view = activity.findViewById<CropImageView>(R.id.crop_image_view)
                     val rect = view.cropWindowRect!!
                     val before = view.cropRect!!.top
@@ -69,9 +78,11 @@ class CropSaveTest {
                 }
             }
             rule.onNodeWithText("Готово").performClick()
-            val result = scenario.result
+            val savedDeadline = SystemClock.uptimeMillis() + 15000
+            while (CropTestHostActivity.result.get() == null && SystemClock.uptimeMillis() < savedDeadline) SystemClock.sleep(100)
+            val result = requireNotNull(CropTestHostActivity.result.get())
             assertEquals(Activity.RESULT_OK, result.resultCode)
-            val bitmap = context.contentResolver.openInputStream(result.resultData.data!!).use { BitmapFactory.decodeStream(it) }
+            val bitmap = context.contentResolver.openInputStream(result.data!!.data!!).use { BitmapFactory.decodeStream(it) }
             assertNotNull("Returned URI must contain encoded image", bitmap)
             assertTrue(bitmap.height < 120)
             bitmap.recycle()

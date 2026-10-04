@@ -10,8 +10,15 @@ import java.io.FileOutputStream
 class EditedMediaStore(private val context: Context) {
     private val resolver = context.contentResolver
 
+    private fun canWriteDirect(source: MediaItem): Boolean {
+        val file = StorageAccess.file(context, source) ?: return false
+        val privateRoots = listOfNotNull(context.filesDir, context.cacheDir, context.getExternalFilesDir(null), context.externalCacheDir)
+        val privateFile = privateRoots.any { file.path.startsWith(it.path + "/") }
+        return file.canWrite() && (StorageFolders.hasFileAccess() || privateFile)
+    }
+
     fun saveCopy(source: MediaItem, edited: Uri, mime: String, extension: String): Uri {
-        if (StorageAccess.file(context, source)?.parentFile?.canWrite() == true) return saveCopyFile(source, edited, extension)
+        if (canWriteDirect(source)) return saveCopyFile(source, edited, extension)
         if (android.provider.DocumentsContract.isDocumentUri(context, source.uri) || source.folderTarget.startsWith("content://")) {
             val parent = StorageAccess.parent(context, source)
             val destination = StorageAccess.create(context, parent, "${source.name.substringBeforeLast('.')}_crop_${java.util.UUID.randomUUID().toString().take(8)}.$extension", mime)
@@ -38,7 +45,7 @@ class EditedMediaStore(private val context: Context) {
 
     /** Permission is obtained before this call. Keep a complete backup until verified. */
     fun replace(source: MediaItem, edited: Uri, mime: String, extension: String) {
-        if (StorageAccess.file(context, source)?.canWrite() == true) {
+        if (canWriteDirect(source)) {
             replaceFile(source, edited, extension)
             return
         }

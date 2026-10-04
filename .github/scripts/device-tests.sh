@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-gradle :app:connectedDebugAndroidTest
-test_result=$?
 mkdir -p app/build/reports/androidTests/connected
-adb logcat -d > app/build/reports/androidTests/connected/logcat.txt
-exit "$test_result"
+capture_device_log() { adb logcat -d > app/build/reports/androidTests/connected/logcat.txt 2>&1 || true; }
+trap capture_device_log EXIT
+gradle :app:connectedDebugAndroidTest
+exit "$?"
