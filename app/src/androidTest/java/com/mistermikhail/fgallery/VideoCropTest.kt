@@ -84,7 +84,13 @@ class VideoCropTest {
             android.util.Log.i("VideoControls", "$tag bounds=$bounds screen=${display.widthPixels}x${display.heightPixels}")
             try { node.assertIsDisplayed() } catch (error: AssertionError) {
                 instrumentation.uiAutomation.takeScreenshot()?.let { image ->
-                    File(context.filesDir, "video-controls-failure.png").outputStream().use { image.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+                    val screenshot = context.contentResolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                        android.content.ContentValues().apply {
+                            put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, "video-controls-failure.png")
+                            put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "image/png")
+                            put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, "Pictures/FGalleryTests/")
+                        })
+                    if (screenshot != null) context.contentResolver.openOutputStream(screenshot, "w")!!.use { image.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
                     image.recycle()
                 }
                 throw error

@@ -50,9 +50,9 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
 
-    implementation("androidx.compose.ui:ui:1.7.6")
-    implementation("androidx.compose.ui:ui-tooling-preview:1.7.6")
-    implementation("androidx.compose.foundation:foundation:1.7.6")
+    implementation("androidx.compose.ui:ui:1.9.3")
+    implementation("androidx.compose.ui:ui-tooling-preview:1.9.3")
+    implementation("androidx.compose.foundation:foundation:1.9.3")
     implementation("androidx.compose.material3:material3:1.3.1")
     implementation("androidx.compose.material:material-icons-extended:1.7.6")
 
@@ -68,8 +68,8 @@ dependencies {
     androidTestImplementation("androidx.test:core-ktx:1.6.1")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
-    androidTestImplementation("androidx.compose.ui:ui-test-junit4:1.7.6")
-    debugImplementation("androidx.compose.ui:ui-test-manifest:1.7.6")
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4:1.9.3")
+    debugImplementation("androidx.compose.ui:ui-test-manifest:1.9.3")
     implementation("me.saket.telephoto:zoomable-image-coil3:0.15.1")
     implementation("com.vanniktech:android-image-cropper:4.7.0")
     implementation("androidx.exifinterface:exifinterface:1.3.7")
@@ -78,6 +78,6 @@ dependencies {
     implementation("androidx.media3:media3-transformer:1.9.3")
     implementation("androidx.media3:media3-effect:1.9.3")
 
-    debugImplementation("androidx.compose.ui:ui-tooling:1.7.6")
+    debugImplementation("androidx.compose.ui:ui-tooling:1.9.3")
 }
 
