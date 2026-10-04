@@ -23,13 +23,13 @@ object FullResolutionFiles {
     private val lock = Mutex()
 
     fun cached(context: Context, item: MediaItem): File? = File(File(context.cacheDir, "full_resolution_v2"),
-        "${item.id}_${item.dateModifiedMillis}_${item.sizeBytes}.png").takeIf { it.exists() && it.length() > 0 }
+        "${StorageAccess.stableId(ThumbnailCache.key(item))}.png").takeIf { it.exists() && it.length() > 0 }
 
     suspend fun prepare(context: Context, item: MediaItem): File = withContext(Dispatchers.IO) {
         cached(context, item)?.let { it.setLastModified(System.currentTimeMillis()); return@withContext it }
         lock.withLock {
             val directory = File(context.cacheDir, "full_resolution_v2").apply { mkdirs() }
-            val target = File(directory, "${item.id}_${item.dateModifiedMillis}_${item.sizeBytes}.png")
+            val target = File(directory, "${StorageAccess.stableId(ThumbnailCache.key(item))}.png")
             if (target.exists() && target.length() > 0) { target.setLastModified(System.currentTimeMillis()); return@withLock target }
             val direct = StorageAccess.file(context, item)?.takeIf { it.isFile && it.canRead() }
             val input = direct ?: File.createTempFile("source_", ".bin", directory)

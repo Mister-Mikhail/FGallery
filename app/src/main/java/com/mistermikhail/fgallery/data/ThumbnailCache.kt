@@ -23,10 +23,15 @@ object ThumbnailCache {
     private val generationLocks = ConcurrentHashMap<String, Mutex>()
     private val decoders = Semaphore(2)
 
+    fun key(item: MediaItem): String {
+        val source = item.sourcePath.ifBlank { if (item.uri.scheme == "file") item.uri.path.orEmpty() else item.uriKey }
+        return "${item.kind}/${StorageAccess.stableId(source)}/${item.dateModifiedMillis}/${item.sizeBytes}"
+    }
+
     fun fileFor(context: Context, item: MediaItem, highQuality: Boolean = false): File {
         val version = item.dateModifiedMillis.takeIf { it > 0L } ?: item.dateTakenMillis
         val tier = if (highQuality) "hq" else "fast"
-        return File(File(context.cacheDir, DIRECTORY), "${item.kind.name.lowercase()}_${item.id}_${version}_${item.sizeBytes}_${tier}.png")
+        return File(File(context.cacheDir, DIRECTORY), "${StorageAccess.stableId(key(item))}_${version}_${tier}.png")
     }
 
     suspend fun preload(context: Context, items: List<MediaItem>, highQuality: Boolean = false): Int =

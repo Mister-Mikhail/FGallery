@@ -130,7 +130,7 @@ class MediaRepository(private val context: Context) {
                             album = it.getString(albumC).orEmpty().ifBlank { "Без альбома" }.let { name -> if (volume == "external_primary") name else "${root.name} · $name" },
                             relativePath = it.getString(pathC).orEmpty(),
                             sizeBytes = it.getLong(sizeC),
-                            dateModifiedMillis = it.getLong(modifiedC) * 1000L,
+                            dateModifiedMillis = if (StorageFolders.hasFileAccess() && sourcePath.isNotBlank()) java.io.File(sourcePath).lastModified() else it.getLong(modifiedC) * 1000L,
                             storageId = volume, storageName = root.name, sourcePath = it.getString(dataC).orEmpty(),
                             folderTarget = it.getString(dataC)?.let { path -> java.io.File(path).parent }.orEmpty(),
                         )

@@ -49,6 +49,8 @@ class LibraryPerformanceTest {
         val decoded = BitmapFactory.decodeFile(cached.path)
         assertTrue("Large unindexed picture must be sampled", decoded.width <= 960); decoded.recycle()
         val bytes = cached.readBytes()
+        assertEquals(cached, ThumbnailCache.cached(context, item.copy(id = 19033,
+            uri = Uri.parse("content://media/external_primary/images/media/19033"), sourcePath = source.path)))
         source.delete()
         val reopened = ThumbnailCache.ensure(context, item)!!
         assertArrayEquals(bytes, reopened.readBytes())

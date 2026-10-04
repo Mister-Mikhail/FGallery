@@ -572,6 +572,7 @@ internal fun TiledZoomableImage(
     val context = LocalContext.current
     var imageFailed by remember(item.uri) { mutableStateOf(false) }
     var fullSource by remember(item.uri) { mutableStateOf(com.mistermikhail.fgallery.data.FullResolutionFiles.cached(context, item)) }
+    var fullDecoded by remember(item.uri) { mutableStateOf(false) }
     var fullError by remember(item.uri) { mutableStateOf<String?>(null) }
     val needsFullSource = item.kind == MediaKind.RAW || com.mistermikhail.fgallery.data.TiffImages.isTiff(item.name, item.mimeType)
     var cachedPreview by remember(item.uri, item.dateModifiedMillis, item.sizeBytes) {
@@ -626,7 +627,7 @@ internal fun TiledZoomableImage(
                 return@DoubleClickToZoomListener
             }
 
-            if ((needsFullSource && fullSource == null) || !imageState.isImageDisplayed || !state.contentTransformation.isSpecified || state.isAnimationRunning) return@DoubleClickToZoomListener
+            if ((needsFullSource && !fullDecoded) || !imageState.isImageDisplayed || !state.contentTransformation.isSpecified || state.isAnimationRunning) return@DoubleClickToZoomListener
             val transformation = state.contentTransformation
             val fit = maxOf(transformation.scaleMetadata.initialScale.scaleX, transformation.scaleMetadata.initialScale.scaleY)
             val current = maxOf(transformation.scale.scaleX, transformation.scale.scaleY)
@@ -652,7 +653,7 @@ internal fun TiledZoomableImage(
         ZoomableAsyncImage(
             model = coil3.request.ImageRequest.Builder(context).data(fullSource ?: if (needsFullSource) cachedPreview else if (imageFailed && cachedPreview != null) cachedPreview else item.uri)
                 .memoryCacheKey("${item.uri}/${item.dateModifiedMillis}/${if (fullSource != null) "full" else if (imageFailed || needsFullSource) "fallback" else "source"}")
-                .listener(onError = { _, _ -> imageFailed = true })
+                .listener(onError = { _, _ -> imageFailed = true }, onSuccess = { request, _ -> if (fullSource != null && request.data == fullSource) fullDecoded = true })
                 .build(),
             contentDescription = item.name,
             state = imageState,
@@ -664,11 +665,11 @@ internal fun TiledZoomableImage(
                 stateDescription = "Zoom ${(zoomableState.contentTransformation.scaleMetadata.userZoom * 100).toInt()}%"
                 val initial = zoomableState.contentTransformation.scaleMetadata.initialScale
                 this[ViewerZoomRange] = maxOf(initial.scaleX, initial.scaleY) to maxOf(1f, maxOf(initial.scaleX, initial.scaleY))
-                this[ViewerImageReady] = imageState.isImageDisplayed && (!needsFullSource || fullSource != null)
+                this[ViewerImageReady] = imageState.isImageDisplayed && (!needsFullSource || fullDecoded)
             }.testTag("viewer-image"),
         )
         if (imageFailed && cachedPreview == null) Text("Не удалось открыть изображение. Формат может не поддерживаться декодером устройства.", color = Color.White, modifier = Modifier.padding(24.dp))
-        if (needsFullSource && fullSource == null) {
+        if (needsFullSource && !fullDecoded) {
             if (fullError == null && active) CircularProgressIndicator(Modifier.align(Alignment.BottomCenter).padding(24.dp))
             fullError?.let { Text("Не удалось загрузить полный размер: $it", color = Color.White, modifier = Modifier.align(Alignment.BottomCenter).padding(24.dp)) }
         }

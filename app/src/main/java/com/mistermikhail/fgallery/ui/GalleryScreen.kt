@@ -908,8 +908,8 @@ private fun MediaPreview(
     var liveFailed by remember(item.uri) { mutableStateOf(false) }
     val request = ImageRequest.Builder(context)
         .data(cachedModel ?: item.uri.takeIf { item.kind == MediaKind.IMAGE && !com.mistermikhail.fgallery.data.TiffImages.isTiff(item.name, item.mimeType) })
-        .memoryCacheKey("tile/${item.uri}/${item.dateModifiedMillis}/${item.sizeBytes}")
-        .placeholderMemoryCacheKey("tile/${item.uri}/${item.dateModifiedMillis}/${item.sizeBytes}")
+        .memoryCacheKey("tile/${ThumbnailCache.key(item)}")
+        .placeholderMemoryCacheKey("tile/${ThumbnailCache.key(item)}")
         .size(960, 960).build()
     Box(modifier.background(MaterialTheme.colorScheme.surfaceVariant)) {
         AsyncImage(request, item.name, contentScale = ContentScale.Crop,
