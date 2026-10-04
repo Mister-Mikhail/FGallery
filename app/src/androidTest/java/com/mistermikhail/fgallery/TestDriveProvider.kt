@@ -18,14 +18,14 @@ class TestDriveProvider : DocumentsProvider() {
     private fun id(file: File) = if (file == directory) "root" else "root/" + file.relativeTo(directory).invariantSeparatorsPath
     override fun onCreate() = true
     override fun queryRoots(projection: Array<out String>?): MatrixCursor = MatrixCursor(arrayOf(DocumentsContract.Root.COLUMN_ROOT_ID, DocumentsContract.Root.COLUMN_DOCUMENT_ID, DocumentsContract.Root.COLUMN_TITLE, DocumentsContract.Root.COLUMN_FLAGS)).apply {
-        addRow(arrayOf("root", "root", "Test drive", DocumentsContract.Root.FLAG_SUPPORTS_CREATE))
+        addRow(arrayOf<Any>("root", "root", "Test drive", DocumentsContract.Root.FLAG_SUPPORTS_CREATE))
     }
     private fun cursor(projection: Array<out String>?) = MatrixCursor(projection ?: arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID,
         DocumentsContract.Document.COLUMN_DISPLAY_NAME, DocumentsContract.Document.COLUMN_MIME_TYPE, DocumentsContract.Document.COLUMN_SIZE,
         DocumentsContract.Document.COLUMN_LAST_MODIFIED, DocumentsContract.Document.COLUMN_FLAGS))
     private fun add(cursor: MatrixCursor, file: File) {
         if (!file.exists()) return
-        val values = mapOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID to id(file), DocumentsContract.Document.COLUMN_DISPLAY_NAME to file.name,
+        val values = mapOf<String, Any>(DocumentsContract.Document.COLUMN_DOCUMENT_ID to id(file), DocumentsContract.Document.COLUMN_DISPLAY_NAME to file.name,
             DocumentsContract.Document.COLUMN_MIME_TYPE to if (file.isDirectory) DocumentsContract.Document.MIME_TYPE_DIR else "image/jpeg",
             DocumentsContract.Document.COLUMN_SIZE to file.length(), DocumentsContract.Document.COLUMN_LAST_MODIFIED to file.lastModified(),
             DocumentsContract.Document.COLUMN_FLAGS to (DocumentsContract.Document.FLAG_SUPPORTS_DELETE or DocumentsContract.Document.FLAG_SUPPORTS_WRITE or DocumentsContract.Document.FLAG_DIR_SUPPORTS_CREATE or DocumentsContract.Document.FLAG_SUPPORTS_MOVE))

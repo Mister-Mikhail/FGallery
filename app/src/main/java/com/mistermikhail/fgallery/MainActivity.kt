@@ -186,17 +186,15 @@ class MainActivity : ComponentActivity() {
             }
             pendingCropItem = item
             uiScope.launch {
-            val inputUri = if (item.kind == MediaKind.RAW) withContext(Dispatchers.IO) {
-                runCatching {
-                    val preview = contentResolver.openInputStream(item.uri)?.use { androidx.exifinterface.media.ExifInterface(it).thumbnailBytes }
-                    if (preview != null) {
-                        val file = java.io.File.createTempFile("raw_crop_", ".jpg", cacheDir)
-                        file.writeBytes(preview)
-                        androidx.core.content.FileProvider.getUriForFile(this@MainActivity, "$packageName.files", file)
-                    } else item.uri
-                }.getOrDefault(item.uri)
-            } else if (com.mistermikhail.fgallery.data.TiffImages.isTiff(item.name, item.mimeType)) withContext(Dispatchers.IO) {
-                runCatching { com.mistermikhail.fgallery.data.TiffImages.cropSource(this@MainActivity, item.uri) }.getOrDefault(item.uri)
+            val inputUri = if (item.kind == MediaKind.RAW || com.mistermikhail.fgallery.data.TiffImages.isTiff(item.name, item.mimeType)) {
+                try {
+                    val source = com.mistermikhail.fgallery.data.FullResolutionFiles.prepare(this@MainActivity, item)
+                    androidx.core.content.FileProvider.getUriForFile(this@MainActivity, "$packageName.files", source)
+                } catch (e: Exception) {
+                    pendingCropItem = null
+                    notify("Не удалось подготовить исходник: ${e.localizedMessage}")
+                    return@launch
+                }
             } else item.uri
             runCatching {
                 cropLauncher.launch(Intent(this@MainActivity, ImageCropActivity::class.java).apply {

@@ -86,10 +86,29 @@ object StorageAccess {
 
     fun directory(context: Context, parent: String, name: String): String {
         require(name.isNotBlank() && '/' !in name && '\\' !in name && name !in listOf(".", "..")) { "Недопустимое имя папки" }
-        find(context, parent, name)?.let { return it }
+        find(context, parent, name)?.let { existing ->
+            check(if (existing.startsWith("content://")) context.contentResolver.getType(Uri.parse(existing)) == DocumentsContract.Document.MIME_TYPE_DIR else File(existing).isDirectory) { "Уже существует файл $name" }
+            return existing
+        }
         if (!parent.startsWith("content://")) return File(parent, name).apply { check(isDirectory || mkdirs()) { "Нет доступа для создания папки" } }.path
         return DocumentsContract.createDocument(context.contentResolver, Uri.parse(parent), DocumentsContract.Document.MIME_TYPE_DIR, name)?.toString()
             ?: error("Не удалось создать папку")
+    }
+
+    fun ensureDirectory(context: Context, target: String): String {
+        if (!target.startsWith("content://")) {
+            val file = File(target)
+            check(file.isDirectory || file.mkdirs()) { "Не удалось восстановить папку" }
+            return target
+        }
+        val uri = Uri.parse(target)
+        if (androidx.documentfile.provider.DocumentFile.fromSingleUri(context, uri)?.isDirectory == true) return target
+        val id = DocumentsContract.getDocumentId(uri)
+        val treeId = DocumentsContract.getTreeDocumentId(uri)
+        require(id == treeId || id.startsWith("$treeId/") || (treeId.endsWith(':') && id.startsWith(treeId))) { "Папка вне выданного доступа" }
+        var parent = DocumentsContract.buildDocumentUriUsingTree(uri, treeId).toString()
+        for (part in id.removePrefix(treeId).trim('/').split('/').filter { it.isNotBlank() }) parent = directory(context, parent, part)
+        return parent
     }
 
     fun create(context: Context, parent: String, name: String, mime: String): Uri {
@@ -110,7 +129,7 @@ object StorageAccess {
         val prefix = if (root.id == "external_primary") "primary" else root.directory!!.name
         val docId = "$prefix:$relative"
         return granted(context).firstOrNull { grant ->
-            grant.id == root.id && docId.startsWith(DocumentsContract.getDocumentId(Uri.parse(grant.target)).trimEnd('/') + "/")
+            grant.id == root.id && docId.let { id -> val base = DocumentsContract.getDocumentId(Uri.parse(grant.target)).trimEnd('/'); id == base || id.startsWith("$base/") }
         }?.let { DocumentsContract.buildDocumentUriUsingTree(Uri.parse(it.target), docId) }
             ?: granted(context).firstOrNull { it.id == root.id && DocumentsContract.getDocumentId(Uri.parse(it.target)).endsWith(':') }
                 ?.let { DocumentsContract.buildDocumentUriUsingTree(Uri.parse(it.target), docId) }

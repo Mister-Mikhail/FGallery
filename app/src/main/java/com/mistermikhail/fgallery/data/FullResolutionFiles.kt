@@ -22,13 +22,15 @@ object FullResolutionFiles {
             val directory = File(context.cacheDir, "full_resolution_v1").apply { mkdirs() }
             val target = File(directory, "${item.id}_${item.dateModifiedMillis}_${item.sizeBytes}.png")
             if (target.exists() && target.length() > 0) return@withLock target
-            val input = if (item.uri.scheme == "file") File(item.uri.path!!) else
-                File.createTempFile("source_", ".bin", directory).also { file ->
-                    context.contentResolver.openInputStream(item.uri)?.use { source -> file.outputStream().use { source.copyTo(it) } }
-                        ?: error("Нет доступа к исходному файлу")
-                }
+            val input = if (item.uri.scheme == "file") File(item.uri.path!!) else File.createTempFile("source_", ".bin", directory)
             val output = File.createTempFile("decode_", ".png", directory)
             try {
+                if (item.uri.scheme != "file") context.contentResolver.openInputStream(item.uri)?.use { source ->
+                    input.outputStream().use { destination ->
+                        val buffer = ByteArray(65536)
+                        while (true) { currentCoroutineContext().ensureActive(); val n = source.read(buffer); if (n < 0) break; destination.write(buffer, 0, n) }
+                    }
+                } ?: error("Нет доступа к исходному файлу")
                 currentCoroutineContext().ensureActive()
                 if (item.kind == MediaKind.RAW) {
                     LibRaw().use { raw ->
@@ -58,6 +60,8 @@ object FullResolutionFiles {
                 directory.listFiles()?.filter { it != target && it.name.endsWith(".png") && !it.name.startsWith("decode_") }
                     ?.sortedByDescending(File::lastModified)?.drop(2)?.forEach(File::delete)
                 target
+            } catch (e: OutOfMemoryError) {
+                throw IllegalStateException("Недостаточно памяти для обработки исходного файла", e)
             } finally {
                 if (item.uri.scheme != "file") input.delete()
                 output.delete()

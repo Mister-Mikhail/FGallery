@@ -76,8 +76,7 @@ class DriveRecycleBin(private val context: Context, private val mounted: () -> L
             for (item in items) {
                 val record = records().firstOrNull { uri(it) == item.uri }
                 if (record == null) continue // Legacy virtual bin is handled by settings.
-                val parent = record.getString("parent")
-                if (!parent.startsWith("content://")) check(File(parent).isDirectory || File(parent).mkdirs()) { "Не удалось восстановить исходную папку" }
+                val parent = StorageAccess.ensureDirectory(context, record.getString("parent"))
                 StorageAccess.move(context, item.copy(name = "${record.getString("token")}_${item.name}"), parent, record.getString("name"))
                 removeMetadata(record)
             }

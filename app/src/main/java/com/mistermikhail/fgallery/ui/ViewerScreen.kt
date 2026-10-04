@@ -638,7 +638,7 @@ internal fun TiledZoomableImage(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center,
     ) {
-        if (cachedPreview != null && (!imageState.isImageDisplayed || (needsFullSource && fullSource == null))) {
+        if (cachedPreview != null && !imageState.isImageDisplayed) {
             AsyncImage(
                 model = cachedPreview,
                 contentDescription = item.name,
@@ -647,11 +647,6 @@ internal fun TiledZoomableImage(
             )
         }
 
-        if (imageFailed && cachedPreview == null) Text("Не удалось открыть изображение. Формат может не поддерживаться декодером устройства.", color = Color.White, modifier = Modifier.padding(24.dp))
-        if (needsFullSource && fullSource == null) {
-            if (fullError == null && active) CircularProgressIndicator(Modifier.align(Alignment.BottomCenter).padding(24.dp))
-            fullError?.let { Text("Не удалось загрузить полный размер: $it", color = Color.White, modifier = Modifier.align(Alignment.BottomCenter).padding(24.dp)) }
-        }
         ZoomableAsyncImage(
             model = coil3.request.ImageRequest.Builder(context).data(fullSource ?: if (needsFullSource) cachedPreview else if (imageFailed && cachedPreview != null) cachedPreview else item.uri)
                 .memoryCacheKey("${item.uri}/${item.dateModifiedMillis}/${if (fullSource != null) "full" else if (imageFailed || needsFullSource) "fallback" else "source"}")
@@ -670,5 +665,10 @@ internal fun TiledZoomableImage(
                 this[ViewerImageReady] = imageState.isImageDisplayed && (!needsFullSource || fullSource != null)
             }.testTag("viewer-image"),
         )
+        if (imageFailed && cachedPreview == null) Text("Не удалось открыть изображение. Формат может не поддерживаться декодером устройства.", color = Color.White, modifier = Modifier.padding(24.dp))
+        if (needsFullSource && fullSource == null) {
+            if (fullError == null && active) CircularProgressIndicator(Modifier.align(Alignment.BottomCenter).padding(24.dp))
+            fullError?.let { Text("Не удалось загрузить полный размер: $it", color = Color.White, modifier = Modifier.align(Alignment.BottomCenter).padding(24.dp)) }
+        }
     }
 }
