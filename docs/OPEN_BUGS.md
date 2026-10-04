@@ -136,3 +136,9 @@ User downloaded the direct artifact link and tested the delivered 45637f5 build.
 - Save choices must be concise: Сохранить копию / Заменить оригинал / Отмена. Choosing replace is the authorization; no second application confirmation, for either photo or video. RAW remains copy-only.
 
 0.2.1 changes under verification: focal document transforms with single-finger page scrolling; removal of static PNG backing after decode; preserved preview lifetime and poster until first frame; crop handles without autozoom and byte-verified saving with rollback; concise single save choice and nonmodal progress. Android regression checks cover gestures, transparent PNG, upper handles, crop result, copy/replace bytes and failed overwrite recovery. No blocker closed before their checks pass; real sample files, video export/360 and device-specific behavior remain device acceptance checks.
+
+
+## Launcher icon — 2026-10-04
+User requires the supplied 1000267911.jpg artwork exactly, including all four corner brackets. Previous foreground coordinates extended beyond the adaptive icon safe area and brackets were clipped by launcher masks. 0.2.2 uses the unmodified reference JPEG with proportional safe-area insets, for both normal and round adaptive resources. Acceptance: verify all four brackets remain visible under circle and rounded-square masks; confirm the packaged APK contains the reference bytes. Launcher/device appearance remains a device acceptance check.
+
+0.2.1 verification record: commit 0fef0e3497bb9f0b9c1cf5578992b450ccb8daae, GitHub run 37168505732 successful; 6 unit tests and 5 Android 15 Pixel 2 emulator tests passed (document gestures, 4000×4000 transparent PNG, upper crop handles, readable crop result, copy/replace and failed overwrite recovery). Real user video/RAW fixtures and device-specific storage behavior remain unchecked.

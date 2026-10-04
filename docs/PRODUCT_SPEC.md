@@ -247,3 +247,7 @@ Current FGallery brand direction:
 
 ### Latest viewer/edit requirements (2026-10-04)
 Double tap: fit ×1.30 → 90% of maximum → fit. Pinch retains the point between fingers. PDF pages accept ordinary vertical drags. Transparent images must not retain a static backing copy during zoom. Visible live video tiles keep their player during scrolling; keep a poster until the first video frame. Crop offers concise copy/original choices once; choosing original authorizes replacement, with backup and recovery, without another app confirmation. RAW saves only a copy.
+
+
+### Launcher icon reference (2026-10-04)
+Use the user's 1000267911.jpg artwork itself: metallic gold/silver F on black, with all four outer corner brackets visible. Preserve aspect ratio and use an adaptive foreground inset that keeps the brackets inside circular and rounded-square launcher masks. This supersedes the simplified vector approximation.
