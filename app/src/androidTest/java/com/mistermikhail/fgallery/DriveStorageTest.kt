@@ -28,6 +28,12 @@ class DriveStorageTest {
             assertFalse(File(a.sourcePath).exists()); assertFalse(File(b.sourcePath).exists())
             val loaded = bin.load().filter { it.storageId in roots.map { root -> root.id } && it.folderTarget.startsWith(base.path) }
             assertEquals(2, loaded.size)
+            val edited = File(base, "edited.jpg").apply { writeBytes(byteArrayOf(10, 20, 30, 40)) }
+            val cropCopy = EditedMediaStore(context).saveCopy(loaded.first { it.name == "a.jpg" }, Uri.fromFile(edited), "image/jpeg", "jpg")
+            val copiedFile = StorageAccess.file(context, loaded.first { it.name == "a.jpg" }.copy(uri = cropCopy, sourcePath = ""))!!
+            assertEquals(File(a.sourcePath).parentFile!!.path, copiedFile.parentFile!!.path)
+            assertArrayEquals(edited.readBytes(), copiedFile.readBytes())
+            assertFalse(File(a.sourcePath).exists())
             assertTrue(loaded.any { it.uri.path!!.startsWith(primary.path + "/${StorageAccess.BIN}/") })
             assertTrue(loaded.any { it.uri.path!!.startsWith(removable.path + "/${StorageAccess.BIN}/") })
             // Simulate an actual detached directory, then recreate the store as after app restart.

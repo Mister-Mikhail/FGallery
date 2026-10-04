@@ -99,7 +99,8 @@ class VideoCropTest {
             assertTrue("$tag must fit horizontally", bounds.right <= display.widthPixels)
         }
         rule.runOnIdle { fontScale.value = 1f }
-        rule.onNodeWithTag("video-save-copy").assertIsDisplayed()
+        rule.waitUntil(5000) { runCatching { rule.onNodeWithTag("video-save-copy").assertIsDisplayed(); true }.getOrDefault(false) }
+        rule.onNodeWithTag("video-save-original").assertIsDisplayed()
     }
 
 }

@@ -195,6 +195,8 @@ class MainActivity : ComponentActivity() {
                     notify("Не удалось подготовить исходник: ${e.localizedMessage}")
                     return@launch
                 }
+            } else if (item.uri.scheme == "file") {
+                androidx.core.content.FileProvider.getUriForFile(this@MainActivity, "$packageName.files", java.io.File(item.uri.path!!))
             } else item.uri
             runCatching {
                 cropLauncher.launch(Intent(this@MainActivity, ImageCropActivity::class.java).apply {

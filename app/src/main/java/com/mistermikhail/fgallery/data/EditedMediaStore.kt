@@ -18,7 +18,14 @@ class EditedMediaStore(private val context: Context) {
     }
 
     fun saveCopy(source: MediaItem, edited: Uri, mime: String, extension: String): Uri {
-        if (canWriteDirect(source)) return saveCopyFile(source, edited, extension)
+        val originalParent = DriveRecycleBin(context).originalParent(source)
+        if (canWriteDirect(source) && originalParent?.startsWith("content://") != true) return saveCopyFile(source, edited, extension, originalParent)
+        if (originalParent != null) {
+            val parent = StorageAccess.ensureDirectory(context, originalParent)
+            val destination = StorageAccess.create(context, parent, "${source.name.substringBeforeLast('.')}_crop_${java.util.UUID.randomUUID().toString().take(8)}.$extension", mime)
+            try { copy(edited, destination); return destination }
+            catch (e: Exception) { runCatching { StorageAccess.delete(context, destination) }; throw e }
+        }
         if (android.provider.DocumentsContract.isDocumentUri(context, source.uri) || source.folderTarget.startsWith("content://")) {
             val parent = StorageAccess.parent(context, source)
             val destination = StorageAccess.create(context, parent, "${source.name.substringBeforeLast('.')}_crop_${java.util.UUID.randomUUID().toString().take(8)}.$extension", mime)
@@ -107,10 +114,10 @@ class EditedMediaStore(private val context: Context) {
         }
     }
 
-    private fun saveCopyFile(source: MediaItem, edited: Uri, extension: String): Uri {
+    private fun saveCopyFile(source: MediaItem, edited: Uri, extension: String, originalParent: String? = null): Uri {
         val path = StorageAccess.file(context, source)?.path
         val original = File(path ?: error("Не найден исходный файл")).canonicalFile
-        val parent = original.parentFile ?: error("Не найдена папка")
+        val parent = originalParent?.let { File(StorageAccess.ensureDirectory(context, it)) } ?: original.parentFile ?: error("Не найдена папка")
         val destination = File(parent, "${original.nameWithoutExtension}_crop_${java.util.UUID.randomUUID().toString().take(8)}.$extension")
         val staged = File.createTempFile(".fgallery_copy_", ".$extension", parent)
         try {

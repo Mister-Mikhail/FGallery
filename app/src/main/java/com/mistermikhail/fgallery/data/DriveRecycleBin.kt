@@ -32,6 +32,10 @@ class DriveRecycleBin(private val context: Context, private val mounted: () -> L
         record.optLong("size"), record.optLong("modified"), record.getString("storage"), record.getString("storageName"), record.getString("bin"),
         if (uri.scheme == "file") uri.path.orEmpty() else "")
 
+    fun originalParent(item: MediaItem): String? = records().firstOrNull {
+        it.optString("lastUri") == item.uriKey
+    }?.getString("parent")
+
     suspend fun load(): List<MediaItem> = withContext(Dispatchers.IO) {
         lock.withLock {
             // Read on-drive sidecars too, so a bin remains recoverable after reinstalling the app.
