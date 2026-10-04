@@ -83,6 +83,7 @@ class DriveStorageTest {
         assertArrayEquals(expected, context.contentResolver.openInputStream(restored)!!.use { it.readBytes() })
         StorageAccess.delete(context, restored)
         StorageAccess.delete(context, Uri.parse(folder))
+        Unit
     }
 
 }

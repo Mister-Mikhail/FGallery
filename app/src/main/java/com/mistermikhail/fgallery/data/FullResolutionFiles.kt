@@ -37,9 +37,11 @@ object FullResolutionFiles {
                         raw.setHalfSize(false)
                         raw.setCameraWhiteBalance(true)
                         raw.setOutputColorSpace(LibRaw.COLORSPACE_SRGB)
-                        val bitmap = raw.decodeBitmap(input.absolutePath,
-                            BitmapFactory.Options().apply { inSampleSize = 1; inPreferredConfig = Bitmap.Config.ARGB_8888 })
-                            ?: error("RAW не удалось декодировать")
+                        check(raw.open(input.absolutePath) == 0) { "RAW не удалось открыть" }
+                        raw.setQuality(3)
+                        check(raw.dcrawProcess() == 0) { "RAW не удалось декодировать" }
+                        val bitmap = raw.getMutableBitmap(Bitmap.Config.ARGB_8888)
+                            ?: error("RAW не удалось преобразовать")
                         try { output.outputStream().use { check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) } }
                         finally { bitmap.recycle() }
                     }

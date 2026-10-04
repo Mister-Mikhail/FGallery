@@ -56,6 +56,14 @@ object StorageAccess {
     fun file(context: Context, item: MediaItem): File? {
         if (item.sourcePath.isNotBlank()) return File(item.sourcePath)
         if (item.uri.scheme == "file") return item.uri.path?.let(::File)
+        if (item.uri.authority == "com.android.externalstorage.documents") runCatching {
+            val id = DocumentsContract.getDocumentId(item.uri)
+            val volume = id.substringBefore(':').let { if (it == "primary") "external_primary" else it.lowercase() }
+            mounted(context).firstOrNull { it.id == volume }?.directory?.let { root ->
+                val child = File(root, id.substringAfter(':', "")).canonicalFile
+                if (child.path.startsWith(root.canonicalPath + "/")) return child
+            }
+        }
         if (item.uri.authority == "media") return runCatching {
             context.contentResolver.query(item.uri, arrayOf(MediaStore.MediaColumns.DATA), null, null, null)?.use {
                 if (it.moveToFirst()) it.getString(0)?.let(::File) else null
@@ -84,7 +92,9 @@ object StorageAccess {
 
     fun find(context: Context, parent: String, name: String): String? = children(context, parent).firstOrNull { it.first == name }?.second
 
-    fun directory(context: Context, parent: String, name: String): String {
+    fun directory(context: Context, requestedParent: String, name: String): String {
+        val parent = if (!requestedParent.startsWith("content://") && !File(requestedParent).canWrite())
+            documentForFile(context, File(requestedParent))?.toString() ?: requestedParent else requestedParent
         require(name.isNotBlank() && '/' !in name && '\\' !in name && name !in listOf(".", "..")) { "Недопустимое имя папки" }
         find(context, parent, name)?.let { existing ->
             check(if (existing.startsWith("content://")) context.contentResolver.getType(Uri.parse(existing)) == DocumentsContract.Document.MIME_TYPE_DIR else File(existing).isDirectory) { "Уже существует файл $name" }
@@ -111,7 +121,9 @@ object StorageAccess {
         return parent
     }
 
-    fun create(context: Context, parent: String, name: String, mime: String): Uri {
+    fun create(context: Context, requestedParent: String, name: String, mime: String): Uri {
+        val parent = if (!requestedParent.startsWith("content://") && !File(requestedParent).canWrite())
+            documentForFile(context, File(requestedParent))?.toString() ?: requestedParent else requestedParent
         require(name.isNotBlank() && '/' !in name && '\\' !in name) { "Недопустимое имя файла" }
         check(find(context, parent, name) == null) { "В папке уже есть $name" }
         return if (parent.startsWith("content://")) DocumentsContract.createDocument(context.contentResolver, Uri.parse(parent), mime, name)

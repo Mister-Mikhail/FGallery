@@ -52,7 +52,14 @@ class DriveRecycleBin(private val context: Context, private val mounted: () -> L
                 val source = StorageAccess.file(context, item)
                 val root = mounted().firstOrNull { source != null && source.path.startsWith(it.directory!!.path + "/") }
                 val grant = granted().filter { it.id == item.storageId }.firstOrNull { candidate ->
-                    runCatching { android.provider.DocumentsContract.getDocumentId(item.uri).startsWith(android.provider.DocumentsContract.getDocumentId(Uri.parse(candidate.target))) }.getOrDefault(false)
+                    runCatching {
+                        val base = android.provider.DocumentsContract.getDocumentId(Uri.parse(candidate.target)).trimEnd('/')
+                        val sourceId = if (source != null && root != null) {
+                            val prefix = if (root.id == "external_primary") "primary" else root.directory!!.name
+                            "$prefix:${source.relativeTo(root.directory!!).invariantSeparatorsPath}"
+                        } else android.provider.DocumentsContract.getDocumentId(item.uri)
+                        sourceId == base || sourceId.startsWith("$base/") || (base.endsWith(':') && sourceId.startsWith(base))
+                    }.getOrDefault(false)
                 }
                 val target = root?.directory?.takeIf { it.canWrite() }?.path ?: grant?.target ?: error("Нет доступа к накопителю ${item.storageName}")
                 val folder = StorageAccess.directory(context, target, StorageAccess.BIN)
@@ -62,7 +69,10 @@ class DriveRecycleBin(private val context: Context, private val mounted: () -> L
                 val sidecarName = "$token.fgallery.json"
                 val sidecar = StorageAccess.create(context, folder, sidecarName, "application/json")
                 try {
-                    context.contentResolver.openOutputStream(sidecar, "w")!!.bufferedWriter().use { it.write(record.toString()) }
+                    context.contentResolver.openOutputStream(sidecar, "w")!!.use { output ->
+                        output.write(record.toString().toByteArray(Charsets.UTF_8)); output.flush()
+                        if (output is java.io.FileOutputStream) output.fd.sync()
+                    }
                     StorageAccess.move(context, item, folder, "${token}_${item.name}").toString().also { moved -> write(record.apply { put("lastUri", moved) }) }
                 } catch (e: Exception) {
                     if (uri(record) == null) { runCatching { StorageAccess.delete(context, sidecar) }; forget(token) }

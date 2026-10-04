@@ -662,6 +662,14 @@ class MainActivity : ComponentActivity() {
                 addDataScheme("file")
             }
             androidx.core.content.ContextCompat.registerReceiver(this@MainActivity, receiver, filter, androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED)
+            val usbReceiver = object : android.content.BroadcastReceiver() {
+                override fun onReceive(context: android.content.Context?, intent: Intent?) { changed() }
+            }
+            val usbFilter = android.content.IntentFilter().apply {
+                addAction(android.hardware.usb.UsbManager.ACTION_USB_DEVICE_ATTACHED)
+                addAction(android.hardware.usb.UsbManager.ACTION_USB_DEVICE_DETACHED)
+            }
+            androidx.core.content.ContextCompat.registerReceiver(this@MainActivity, usbReceiver, usbFilter, androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED)
             val manager = getSystemService(android.os.storage.StorageManager::class.java)
             val callback = if (Build.VERSION.SDK_INT >= 30) object : android.os.storage.StorageManager.StorageVolumeCallback() {
                 override fun onStateChanged(volume: android.os.storage.StorageVolume) { changed() }
@@ -671,7 +679,7 @@ class MainActivity : ComponentActivity() {
                 override fun onChange(selfChange: Boolean) { changed() }
             }
             contentResolver.registerContentObserver(MediaStore.Files.getContentUri("external"), true, observer)
-            onDispose { refreshSignal?.cancel(); contentResolver.unregisterContentObserver(observer); unregisterReceiver(receiver); if (Build.VERSION.SDK_INT >= 30 && callback != null) manager.unregisterStorageVolumeCallback(callback) }
+            onDispose { refreshSignal?.cancel(); contentResolver.unregisterContentObserver(observer); unregisterReceiver(receiver); unregisterReceiver(usbReceiver); if (Build.VERSION.SDK_INT >= 30 && callback != null) manager.unregisterStorageVolumeCallback(callback) }
         }
         if (directDeleteItems.isNotEmpty()) AlertDialog(
             onDismissRequest = { directDeleteItems = emptyList() },
