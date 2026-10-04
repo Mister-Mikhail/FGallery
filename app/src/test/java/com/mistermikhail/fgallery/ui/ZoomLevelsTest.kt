@@ -8,7 +8,7 @@ class ZoomLevelsTest {
         for (fit in listOf(0.08f, 0.25f, 1f, 2f)) {
             val maximum = 8f
             val result = firstDoubleTapZoom(fit, maximum)
-            assertEquals(0.30f, (result - fit) / (maximum - fit), 0.0001f)
+            assertEquals(1.30f, result / fit, 0.0001f)
         }
     }
     @Test fun firstStopCannotExceedMaximumWhenImageIsAlreadyLarger() {

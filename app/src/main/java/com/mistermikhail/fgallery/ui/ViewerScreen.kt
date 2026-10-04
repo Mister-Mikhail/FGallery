@@ -37,6 +37,7 @@ import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -82,6 +83,7 @@ fun ViewerScreen(
     items: List<MediaItem>,
     initialItem: MediaItem,
     onBack: () -> Unit,
+    active: Boolean = true,
     onTrash: (MediaItem) -> Unit,
     quickExifEnabled: Boolean,
     cleanupMode: Boolean,
@@ -152,7 +154,7 @@ fun ViewerScreen(
             modifier = Modifier.fillMaxSize(),
         ) { page ->
             val item = items[page]
-            val activePage = page == pagerState.currentPage
+            val activePage = active && page == pagerState.currentPage
 
             if (item.kind == MediaKind.VIDEO) {
                 VideoPlayer(
@@ -547,6 +549,7 @@ private fun TiledZoomableImage(
 ) {
     val context = LocalContext.current
     var doubleTapStage by remember(item.id) { mutableIntStateOf(0) }
+    var imageFailed by remember(item.uri) { mutableStateOf(false) }
 
     val zoomableState = rememberZoomableState(
         zoomSpec = ZoomSpec(maxZoomFactor = 8f),
@@ -630,8 +633,12 @@ private fun TiledZoomableImage(
             )
         }
 
+        if (imageFailed && cachedPreview == null) Text("Не удалось открыть изображение. Формат может не поддерживаться декодером устройства.", color = Color.White, modifier = Modifier.padding(24.dp))
         ZoomableAsyncImage(
-            model = item.uri,
+            model = coil3.request.ImageRequest.Builder(context).data(item.uri)
+                .memoryCacheKey("${item.uri}/${item.dateModifiedMillis}")
+                .listener(onError = { _, _ -> imageFailed = true })
+                .build(),
             contentDescription = item.name,
             state = imageState,
             contentScale = ContentScale.Fit,

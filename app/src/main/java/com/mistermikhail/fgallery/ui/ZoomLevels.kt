@@ -4,5 +4,5 @@ package com.mistermikhail.fgallery.ui
 internal fun firstDoubleTapZoom(fitScale: Float, maximum: Float): Float {
     val minimum = fitScale.coerceAtLeast(0.0001f)
     val limit = maximum.coerceAtLeast(minimum)
-    return minimum + (limit - minimum) * 0.30f
+    return (minimum * 1.30f).coerceAtMost(limit)
 }

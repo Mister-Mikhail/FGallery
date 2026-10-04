@@ -20,6 +20,7 @@ import androidx.media3.common.MediaItem as PlayerMediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.effect.Crop
 import androidx.media3.transformer.*
+import androidx.media3.transformer.Composition
 import coil3.compose.AsyncImage
 import com.mistermikhail.fgallery.data.MediaItem
 import com.mistermikhail.fgallery.data.ThumbnailCache
@@ -42,11 +43,13 @@ internal fun VideoCropDialog(item: MediaItem, onDismiss: () -> Unit, onExported:
     var duration by remember { mutableLongStateOf(item.durationMillis) }
     LaunchedEffect(item.uri) {
         if (duration <= 0) duration = withContext(Dispatchers.IO) {
+            runCatching {
             val retriever = android.media.MediaMetadataRetriever()
             try {
                 retriever.setDataSource(context, item.uri)
                 retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
             } finally { retriever.release() }
+            }.getOrDefault(0L)
         }
     }
     DisposableEffect(Unit) {
@@ -101,7 +104,7 @@ internal fun VideoCropDialog(item: MediaItem, onDismiss: () -> Unit, onExported:
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
                 Text("Кадрировать видео", style = MaterialTheme.typography.titleLarge)
                 Text(item.name, maxLines = 1)
-                Box(Modifier.fillMaxWidth().padding(vertical = 12.dp).aspectRatio(item.aspectRatio.coerceIn(0.5f, 2.5f))) {
+                Box(Modifier.fillMaxWidth().padding(vertical = 12.dp).aspectRatio(item.aspectRatio)) {
                     AsyncImage(thumbnail, "Область кадрирования", modifier = Modifier.fillMaxSize(), contentScale = androidx.compose.ui.layout.ContentScale.Fit)
                     Canvas(Modifier.fillMaxSize()) {
                         val left = size.width * horizontal.start

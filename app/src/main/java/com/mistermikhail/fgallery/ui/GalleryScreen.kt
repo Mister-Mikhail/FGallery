@@ -909,8 +909,12 @@ private fun MediaPreview(
             ?: ThumbnailCache.ensure(context, item)
     }
     var previewFailed by remember(item.uri) { mutableStateOf(false) }
+    var liveFailed by remember(item.uri) { mutableStateOf(false) }
     when {
-        livePreview && item.kind == MediaKind.VIDEO -> InlineVideoPreview(item, modifier)
+        livePreview && item.kind == MediaKind.VIDEO && !liveFailed -> Box(modifier) {
+            if (cachedModel != null) AsyncImage(cachedModel, item.name, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            InlineVideoPreview(item, Modifier.fillMaxSize(), onError = { liveFailed = true })
+        }
         cachedModel != null -> AsyncImage(
             model = cachedModel,
             contentDescription = item.name,
@@ -936,6 +940,7 @@ private fun MediaPreview(
 private fun InlineVideoPreview(
     item: MediaItem,
     modifier: Modifier,
+    onError: () -> Unit,
 ) {
     val context = LocalContext.current
     val player = remember(item.uri) {
@@ -943,6 +948,9 @@ private fun InlineVideoPreview(
             setMediaItem(PlayerMediaItem.fromUri(item.uri))
             volume = 0f
             repeatMode = Player.REPEAT_MODE_ONE
+            addListener(object : Player.Listener {
+                override fun onPlayerError(error: androidx.media3.common.PlaybackException) { onError() }
+            })
             prepare()
             seekTo(750L.coerceAtMost((item.durationMillis - 1L).coerceAtLeast(0L)))
             playWhenReady = true

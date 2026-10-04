@@ -115,7 +115,7 @@ private fun ZoomableDocumentPage(modifier: Modifier, onTap: () -> Unit, content:
         content(Modifier.fillMaxSize()
             .pointerInput(Unit) {
                 detectTapGestures(onTap = { onTap() }, onDoubleTap = {
-                    zoom = when (stage) { 0 -> 3.1f; 1 -> 8f; else -> 1f }
+                    zoom = when (stage) { 0 -> 1.3f; 1 -> 8f; else -> 1f }
                     stage = (stage + 1) % 3
                     pan = Offset.Zero
                 })

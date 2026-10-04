@@ -71,6 +71,8 @@ private data class PendingTreeMove(
     val copiedUris: List<Uri>,
 )
 
+private class PartialMoveException(val remaining: List<MediaItem>, cause: Exception) : Exception(cause.localizedMessage, cause)
+
 private sealed interface PendingWriteOperation {
     data class Rename(
         val item: MediaItem,
@@ -218,6 +220,7 @@ class MainActivity : ComponentActivity() {
                     val path = operation.relativePath.trim().replace('\\', '/').trim('/') + "/"
                     require(path != "/" && path.split('/').none { it == ".." || it == "." }) { "Недопустимая папка" }
                     var firstFailure: Exception? = null
+                    val remaining = mutableListOf<MediaItem>()
                     for (item in operation.items) {
                         try {
                             if (item.relativePath == path) continue
@@ -232,9 +235,9 @@ class MainActivity : ComponentActivity() {
                                 if (it.moveToFirst()) it.getString(0) else null
                             }
                             check(actual == path) { "Папка ${item.name} не изменилась" }
-                        } catch (e: Exception) { if (firstFailure == null) firstFailure = e }
+                        } catch (e: Exception) { remaining += item; if (firstFailure == null) firstFailure = e }
                     }
-                    firstFailure?.let { throw it }
+                    firstFailure?.let { throw PartialMoveException(remaining, it) }
                 }
             }
         }
@@ -249,6 +252,12 @@ class MainActivity : ComponentActivity() {
             try { executeWrite(operation); null } catch (e: Exception) { e }
         }
 
+        fun retainFailedMove(failure: Exception?) {
+            if (failure is PartialMoveException) {
+                pendingMoveItems = failure.remaining
+                selectedIds = failure.remaining.mapTo(mutableSetOf()) { it.id }
+            }
+        }
         val writeLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
             val operation = pendingWrite
             pendingWrite = null
@@ -258,8 +267,9 @@ class MainActivity : ComponentActivity() {
             } else uiScope.launch {
                 operationBusy = true
                 val failure = performWrite(operation)
+                retainFailedMove(failure)
                 operationBusy = false
-                if (failure == null) { finishOperation(); notify("Готово") }
+                if (failure == null) { if (operation is PendingWriteOperation.Replace) selectedItem = null; finishOperation(); notify("Готово") }
                 else { viewModel.refresh(); notify("Не удалось завершить операцию: ${failure.localizedMessage}. Выбор сохранён.") }
             }
         }
@@ -284,13 +294,15 @@ class MainActivity : ComponentActivity() {
             operationBusy = true
             uiScope.launch {
                 val failure = performWrite(operation)
+                retainFailedMove(failure)
                 operationBusy = false
                 if (failure == null) { finishOperation(); notify("Готово"); return@launch }
-                if (failure is SecurityException) {
+                val security = if (failure is PartialMoveException) failure.cause as? SecurityException else failure as? SecurityException
+                if (security != null) {
                     runCatching {
                         val sender = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                             MediaStore.createWriteRequest(contentResolver, operationUris(operation)).intentSender
-                        } else (failure as? RecoverableSecurityException)?.userAction?.actionIntent?.intentSender
+                        } else (security as? RecoverableSecurityException)?.userAction?.actionIntent?.intentSender
                         check(sender != null) { "Android не предоставил разрешение" }
                         pendingWrite = operation
                         writeLauncher.launch(IntentSenderRequest.Builder(sender).build())
@@ -419,6 +431,25 @@ class MainActivity : ComponentActivity() {
             sourceItems: List<MediaItem>,
             copiedUris: List<Uri>,
         ) {
+            if (StorageFolders.hasFileAccess()) {
+                operationBusy = true
+                uiScope.launch {
+                    val removed = withContext(Dispatchers.IO) {
+                        sourceItems.map { item -> runCatching {
+                            if (item.uri.scheme == "file") java.io.File(item.uri.path!!).delete()
+                            else contentResolver.delete(item.uri, null, null) > 0
+                        }.getOrDefault(false) }
+                    }
+                    operationBusy = false
+                    if (removed.all { it }) { finishOperation(); notify("Перемещение завершено") }
+                    else {
+                        pendingMoveItems = sourceItems.zip(removed).filterNot { it.second }.map { it.first }
+                        viewModel.refresh()
+                        notify("Часть оригиналов не удалось удалить. Копии сохранены в целевой папке; проверьте их перед повтором.")
+                    }
+                }
+                return
+            }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 runCatching {
                     pendingTreeMove = PendingTreeMove(sourceItems, copiedUris)
@@ -787,6 +818,7 @@ class MainActivity : ComponentActivity() {
                         items = state.visibleItems,
                         initialItem = animatedItem,
                         onBack = { selectedItem = null },
+                        active = videoCropItem == null && !operationBusy && pendingVideoReplace == null,
                         onTrash = { requestTrash(listOf(it), keepViewerOpen = true) },
                         quickExifEnabled = state.quickExifEnabled,
                         cleanupMode = cleanupMode,

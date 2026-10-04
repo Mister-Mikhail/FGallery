@@ -240,6 +240,6 @@ Current FGallery brand direction:
 
 
 ## User clarification — 2026-10-04
-- Normal double-tap zoom stops at 30% of the fit-to-maximum zoom range, then maximum, then fit.
+- Normal double-tap zoom stops at fit scale increased by 30%, then maximum, then fit.
 - Request all-files access at first launch after installation. Granting it enables automatic PDF/SVG discovery, empty-folder listing, folder creation, and direct file moves without repeat Android write prompts. Denial keeps basic browsing/document-picker fallback available.
 - Photo and video crop offer copy or original replacement (with explicit overwrite confirmation); RAW crop saves only a JPEG copy.

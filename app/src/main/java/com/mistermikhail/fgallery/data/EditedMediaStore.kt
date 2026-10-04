@@ -31,6 +31,10 @@ class EditedMediaStore(private val context: Context) {
 
     /** Permission is obtained before this call. Keep a complete backup until verified. */
     fun replace(source: MediaItem, edited: Uri, mime: String, extension: String) {
+        if (StorageFolders.hasFileAccess()) {
+            replaceFile(source, edited, extension)
+            return
+        }
         // Open without truncation first. If this fails, Android permission is still needed.
         resolver.openFileDescriptor(source.uri, "rw")?.use { } ?: error("Нет доступа к оригиналу")
         val backup = File.createTempFile("original_", ".backup", context.filesDir)
@@ -51,6 +55,38 @@ class EditedMediaStore(private val context: Context) {
             if (restored) backup.delete()
             else throw IllegalStateException("Оригинал не восстановлен. Резервная копия сохранена: ${backup.absolutePath}", e)
             throw e
+        }
+    }
+
+    private fun replaceFile(source: MediaItem, edited: Uri, extension: String) {
+        val path = if (source.uri.scheme == "file") source.uri.path else resolver.query(source.uri, arrayOf(MediaStore.MediaColumns.DATA), null, null, null)?.use {
+            if (it.moveToFirst()) it.getString(0) else null
+        }
+        val original = File(path ?: error("Не найден оригинал")).canonicalFile
+        val parent = original.parentFile ?: error("Не найдена папка оригинала")
+        val destination = File(parent, "${original.nameWithoutExtension}.$extension")
+        check(destination == original || !destination.exists()) { "Файл с таким именем уже существует" }
+        val staged = File.createTempFile(".fgallery_edit_", ".$extension", parent)
+        val backup = File.createTempFile(".fgallery_original_", ".backup", parent).also { check(it.delete()) }
+        var movedOriginal = false
+        var committed = false
+        try {
+            copy(edited, Uri.fromFile(staged))
+            check(original.renameTo(backup)) { "Не удалось сохранить резервную копию оригинала" }
+            movedOriginal = true
+            check(staged.renameTo(destination)) { "Не удалось записать результат" }
+            committed = true
+            backup.delete()
+            val scanned = java.util.concurrent.CountDownLatch(2)
+            android.media.MediaScannerConnection.scanFile(context, arrayOf(original.path, destination.path), null) { _, _ -> scanned.countDown() }
+            scanned.await(20, java.util.concurrent.TimeUnit.SECONDS)
+        } catch (e: Exception) {
+            if (movedOriginal && !committed) {
+                if (!backup.renameTo(original)) throw IllegalStateException("Резервная копия сохранена: ${backup.path}", e)
+            }
+            throw e
+        } finally {
+            staged.delete()
         }
     }
 

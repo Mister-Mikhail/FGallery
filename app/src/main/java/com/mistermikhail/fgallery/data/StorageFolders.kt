@@ -36,10 +36,11 @@ object StorageFolders {
     }
 
     fun move(context: Context, item: MediaItem, relativePath: String) {
-        val originalPath = context.contentResolver.query(item.uri, arrayOf(MediaStore.MediaColumns.DATA), null, null, null)?.use {
+        val originalPath = if (item.uri.scheme == "file") item.uri.path else context.contentResolver.query(item.uri, arrayOf(MediaStore.MediaColumns.DATA), null, null, null)?.use {
             if (it.moveToFirst()) it.getString(0) else null
-        } ?: error("Не удалось определить путь ${item.name}")
-        val source = File(originalPath).canonicalFile
+        }
+        val actualPath = originalPath ?: error("Не удалось определить путь ${item.name}")
+        val source = File(actualPath).canonicalFile
         val root = roots(context).firstOrNull { source.path.startsWith(it.canonicalPath + "/") }?.canonicalFile
             ?: error("Файл находится вне доступного накопителя")
         val folder = File(root, relativePath).canonicalFile

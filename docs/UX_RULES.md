@@ -106,7 +106,7 @@ Priorities:
 
 
 ## User clarification — 2026-10-04
-- First double-tap zoom: 30% of the fit-to-maximum range; second: maximum; third: fit.
+- First double-tap zoom: fit scale increased by 30%; second: maximum; third: fit.
 - On first launch explain all-files access and open its Android settings page. Permit denial and Back; keep the access entry in the menu.
 - With access granted and extra move confirmation disabled (default), choosing a destination starts the move. Folder creation is available from the destination toolbar.
 - Crop photo/video, then save a copy or explicitly confirm replacing the original; RAW has copy-only output.
