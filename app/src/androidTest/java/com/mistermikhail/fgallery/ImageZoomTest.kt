@@ -94,7 +94,7 @@ class ImageZoomTest {
         val ratio = redWidth().toFloat() / before
         assertTrue("First zoom must change visible pixels by 30%, got $ratio", ratio in 1.25f..1.35f)
         node.performTouchInput {
-            pinch(center - Offset(100f, 0f), center + Offset(100f, 0f), center - Offset(10f, 0f), center + Offset(10f, 0f), 600)
+            pinch(start0 = center - Offset(100f, 0f), end0 = center - Offset(10f, 0f), start1 = center + Offset(100f, 0f), end1 = center + Offset(10f, 0f), durationMillis = 600)
         }
         rule.waitForIdle()
         node.assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Zoom 100%"))

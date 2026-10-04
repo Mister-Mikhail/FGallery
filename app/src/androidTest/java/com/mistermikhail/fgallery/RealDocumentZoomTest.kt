@@ -24,13 +24,13 @@ class RealDocumentZoomTest {
     private fun exercise(node: SemanticsNodeInteraction) {
         node.performTouchInput {
             val focus = Offset(width * .35f, height * .4f)
-            pinch(focus - Offset(25f, 0f), focus + Offset(25f, 0f), focus - Offset(75f, 0f), focus + Offset(75f, 0f), 500)
+            pinch(start0 = focus - Offset(25f, 0f), end0 = focus - Offset(75f, 0f), start1 = focus + Offset(25f, 0f), end1 = focus + Offset(75f, 0f), durationMillis = 500)
         }
         rule.waitForIdle() // The release event used to feed an unspecified centroid into the transform.
         val scale = node.fetchSemanticsNode().config[SemanticsProperties.StateDescription]
         assertTrue(scale, scale.removePrefix("Zoom ").removeSuffix("%").toInt() > 150)
         node.performTouchInput {
-            pinch(center - Offset(90f, 0f), center + Offset(90f, 0f), center - Offset(5f, 0f), center + Offset(5f, 0f), 500)
+            pinch(start0 = center - Offset(90f, 0f), end0 = center - Offset(5f, 0f), start1 = center + Offset(90f, 0f), end1 = center + Offset(5f, 0f), durationMillis = 500)
         }
         rule.waitForIdle()
         node.assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Zoom 100%"))

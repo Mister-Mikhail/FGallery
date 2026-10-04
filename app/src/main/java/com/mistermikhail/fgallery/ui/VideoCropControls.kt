@@ -31,8 +31,10 @@ internal fun CropFrame(bounds: CropBounds, enabled: Boolean, onChange: (CropBoun
         .pointerInput(enabled) {
             if (!enabled) return@pointerInput
             var corner = -1
+            var dragBounds = latest
             detectDragGestures(onDragStart = { point ->
                 val current = latest
+                dragBounds = current
                 val points = listOf(
                     Offset(size.width * current.left, size.height * current.top),
                     Offset(size.width * current.right, size.height * current.top),
@@ -44,7 +46,8 @@ internal fun CropFrame(bounds: CropBounds, enabled: Boolean, onChange: (CropBoun
             }, onDragEnd = { corner = -1 }, onDragCancel = { corner = -1 }) { change, delta ->
                 if (corner >= 0 && size.width > 0 && size.height > 0) {
                     change.consume()
-                    latestChange(latest.drag(corner, delta.x / size.width, delta.y / size.height))
+                    dragBounds = dragBounds.drag(corner, delta.x / size.width, delta.y / size.height)
+                    latestChange(dragBounds)
                 }
             }
         }) {

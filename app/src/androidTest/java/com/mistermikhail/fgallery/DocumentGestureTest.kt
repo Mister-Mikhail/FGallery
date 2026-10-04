@@ -54,7 +54,7 @@ class DocumentGestureTest {
         page.assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Zoom 100%"))
         page.performTouchInput {
             val focus = Offset(width * .35f, height * .4f)
-            pinch(focus - Offset(30f, 0f), focus + Offset(30f, 0f), focus - Offset(100f, 0f), focus + Offset(100f, 0f), 500)
+            pinch(start0 = focus - Offset(30f, 0f), end0 = focus - Offset(100f, 0f), start1 = focus + Offset(30f, 0f), end1 = focus + Offset(100f, 0f), durationMillis = 500)
         }
         rule.waitForIdle()
         val value = page.fetchSemanticsNode().config[SemanticsProperties.StateDescription]
