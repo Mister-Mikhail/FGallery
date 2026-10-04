@@ -23,9 +23,13 @@ class DriveRecycleBin(private val context: Context, private val mounted: () -> L
         put("date", item.dateTakenMillis); put("width", item.width); put("height", item.height); put("duration", item.durationMillis)
         put("size", item.sizeBytes); put("original", item.uri.toString())
     }
-    private fun uri(record: JSONObject): Uri? = runCatching { StorageAccess.find(context, record.getString("bin"), record.getString("token") + "_" + record.getString("name"))?.let {
-        if (it.startsWith("content://")) Uri.parse(it) else Uri.fromFile(File(it))
-    } }.getOrNull()
+    private fun uri(record: JSONObject): Uri? = runCatching {
+        val token = record.getString("token")
+        val entries = StorageAccess.children(context, record.getString("bin"))
+        val found = entries.firstOrNull { it.first == token + "_" + record.getString("name") }
+            ?: entries.firstOrNull { it.first.startsWith(token + "_") }
+        found?.second?.let { if (it.startsWith("content://")) Uri.parse(it) else Uri.fromFile(File(it)) }
+    }.getOrNull()
     private fun item(record: JSONObject, uri: Uri) = MediaItem(StorageAccess.stableId(uri.toString()), uri, record.getString("name"),
         record.optString("mime").takeUnless { it.isBlank() || it == "null" }, MediaKind.valueOf(record.getString("kind")), record.optLong("date"),
         record.optInt("width"), record.optInt("height"), record.optLong("duration"), record.getString("album"), record.optString("relative"),
@@ -47,7 +51,20 @@ class DriveRecycleBin(private val context: Context, private val mounted: () -> L
                     write(record.apply { put("bin", bin) })
                 }
             }
-            records().mapNotNull { record -> uri(record)?.let { found -> write(record.apply { put("lastUri", found.toString()) }); item(record, found) } }
+            records().mapNotNull { record -> uri(record)?.let { found ->
+                val local = if (found.scheme == "file") File(found.path!!) else null
+                val document = if (local == null) androidx.documentfile.provider.DocumentFile.fromSingleUri(context, found) else null
+                val actualName = local?.name ?: document?.name
+                if (actualName?.startsWith(record.getString("token") + "_") == true) {
+                    val name = actualName.removePrefix(record.getString("token") + "_")
+                    record.put("name", name)
+                    DriveLibrary.mime(name)?.let { record.put("mime", it) }
+                }
+                record.put("size", local?.length() ?: document?.length() ?: record.optLong("size"))
+                record.put("modified", local?.lastModified() ?: document?.lastModified() ?: record.optLong("modified"))
+                write(record.apply { put("lastUri", found.toString()) })
+                item(record, found)
+            } }
         }
     }
     suspend fun trash(items: List<MediaItem>): List<String> = withContext(Dispatchers.IO) {

@@ -98,4 +98,26 @@ class DriveStorageTest {
         }
     }
 
+    @Test fun editedBinFileKeepsItsRestoreEntryWhenTheFormatChanges() = runBlocking {
+        val base = File(context.cacheDir, "bin-edit-${UUID.randomUUID()}").apply { mkdirs() }
+        val root = StorageRoot("edit-test", "Test drive", base.path, base)
+        val file = File(base, "source.jpg").apply { writeBytes(byteArrayOf(1, 2, 3, 4)) }
+        val source = DriveLibrary.item(Uri.fromFile(file), file.name, "image/jpeg", file.length(), 0, root, base.path)!!
+        val bin = DriveRecycleBin(context, { listOf(root) }, { emptyList() })
+        try {
+            bin.trash(listOf(source))
+            val before = bin.load().first { it.folderTarget.startsWith(base.path) }
+            val edited = File(base, "edited.png").apply { writeBytes(byteArrayOf(5, 6, 7, 8, 9)) }
+            EditedMediaStore(context).replace(before, Uri.fromFile(edited), "image/png", "png")
+            // Recover from the unchanged on-drive sidecar, including after app restart.
+            val restarted = DriveRecycleBin(context, { listOf(root) }, { emptyList() })
+            val after = restarted.load().first { it.folderTarget.startsWith(base.path) }
+            assertEquals("source.png", after.name)
+            assertEquals("image/png", after.mimeType)
+            assertEquals(5L, after.sizeBytes)
+            restarted.restore(listOf(after))
+            assertArrayEquals(edited.readBytes(), File(base, "source.png").readBytes())
+        } finally { base.deleteRecursively() }
+    }
+
 }

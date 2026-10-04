@@ -171,6 +171,7 @@ object StorageAccess {
             if (moved != null) return moved
         }
         currentCoroutineContext().ensureActive()
+        val expectedSize = sourceFile?.takeIf { it.exists() }?.length() ?: item.sizeBytes.takeIf { it > 0 }
         val destination = create(context, target, name, item.mimeType ?: "application/octet-stream")
         var sourceDeleted = false
         try {
@@ -186,6 +187,7 @@ object StorageAccess {
                     count
                 } ?: error("Нет доступа к папке назначения")
             } ?: error("Нет доступа к исходному файлу")
+            check(expectedSize == null || written == expectedSize) { "Исходный файл прочитан не полностью. Перенос отменён" }
             val actual = MessageDigest.getInstance("SHA-256")
             val verified = context.contentResolver.openInputStream(destination)?.use { input ->
                 var count = 0L; val buffer = ByteArray(65536)
