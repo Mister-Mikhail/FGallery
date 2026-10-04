@@ -63,4 +63,26 @@ class DriveStorageTest {
             assertTrue(File(StorageAccess.directory(context, destination.path, "empty")).isDirectory)
         } finally { base.deleteRecursively() }
     }
+    @Test fun documentOnlyDriveSupportsMoveBinAndRestore() = runBlocking {
+        val authority = "com.mistermikhail.fgallery.test.drives"
+        val tree = android.provider.DocumentsContract.buildTreeDocumentUri(authority, "root")
+        val rootUri = android.provider.DocumentsContract.buildDocumentUriUsingTree(tree, "root")
+        val root = StorageRoot("saf-test", "SAF drive", rootUri.toString())
+        val folder = StorageAccess.directory(context, root.target, "photos-${UUID.randomUUID()}")
+        val source = StorageAccess.create(context, folder, "saf.jpg", "image/jpeg")
+        val expected = ByteArray(100000) { (it % 251).toByte() }
+        context.contentResolver.openOutputStream(source, "w")!!.use { it.write(expected) }
+        val item = DriveLibrary.item(source, "saf.jpg", "image/jpeg", expected.size.toLong(), 0, root, folder)!!
+        val bin = DriveRecycleBin(context, { emptyList() }, { listOf(root) })
+        bin.trash(listOf(item))
+        assertNull(StorageAccess.find(context, folder, "saf.jpg"))
+        val recycled = bin.load().first { it.name == "saf.jpg" && it.storageId == "saf-test" }
+        assertArrayEquals(expected, context.contentResolver.openInputStream(recycled.uri)!!.use { it.readBytes() })
+        bin.restore(listOf(recycled))
+        val restored = Uri.parse(StorageAccess.find(context, folder, "saf.jpg")!!)
+        assertArrayEquals(expected, context.contentResolver.openInputStream(restored)!!.use { it.readBytes() })
+        StorageAccess.delete(context, restored)
+        StorageAccess.delete(context, Uri.parse(folder))
+    }
+
 }

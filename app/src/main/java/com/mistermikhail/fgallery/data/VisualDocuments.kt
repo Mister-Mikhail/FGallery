@@ -14,7 +14,7 @@ import java.io.File
 import java.io.FileOutputStream
 
 /** PdfRenderer requires a seekable descriptor; document providers need not supply one. */
-class PdfSession(context: Context, uri: Uri) : Closeable {
+class PdfSession(context: Context, uri: Uri, compatibleOnly: Boolean = false) : Closeable {
     private val file = File.createTempFile("pdf_", ".pdf", context.cacheDir)
     private var descriptor: ParcelFileDescriptor? = null
     private var renderer: PdfRenderer? = null
@@ -28,6 +28,7 @@ class PdfSession(context: Context, uri: Uri) : Closeable {
             } ?: error("Нет доступа к PDF")
             descriptor = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
             try {
+                if (compatibleOnly) error("Compatibility backend requested")
                 renderer = PdfRenderer(descriptor!!)
             } catch (_: Exception) {
                 descriptor?.close()

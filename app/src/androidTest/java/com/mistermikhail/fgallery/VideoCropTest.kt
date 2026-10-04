@@ -2,6 +2,10 @@ package com.mistermikhail.fgallery
 
 import android.media.MediaMetadataRetriever
 import android.net.Uri
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
@@ -59,4 +63,28 @@ class VideoCropTest {
         } finally { retriever.release(); output.delete() }
         assertTrue("Copy leaves source intact", file.exists())
     }
+    @Test fun saveButtonsRemainInsideWindowWithLargeText() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val context = instrumentation.targetContext
+        val file = File(context.cacheDir, "crop-video-large.mp4")
+        instrumentation.context.assets.open("crop-video.mp4").use { input -> file.outputStream().use { input.copyTo(it) } }
+        val item = MediaItem(9002, Uri.fromFile(file), file.name, "video/mp4", MediaKind.VIDEO, 0, 320, 240, 4000, "Tests", "", file.length())
+        val fontScale = mutableStateOf(2f)
+        rule.setContent {
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale.value)) { VideoCropDialog(item, {}, { _, _ -> }) }
+        }
+        rule.waitForIdle()
+        val display = context.resources.displayMetrics
+        for (tag in listOf("video-save-copy", "video-save-original")) {
+            val node = rule.onNodeWithTag(tag)
+            node.assertIsDisplayed()
+            val bounds = node.fetchSemanticsNode().boundsInRoot
+            assertTrue("$tag must fit below navigation bar", bounds.bottom <= display.heightPixels)
+            assertTrue("$tag must fit horizontally", bounds.right <= display.widthPixels)
+        }
+        rule.runOnIdle { fontScale.value = 1f }
+        rule.onNodeWithTag("video-save-copy").assertIsDisplayed()
+    }
+
 }
