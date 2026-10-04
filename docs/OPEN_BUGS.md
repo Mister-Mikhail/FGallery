@@ -1,6 +1,6 @@
 # FGallery: open bugs and release blockers
 
-Last updated: 2026-10-03  
+Last updated: 2026-10-04
 Status source: latest user test report. The user reports that the latest APKs did not resolve the issues below. Treat every item as **unverified / still open** until tested against its acceptance criteria on a device.
 
 ## P0 — File move crashes or does not move
@@ -30,8 +30,8 @@ Status source: latest user test report. The user reports that the latest APKs di
 - Exercise the “modify original” path with a clear confirmation and safe recovery if export fails.
 - Test cancel, low storage, and unsupported codec paths without crashing or replacing the source with a broken file.
 
-## P0 — Notification permission/request flow
-**Observed:** The latest APK still has an unresolved notification-permission problem; the exact user-visible failure has not yet been specified.
+## Clarified — “Notification” report was the move permission flow
+**Latest clarification (2026-10-04):** The user was referring to the Android “modify file” dialog while moving media. There is no separately reported notification failure. Track the issue under file moves. The app does not request notification permission.
 
 **Acceptance checks:**
 - Identify which FGallery feature actually needs notifications and request permission only when that feature is invoked.
@@ -96,7 +96,7 @@ These requirements remain in scope even if a later APK or PR description claimed
 - Favorites; hidden folders/media; date grouping/navigation; complete recycle-bin screen (restore, multi-select, Select All, Clear Bin with Android protected permanent-delete confirmation); share and edit/open-in-editor actions; fast sharp decoding of very large stills and RAW.
 - DWG and Phase One support are explicitly deferred. Do not add them to the current scope unless the user changes that instruction.
 
-## Current build gate (2026-10-03)
+## Historical build failure (2026-10-03; check newer CI before delivery)
 The latest GitHub Actions run for head SHA `f9132e060449a8ac7d9d3eb6e4bf0a9f1664ccde` completed with `failure`; no APK artifact was uploaded. The PR merge build failed in Kotlin compilation at `app/src/main/java/com/mistermikhail/fgallery/ui/GalleryScreen.kt:995` with unresolved references including `produceState`, `Bitmap`, `withContext`, `Dispatchers`, `MediaMetadataRetriever`, `asImageBitmap`, and related inferred types. Treat this as an open P0 build blocker. Inspect actual file imports and code before changing it; rebuild and verify CI on the resulting exact SHA before distributing an APK.
 
 

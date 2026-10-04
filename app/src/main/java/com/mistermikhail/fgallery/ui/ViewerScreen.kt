@@ -104,6 +104,7 @@ fun ViewerScreen(
     var renameTarget by remember { mutableStateOf<MediaItem?>(null) }
     var renameText by remember { mutableStateOf("") }
     var videoMenuExpanded by remember { mutableStateOf(false) }
+    var sphericalOverrides by remember { mutableStateOf<Map<String, Boolean>>(emptyMap()) }
 
     LaunchedEffect(items.size) {
         if (items.isNotEmpty() && pagerState.currentPage > items.lastIndex) {
@@ -160,6 +161,7 @@ fun ViewerScreen(
                 VideoPlayer(
                     item = item,
                     active = activePage,
+                    sphericalOverride = sphericalOverrides[item.uriKey],
                     controlsVisible = activePage && chromeVisible,
                     onSingleTap = ::toggleChrome,
                     onDoubleTap = {
@@ -226,6 +228,14 @@ fun ViewerScreen(
                                     onClick = {
                                         videoMenuExpanded = false
                                         onShare(currentItem)
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(if (sphericalOverrides[currentItem.uriKey] ?: currentItem.isLikely360Video()) "Обычный просмотр" else "Просмотр 360°") },
+                                    onClick = {
+                                        val sphericalNow = sphericalOverrides[currentItem.uriKey] ?: currentItem.isLikely360Video()
+                                        sphericalOverrides = sphericalOverrides + (currentItem.uriKey to !sphericalNow)
+                                        videoMenuExpanded = false
                                     },
                                 )
                                 DropdownMenuItem(
@@ -425,6 +435,7 @@ private fun MediaItem.isLikely360Video(): Boolean {
 private fun VideoPlayer(
     item: MediaItem,
     active: Boolean,
+    sphericalOverride: Boolean?,
     controlsVisible: Boolean,
     onSingleTap: () -> Unit,
     onDoubleTap: () -> Unit,
@@ -435,8 +446,8 @@ private fun VideoPlayer(
     val latestSingleTap by rememberUpdatedState(onSingleTap)
     val latestDoubleTap by rememberUpdatedState(onDoubleTap)
     var sphericalView by remember(item.uri) { mutableStateOf<ZoomableSphericalView?>(null) }
-    val spherical = remember(item.id, item.width, item.height, item.name) {
-        item.isLikely360Video()
+    val spherical = remember(item.id, item.width, item.height, item.name, sphericalOverride) {
+        sphericalOverride ?: item.isLikely360Video()
     }
 
     val player = remember(item.uri) {

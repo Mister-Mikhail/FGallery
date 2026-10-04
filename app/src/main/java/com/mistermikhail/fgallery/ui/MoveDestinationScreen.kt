@@ -182,7 +182,7 @@ fun MoveDestinationScreen(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(8.dp))
                                 .combinedClickable(
-                                    onClick = { onSelectAlbum(album) },
+                                    onClick = { onMoveHere(album) },
                                 ),
                         ) {
                             AsyncImage(
@@ -192,6 +192,12 @@ fun MoveDestinationScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(150.dp),
+                            )
+                            Text(
+                                album.cover.relativePath,
+                                maxLines = 2,
+                                style = MaterialTheme.typography.labelSmall,
+                                modifier = Modifier.padding(horizontal = 8.dp),
                             )
                             Text(
                                 album.name,
