@@ -54,7 +54,12 @@ jobs:
           arch: x86_64
           profile: pixel_2
           disable-animations: true
-          script: gradle :app:connectedDebugAndroidTest
+          script: |
+            gradle :app:connectedDebugAndroidTest
+            test_result=$?
+            mkdir -p app/build/reports/androidTests/connected
+            adb logcat -d > app/build/reports/androidTests/connected/logcat.txt
+            exit "$test_result"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

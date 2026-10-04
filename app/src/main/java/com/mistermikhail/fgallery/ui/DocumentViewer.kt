@@ -114,7 +114,7 @@ internal fun SvgViewer(item: MediaItem, onTap: () -> Unit) {
             val ratio = image.documentAspectRatio.takeIf { it > 0f && it.isFinite() } ?: 1f
             BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 val imageModifier = if (maxWidth / maxHeight > ratio) Modifier.height(maxHeight).aspectRatio(ratio) else Modifier.width(maxWidth).aspectRatio(ratio)
-                ZoomableDocumentPage(imageModifier, onTap) { modifier ->
+                ZoomableDocumentPage(imageModifier.testTag("svg-page"), onTap) { modifier ->
                     Canvas(modifier.background(Color(0xFF303030))) {
                         drawIntoCanvas { canvas ->
                             runCatching { image.renderToCanvas(canvas.nativeCanvas, RectF(0f, 0f, size.width, size.height)) }.onFailure { error = true }

@@ -251,3 +251,10 @@ Double tap: fit ×1.30 → 90% of maximum → fit. Pinch retains the point betwe
 
 ### Launcher icon reference (2026-10-04)
 Use the user's 1000267911.jpg artwork itself: metallic gold/silver F on black, with all four outer corner brackets visible. Preserve aspect ratio and use an adaptive foreground inset that keeps the brackets inside circular and rounded-square launcher masks. This supersedes the simplified vector approximation.
+
+
+### 0.2.3 requirements
+- Double tap uses the actual current scale: fit ×1.30 → 90% of maximum → fit. Pinching back to fit restarts the cycle. Raster and document viewers share the policy.
+- Video spatial crop uses draggable corner handles. Time trim uses a filmstrip and pauses/seeks the real preview at the moved boundary. Save copy/original choices authorize the operation once.
+- TIFF discovery, thumbnails and viewer use native TIFF decoding with bounded bitmap memory.
+- Launcher icon uses the complete supplied artwork without another adaptive foreground inset.

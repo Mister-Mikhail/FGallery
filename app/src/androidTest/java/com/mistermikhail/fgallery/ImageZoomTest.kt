@@ -17,6 +17,7 @@ import com.mistermikhail.fgallery.data.MediaItem
 import com.mistermikhail.fgallery.data.MediaKind
 import com.mistermikhail.fgallery.data.ThumbnailCache
 import com.mistermikhail.fgallery.ui.TiledZoomableImage
+import com.mistermikhail.fgallery.ui.ViewerImageReady
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -51,7 +52,7 @@ class ImageZoomTest {
                 pixels[(pixels.width - side) / 2 + side / 10, (pixels.height - side) / 2 + side / 10].red > .8f
             }.getOrDefault(false)
         }
-        Thread.sleep(1500)
+        rule.waitUntil(15000) { runCatching { node.fetchSemanticsNode().config[ViewerImageReady] }.getOrDefault(false) }
         node.performTouchInput { doubleClick(Offset(width * .8f, height * .7f)) }
         rule.waitForIdle()
         node.assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Zoom 130%"))
@@ -65,4 +66,41 @@ class ImageZoomTest {
         rule.waitForIdle()
         node.assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Zoom 100%"))
     }
+    @Test fun cameraJpegZoomChangesPixelsAndRestartsAfterPinchToFit() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val file = File(context.cacheDir, "camera-zoom.jpg")
+        val bitmap = Bitmap.createBitmap(4000, 3000, Bitmap.Config.ARGB_8888)
+        val canvas = android.graphics.Canvas(bitmap)
+        canvas.drawColor(android.graphics.Color.WHITE)
+        canvas.drawRect(1500f, 1000f, 2500f, 2000f, android.graphics.Paint().apply { color = android.graphics.Color.RED })
+        file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.JPEG, 95, it) }
+        bitmap.recycle()
+        androidx.exifinterface.media.ExifInterface(file).apply {
+            setAttribute(androidx.exifinterface.media.ExifInterface.TAG_ORIENTATION, "6")
+            saveAttributes()
+        }
+        val item = MediaItem(987655, Uri.fromFile(file), file.name, "image/jpeg", MediaKind.IMAGE, 0, 3000, 4000, 0, "Tests", "", file.length())
+        rule.setContent { Box(Modifier.fillMaxSize().background(Color.Black)) { TiledZoomableImage(item, {}, false, {}) } }
+        val node = rule.onNodeWithTag("viewer-image")
+        rule.waitUntil(15000) { runCatching { node.fetchSemanticsNode().config[ViewerImageReady] }.getOrDefault(false) }
+        fun redWidth(): Int {
+            val pixels = node.captureToImage().toPixelMap()
+            return (0 until pixels.width).count { x -> val c = pixels[x, pixels.height / 2]; c.red > .8f && c.green < .2f }
+        }
+        val before = redWidth()
+        assertTrue(before > 20)
+        node.performTouchInput { doubleClick(center) }
+        rule.waitForIdle()
+        val ratio = redWidth().toFloat() / before
+        assertTrue("First zoom must change visible pixels by 30%, got $ratio", ratio in 1.25f..1.35f)
+        node.performTouchInput {
+            pinch(center - Offset(100f, 0f), center + Offset(100f, 0f), center - Offset(10f, 0f), center + Offset(10f, 0f), 600)
+        }
+        rule.waitForIdle()
+        node.assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Zoom 100%"))
+        node.performTouchInput { doubleClick(center) }
+        rule.waitForIdle()
+        node.assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Zoom 130%"))
+    }
+
 }

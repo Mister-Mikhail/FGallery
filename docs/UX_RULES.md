@@ -114,3 +114,10 @@ Priorities:
 
 ### Latest viewer/edit requirements (2026-10-04)
 Double tap: fit ×1.30 → 90% of maximum → fit. Pinch retains the point between fingers. PDF pages accept ordinary vertical drags. Transparent images must not retain a static backing copy during zoom. Visible live video tiles keep their player during scrolling; keep a poster until the first video frame. Crop offers concise copy/original choices once; choosing original authorizes replacement, with backup and recovery, without another app confirmation. RAW saves only a copy.
+
+
+### 0.2.3 requirements
+- Double tap uses the actual current scale: fit ×1.30 → 90% of maximum → fit. Pinching back to fit restarts the cycle. Raster and document viewers share the policy.
+- Video spatial crop uses draggable corner handles. Time trim uses a filmstrip and pauses/seeks the real preview at the moved boundary. Save copy/original choices authorize the operation once.
+- TIFF discovery, thumbnails and viewer use native TIFF decoding with bounded bitmap memory.
+- Launcher icon uses the complete supplied artwork without another adaptive foreground inset.
