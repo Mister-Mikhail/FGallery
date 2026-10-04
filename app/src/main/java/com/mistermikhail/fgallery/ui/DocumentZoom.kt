@@ -8,6 +8,7 @@ internal fun transformDocument(
     panX: Float, panY: Float, targetScale: Float, width: Float, height: Float,
 ): DocumentTransform {
     val zoom = targetScale.coerceIn(1f, 8f)
+    if (zoom == 1f) return DocumentTransform()
     val ratio = zoom / old.scale
     val x = old.x * ratio + (focusX - width / 2f) * (1f - ratio) + panX
     val y = old.y * ratio + (focusY - height / 2f) * (1f - ratio) + panY

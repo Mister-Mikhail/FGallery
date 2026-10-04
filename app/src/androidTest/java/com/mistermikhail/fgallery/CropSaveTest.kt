@@ -11,9 +11,9 @@ import android.provider.MediaStore
 import android.view.MotionEvent
 import androidx.core.content.FileProvider
 import androidx.test.core.app.ActivityScenario
-import androidx.test.espresso.Espresso.onView
-import androidx.test.espresso.action.ViewActions.click
-import androidx.test.espresso.matcher.ViewMatchers.withText
+import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.test.platform.app.InstrumentationRegistry
 import com.canhub.cropper.CropImageView
 import com.mistermikhail.fgallery.data.EditedMediaStore
@@ -21,9 +21,11 @@ import com.mistermikhail.fgallery.data.MediaItem
 import com.mistermikhail.fgallery.data.MediaKind
 import org.junit.Assert.*
 import org.junit.Test
+import org.junit.Rule
 import java.io.File
 
 class CropSaveTest {
+    @get:Rule val rule = createEmptyComposeRule()
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val context = instrumentation.targetContext
     private fun fixture(name: String, color: Int): File = File(context.cacheDir, name).apply {
@@ -66,7 +68,7 @@ class CropSaveTest {
                     assertTrue("Upper ${if (right) "right" else "left"} corner must move down", view.cropRect!!.top > before)
                 }
             }
-            onView(withText("Готово")).perform(click())
+            rule.onNodeWithText("Готово").performClick()
             val result = scenario.result
             assertEquals(Activity.RESULT_OK, result.resultCode)
             val bitmap = context.contentResolver.openInputStream(result.resultData.data!!).use { BitmapFactory.decodeStream(it) }

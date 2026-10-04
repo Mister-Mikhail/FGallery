@@ -28,12 +28,12 @@ class ImageZoomTest {
     @Test fun transparentPngZoomsThirtyPercentWithoutStaticDuplicate() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val file = File(context.cacheDir, "transparent-zoom.png")
-        val bitmap = Bitmap.createBitmap(1200, 1200, Bitmap.Config.ARGB_8888)
+        val bitmap = Bitmap.createBitmap(4000, 4000, Bitmap.Config.ARGB_8888)
         val canvas = android.graphics.Canvas(bitmap)
-        canvas.drawRect(0f, 0f, 300f, 300f, android.graphics.Paint().apply { color = android.graphics.Color.RED })
+        canvas.drawRect(0f, 0f, 1000f, 1000f, android.graphics.Paint().apply { color = android.graphics.Color.RED })
         file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
         bitmap.recycle()
-        val item = MediaItem(987654, Uri.fromFile(file), file.name, "image/png", MediaKind.IMAGE, 0, 1200, 1200, 0, "Tests", "", file.length())
+        val item = MediaItem(987654, Uri.fromFile(file), file.name, "image/png", MediaKind.IMAGE, 0, 4000, 4000, 0, "Tests", "", file.length())
         val cache = ThumbnailCache.fileFor(context, item, highQuality = true)
         cache.parentFile?.mkdirs()
         file.copyTo(cache, overwrite = true)
