@@ -266,3 +266,7 @@ Device: Samsung Galaxy S23, Android 16. Zoom stops are 30% and 90% of the linear
 
 ### 0.2.5 clarified pixel zoom and startup requirements
 The user confirms the double-tap maximum for raster photos, TIFF and RAW is native 1:1 (one file pixel per screen pixel). Stops are fit + (native − fit) ×0.30 / ×0.90, then fit. Do not zoom smaller images below their fitted size. PDF retains its accepted screen-relative gesture range, with native rerendering of the visible area to avoid blur. Show a useful RAW/TIFF preview promptly while full detail becomes ready; preserve full sensor/native pixels. Reopening the app and opening albums must retain the catalogue and cached previews; refresh discovery in the background without clearing the visible grid.
+
+
+### Phase One preservation requirement — 2026-10-04
+The user confirms successful display of RAW files from a Phase One camera with the current handling combination. Preserve this valuable behavior when changing RAW/TIFF decoders, discovery, caches or viewer sources. Full native detail and speed still need their own device checks; successful display alone must not be expanded into a claim that every Phase One model/RAW variant is supported. Current zoom behavior is described in `docs/ZOOM_BEHAVIOR.md`.
