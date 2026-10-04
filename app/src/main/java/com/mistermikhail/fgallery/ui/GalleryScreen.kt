@@ -434,7 +434,7 @@ fun GalleryScreen(
                     PermissionState(PaddingValues(0.dp), onRequestPermission)
                 }
             }
-            state.isLoading -> MessageState("Загрузка…", innerPadding)
+            state.isLoading && state.allItems.isEmpty() -> MessageState("Загрузка…", innerPadding)
             !inAlbum && albums.isEmpty() -> MessageState("Альбомы не найдены", innerPadding)
             inAlbum && visibleItems.isEmpty() -> MessageState("Медиа не найдено", innerPadding)
 
@@ -901,36 +901,25 @@ private fun MediaPreview(
     livePreview: Boolean,
 ) {
     val context = LocalContext.current
-    val cachedModel by produceState<java.io.File?>(null, item.uri, item.dateModifiedMillis) {
-        value = ThumbnailCache.fileFor(context, item, true).takeIf { it.exists() }
-            ?: ThumbnailCache.fileFor(context, item).takeIf { it.exists() }
-            ?: ThumbnailCache.ensure(context, item)
+    val cachedModel by produceState<java.io.File?>(remember(item.uri, item.dateModifiedMillis, item.sizeBytes) { ThumbnailCache.cached(context, item) }, item.uri, item.dateModifiedMillis, item.sizeBytes) {
+        if (value == null) value = ThumbnailCache.ensure(context, item)
     }
     var previewFailed by remember(item.uri) { mutableStateOf(false) }
     var liveFailed by remember(item.uri) { mutableStateOf(false) }
-    when {
-        livePreview && item.kind == MediaKind.VIDEO && !liveFailed -> Box(modifier) {
-            if (cachedModel != null) AsyncImage(cachedModel, item.name, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+    val request = ImageRequest.Builder(context)
+        .data(cachedModel ?: item.uri.takeIf { item.kind == MediaKind.IMAGE && !com.mistermikhail.fgallery.data.TiffImages.isTiff(item.name, item.mimeType) })
+        .memoryCacheKey("tile/${item.uri}/${item.dateModifiedMillis}/${item.sizeBytes}")
+        .placeholderMemoryCacheKey("tile/${item.uri}/${item.dateModifiedMillis}/${item.sizeBytes}")
+        .size(960, 960).build()
+    Box(modifier.background(MaterialTheme.colorScheme.surfaceVariant)) {
+        AsyncImage(request, item.name, contentScale = ContentScale.Crop,
+            onError = { previewFailed = true }, modifier = Modifier.fillMaxSize())
+        if (livePreview && item.kind == MediaKind.VIDEO && !liveFailed) {
             InlineVideoPreview(item, Modifier.fillMaxSize(), onError = { liveFailed = true })
+        } else if (previewFailed && cachedModel == null) {
+            Text(if (item.kind == MediaKind.VIDEO) "Видео · нет превью" else item.name.substringAfterLast('.').uppercase(),
+                style = MaterialTheme.typography.labelSmall, modifier = Modifier.align(Alignment.Center))
         }
-        cachedModel != null -> AsyncImage(
-            model = cachedModel,
-            contentDescription = item.name,
-            contentScale = ContentScale.Crop,
-            modifier = modifier.background(MaterialTheme.colorScheme.surfaceVariant),
-        )
-        item.kind == MediaKind.VIDEO || item.kind == MediaKind.PDF || item.kind == MediaKind.SVG || previewFailed -> {
-            Box(modifier = modifier.background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
-                Text(if (item.kind == MediaKind.VIDEO) "Видео · нет превью" else item.name.substringAfterLast('.').uppercase(), style = MaterialTheme.typography.labelSmall)
-            }
-        }
-        else -> AsyncImage(
-            model = ImageRequest.Builder(context).data(item.uri).size(960, 960).build(),
-            contentDescription = item.name,
-            contentScale = ContentScale.Crop,
-            onError = { previewFailed = true },
-            modifier = modifier.background(MaterialTheme.colorScheme.surfaceVariant),
-        )
     }
 }
 

@@ -11,6 +11,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.mistermikhail.fgallery.data.*
 import com.mistermikhail.fgallery.ui.TiledZoomableImage
 import com.mistermikhail.fgallery.ui.ViewerImageReady
+import com.mistermikhail.fgallery.ui.ViewerZoomRange
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Rule
@@ -44,20 +45,22 @@ class TiffImageTest {
     }
 
     @Test fun tiffThumbnailAndViewerSupportTheSameZoomCycle() {
-        val file = fixture("tiff_lzw.tif")
-        val item = MediaItem(7801, Uri.fromFile(file), file.name, "image/tiff", MediaKind.IMAGE, 0, 320, 240, 0, "Tests", "", file.length())
+        val file = fixture("detail.tif")
+        val item = MediaItem(7801, Uri.fromFile(file), file.name, "image/tiff", MediaKind.IMAGE, 0, 6144, 32, 0, "Tests", "", file.length())
         val thumbnail = runBlocking { ThumbnailCache.ensure(context, item) }
         assertNotNull(thumbnail)
         rule.setContent { Box(Modifier.fillMaxSize()) { TiledZoomableImage(item, {}, false, {}) } }
         val node = rule.onNodeWithTag("viewer-image")
         rule.waitUntil(15000) { runCatching { node.fetchSemanticsNode().config[ViewerImageReady] }.getOrDefault(false) }
+        val (fit, max) = node.fetchSemanticsNode().config[ViewerZoomRange]
+        fun percent() = node.fetchSemanticsNode().config[SemanticsProperties.StateDescription].removePrefix("Zoom ").removeSuffix("%").toInt()
+        assertEquals(1f, max, .001f)
         node.performTouchInput { doubleClick(center) }
         rule.waitForIdle()
-        node.assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Zoom 310%"))
+        assertTrue(kotlin.math.abs(((fit + (max - fit) * .3f) / fit * 100).toInt() - percent()) <= 1)
         node.performTouchInput { doubleClick(center) }
         rule.waitForIdle()
-        val maximum = node.fetchSemanticsNode().config[SemanticsProperties.StateDescription].removePrefix("Zoom ").removeSuffix("%").toInt()
-        assertTrue(maximum >= 700)
+        assertTrue(kotlin.math.abs(((fit + (max - fit) * .9f) / fit * 100).toInt() - percent()) <= 1)
         node.performTouchInput { doubleClick(center) }
         rule.waitForIdle()
         node.assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Zoom 100%"))

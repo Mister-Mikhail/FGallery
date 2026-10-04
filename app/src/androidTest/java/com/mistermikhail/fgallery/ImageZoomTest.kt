@@ -59,6 +59,7 @@ class ImageZoomTest {
         run {
             val (fit, maximum) = node.fetchSemanticsNode().config[ViewerZoomRange]
             val actual = node.fetchSemanticsNode().config[SemanticsProperties.StateDescription].removePrefix("Zoom ").removeSuffix("%").toInt()
+            assertEquals("Tap maximum must be native 1:1", maxOf(1f, fit), maximum, .001f)
             val expected = (fit + (maximum - fit) * .30f) / fit * 100f
             assertTrue("30% of scale range: $actual vs $expected", kotlin.math.abs(actual - expected) < 2f)
         }

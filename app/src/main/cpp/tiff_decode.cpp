@@ -1,4 +1,5 @@
 #include <jni.h>
+#include <android/bitmap.h>
 #include <dlfcn.h>
 #include <cstdint>
 #include <vector>
@@ -14,6 +15,8 @@ struct PngApi {
     void* (*info)(void*) = symbol<decltype(info)>("png_create_info_struct");
     void (*init)(void*, FILE*) = symbol<decltype(init)>("png_init_io");
     void (*header)(void*, void*, uint32_t, uint32_t, int, int, int, int, int) = symbol<decltype(header)>("png_set_IHDR");
+    void (*compression)(void*, int) = symbol<decltype(compression)>("png_set_compression_level");
+    void (*filter)(void*, int, int) = symbol<decltype(filter)>("png_set_filter");
     void (*writeInfo)(void*, void*) = symbol<decltype(writeInfo)>("png_write_info");
     void (*row)(void*, const unsigned char*) = symbol<decltype(row)>("png_write_row");
     void (*end)(void*, void*) = symbol<decltype(end)>("png_write_end");
@@ -144,6 +147,8 @@ Java_com_mistermikhail_fgallery_data_TiffNative_writePng(JNIEnv* env, jobject, j
     bool success = false;
     try {
         png.init(writer, file);
+        if (png.compression) png.compression(writer, 1);
+        if (png.filter) png.filter(writer, 0, 8);
         png.header(writer, info, width, height, 8, 6, 0, 0, 0);
         png.writeInfo(writer, info);
         if (tiff.tiled(image)) {
@@ -181,5 +186,49 @@ Java_com_mistermikhail_fgallery_data_TiffNative_writePng(JNIEnv* env, jobject, j
         if (success) png.end(writer, info);
     } catch (...) { success = false; }
     png.destroy(&writer, &info); fclose(file);
+    return success ? JNI_TRUE : JNI_FALSE;
+}
+
+// ARGB_8888 is RGBA in Android's native little-endian bitmap memory.
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_mistermikhail_fgallery_data_TiffNative_writeBitmapPng(JNIEnv* env, jobject, jobject bitmap, jstring destination) {
+    static PngApi png;
+    AndroidBitmapInfo dimensions{};
+    if (!png.valid() || AndroidBitmap_getInfo(env, bitmap, &dimensions) != 0 ||
+        dimensions.format != ANDROID_BITMAP_FORMAT_RGBA_8888) return JNI_FALSE;
+    const char* path = env->GetStringUTFChars(destination, nullptr);
+    if (!path) return JNI_FALSE;
+    FILE* file = fopen(path, "wb"); env->ReleaseStringUTFChars(destination, path);
+    if (!file) return JNI_FALSE;
+    void* pixels = nullptr;
+    if (AndroidBitmap_lockPixels(env, bitmap, &pixels) != 0) { fclose(file); return JNI_FALSE; }
+    void* writer = png.create(png.version(nullptr), nullptr, nullptr, nullptr);
+    void* info = writer ? png.info(writer) : nullptr;
+    auto* jump = writer ? png.jump(writer, longjmp, sizeof(jmp_buf)) : nullptr;
+    bool success = false;
+    std::vector<unsigned char> straight(size_t(dimensions.width) * 4);
+    if (info && jump && !setjmp(*jump)) {
+        png.init(writer, file);
+        if (png.compression) png.compression(writer, 1);
+        if (png.filter) png.filter(writer, 0, 8);
+        png.header(writer, info, dimensions.width, dimensions.height, 8, 6, 0, 0, 0);
+        png.writeInfo(writer, info);
+        for (uint32_t row = 0; row < dimensions.height; ++row) {
+            auto* source = static_cast<unsigned char*>(pixels) + size_t(row) * dimensions.stride;
+            if ((dimensions.flags & ANDROID_BITMAP_FLAGS_ALPHA_MASK) == ANDROID_BITMAP_FLAGS_ALPHA_PREMUL) {
+                std::copy_n(source, straight.size(), straight.data());
+                for (uint32_t col = 0; col < dimensions.width; ++col) {
+                    auto* pixel = straight.data() + size_t(col) * 4;
+                    const unsigned int alpha = pixel[3];
+                    if (alpha && alpha < 255) for (int channel = 0; channel < 3; ++channel)
+                        pixel[channel] = std::min(255u, (unsigned(pixel[channel]) * 255 + alpha / 2) / alpha);
+                }
+                png.row(writer, straight.data());
+            } else png.row(writer, source);
+        }
+        png.end(writer, info); success = true;
+    }
+    if (writer) png.destroy(&writer, &info);
+    AndroidBitmap_unlockPixels(env, bitmap); fclose(file);
     return success ? JNI_TRUE : JNI_FALSE;
 }

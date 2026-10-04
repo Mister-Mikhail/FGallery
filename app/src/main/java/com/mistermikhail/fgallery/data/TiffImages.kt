@@ -83,5 +83,6 @@ internal object TiffNative {
     }
     external fun decode(path: String, edge: Int): IntArray?
     external fun metadata(path: String): IntArray?
+    external fun writeBitmapPng(bitmap: Bitmap, destination: String): Boolean
     external fun writePng(source: String, destination: String): Boolean
 }

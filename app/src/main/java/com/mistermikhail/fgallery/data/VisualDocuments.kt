@@ -78,6 +78,34 @@ class PdfSession(context: Context, uri: Uri, compatibleOnly: Boolean = false) : 
         }
     }
 
+    /** Render only the visible page rectangle at screen resolution, at any zoom. */
+    @Synchronized
+    fun renderRegion(index: Int, viewportWidth: Int, viewportHeight: Int, zoom: Float, x: Float, y: Float): Bitmap {
+        require(viewportWidth > 0 && viewportHeight > 0 && zoom.isFinite() && zoom >= 1f)
+        val outputScale = minOf(1f, 2560f / maxOf(viewportWidth, viewportHeight))
+        val width = (viewportWidth * outputScale).toInt().coerceAtLeast(1)
+        val height = (viewportHeight * outputScale).toInt().coerceAtLeast(1)
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        bitmap.eraseColor(Color.WHITE)
+        val left = ((viewportWidth * (1f - zoom) / 2f + x) * outputScale)
+        val top = ((viewportHeight * (1f - zoom) / 2f + y) * outputScale)
+        try {
+            renderer?.let { pdf ->
+                pdf.openPage(index).use { page ->
+                    val matrix = android.graphics.Matrix().apply {
+                        setScale(viewportWidth * zoom * outputScale / page.width, viewportHeight * zoom * outputScale / page.height)
+                        postTranslate(left, top)
+                    }
+                    page.render(bitmap, null, matrix, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                }
+            } ?: requireNotNull(compatible).openPage(index)!!.use { page ->
+                page.renderPageBitmap(bitmap, left.toInt(), top.toInt(),
+                    (viewportWidth * zoom * outputScale).toInt(), (viewportHeight * zoom * outputScale).toInt(), true)
+            }
+            return bitmap
+        } catch (e: Exception) { bitmap.recycle(); throw e }
+    }
+
     @Synchronized
     override fun close() {
         compatible?.close()

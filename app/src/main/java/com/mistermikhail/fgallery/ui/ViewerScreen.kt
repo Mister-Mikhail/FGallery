@@ -571,12 +571,31 @@ internal fun TiledZoomableImage(
 ) {
     val context = LocalContext.current
     var imageFailed by remember(item.uri) { mutableStateOf(false) }
-    var fullSource by remember(item.uri) { mutableStateOf<java.io.File?>(null) }
+    var fullSource by remember(item.uri) { mutableStateOf(com.mistermikhail.fgallery.data.FullResolutionFiles.cached(context, item)) }
     var fullError by remember(item.uri) { mutableStateOf<String?>(null) }
     val needsFullSource = item.kind == MediaKind.RAW || com.mistermikhail.fgallery.data.TiffImages.isTiff(item.name, item.mimeType)
+    var cachedPreview by remember(item.uri, item.dateModifiedMillis, item.sizeBytes) {
+        mutableStateOf(ThumbnailCache.cached(context, item))
+    }
     LaunchedEffect(item.uri, active) {
         if (needsFullSource && active && fullSource == null) {
             try {
+                if (cachedPreview == null) cachedPreview = ThumbnailCache.ensure(context, item)
+                if (cachedPreview == null && item.kind == MediaKind.RAW) {
+                    cachedPreview = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        ThumbnailCache.rawPreview(context, item)?.let { bitmap ->
+                            try {
+                                val file = ThumbnailCache.fileFor(context, item)
+                                file.parentFile?.mkdirs()
+                                val temp = java.io.File.createTempFile("raw_fast_", ".png", file.parentFile)
+                                try {
+                                    check(com.mistermikhail.fgallery.data.TiffNative.writeBitmapPng(bitmap, temp.path))
+                                    check(temp.renameTo(file)); file
+                                } finally { temp.delete() }
+                            } finally { bitmap.recycle() }
+                        }
+                    }
+                }
                 fullSource = com.mistermikhail.fgallery.data.FullResolutionFiles.prepare(context, item)
                 imageFailed = false
             } catch (e: kotlinx.coroutines.CancellationException) { throw e }
@@ -596,24 +615,7 @@ internal fun TiledZoomableImage(
         }
     }
 
-    val cachedPreview = remember(item.id, item.dateModifiedMillis) {
-        val highPreview = ThumbnailCache.fileFor(
-            context = context,
-            item = item,
-            highQuality = true,
-        )
-        val fastPreview = ThumbnailCache.fileFor(
-            context = context,
-            item = item,
-            highQuality = false,
-        )
 
-        when {
-            highPreview.exists() -> highPreview
-            fastPreview.exists() -> fastPreview
-            else -> null
-        }
-    }
 
 
     val doubleClick = remember(item.id, cleanupMode) {
@@ -628,7 +630,7 @@ internal fun TiledZoomableImage(
             val transformation = state.contentTransformation
             val fit = maxOf(transformation.scaleMetadata.initialScale.scaleX, transformation.scaleMetadata.initialScale.scaleY)
             val current = maxOf(transformation.scale.scaleX, transformation.scale.scaleY)
-            val target = nextDoubleTapZoom(current, fit, state.zoomSpec.maximum.factor)
+            val target = nextDoubleTapZoom(current, fit, maxOf(1f, fit))
             if (target <= fit * 1.001f) state.resetZoom(animationSpec = tween(260))
             else state.zoomTo(zoomFactor = target, centroid = centroid, animationSpec = tween(260))
         }
@@ -661,7 +663,7 @@ internal fun TiledZoomableImage(
             modifier = Modifier.fillMaxSize().semantics {
                 stateDescription = "Zoom ${(zoomableState.contentTransformation.scaleMetadata.userZoom * 100).toInt()}%"
                 val initial = zoomableState.contentTransformation.scaleMetadata.initialScale
-                this[ViewerZoomRange] = maxOf(initial.scaleX, initial.scaleY) to zoomableState.zoomSpec.maximum.factor
+                this[ViewerZoomRange] = maxOf(initial.scaleX, initial.scaleY) to maxOf(1f, maxOf(initial.scaleX, initial.scaleY))
                 this[ViewerImageReady] = imageState.isImageDisplayed && (!needsFullSource || fullSource != null)
             }.testTag("viewer-image"),
         )

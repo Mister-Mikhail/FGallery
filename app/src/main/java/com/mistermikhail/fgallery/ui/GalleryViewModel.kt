@@ -3,6 +3,7 @@ package com.mistermikhail.fgallery.ui
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.mistermikhail.fgallery.data.LibrarySnapshot
 import com.mistermikhail.fgallery.data.DriveLibrary
 import com.mistermikhail.fgallery.data.DriveRecycleBin
 import com.mistermikhail.fgallery.data.DocumentLibrary
@@ -62,10 +63,14 @@ data class GalleryUiState(
 
 class GalleryViewModel(application: Application) : AndroidViewModel(application) {
     private val driveBin = DriveRecycleBin(application)
+    private var thumbnailJob: kotlinx.coroutines.Job? = null
+    private var albumWarmJob: kotlinx.coroutines.Job? = null
     private var refreshJob: kotlinx.coroutines.Job? = null
     private val repository = MediaRepository(application)
     private val settingsRepository = AppSettingsRepository(application)
-    private val _uiState = MutableStateFlow(GalleryUiState())
+    private val _uiState = MutableStateFlow(LibrarySnapshot.memory?.let {
+        derive(GalleryUiState(allItems = it.items, physicalBinUris = it.bin, hasPermission = it.permission))
+    } ?: GalleryUiState())
     val uiState: StateFlow<GalleryUiState> = _uiState.asStateFlow()
 
     init {
@@ -195,14 +200,22 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun onPermissionChanged(granted: Boolean) {
-        _uiState.update { it.copy(hasPermission = granted) }
+        _uiState.update { current ->
+            if (granted != current.hasPermission) derive(current.copy(hasPermission = granted, allItems = emptyList()))
+            else current.copy(hasPermission = granted)
+        }
         refresh()
     }
 
     fun refresh() {
         refreshJob?.cancel()
-        refreshJob = viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true) }
+        refreshJob = viewModelScope.launch(Dispatchers.IO) {
+            if (_uiState.value.allItems.isEmpty()) {
+                LibrarySnapshot.load(getApplication(), _uiState.value.hasPermission)?.let { saved ->
+                    _uiState.update { derive(it.copy(allItems = saved.items, physicalBinUris = saved.bin)) }
+                }
+            }
+            _uiState.update { it.copy(isLoading = it.allItems.isEmpty()) }
 
             val normal = try {
                 val media = if (_uiState.value.hasPermission) repository.loadMedia() else emptyList()
@@ -222,6 +235,8 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
                 )
             }
 
+            runCatching { LibrarySnapshot.save(getApplication(), LibrarySnapshot.Value(items, recycled.mapTo(hashSetOf()) { it.uriKey }, _uiState.value.hasPermission)) }
+            thumbnailJob?.cancel()
             val albumCovers = items
                 .groupBy { it.album }
                 .values
@@ -229,20 +244,13 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
                     albumItems.maxByOrNull { it.dateTakenMillis }
                 }
 
-            viewModelScope.launch(Dispatchers.IO) {
+            thumbnailJob = viewModelScope.launch(Dispatchers.IO) {
                 // Cache generation must never drive Compose recomposition.
                 preloadThumbnailBatches(
                     items = albumCovers,
                     batchSize = 12,
                     highQuality = false,
                     pauseBetweenBatchesMs = 0L,
-                )
-
-                preloadThumbnailBatches(
-                    items = albumCovers,
-                    batchSize = 8,
-                    highQuality = true,
-                    pauseBetweenBatchesMs = 40L,
                 )
 
                 val coverIds = albumCovers.mapTo(hashSetOf()) { it.id }
@@ -254,6 +262,13 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
                     highQuality = false,
                     pauseBetweenBatchesMs = 45L,
                 )
+                preloadThumbnailBatches(
+                    items = albumCovers,
+                    batchSize = 8,
+                    highQuality = true,
+                    pauseBetweenBatchesMs = 40L,
+                )
+
             }
         }
     }
@@ -285,7 +300,8 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
             it.album == name && it.uriKey !in (snapshot.recycleBinUris + snapshot.physicalBinUris)
         }
 
-        viewModelScope.launch(Dispatchers.IO) {
+        albumWarmJob?.cancel()
+        albumWarmJob = viewModelScope.launch(Dispatchers.IO) {
             // No StateFlow updates here: creating cache files must not invalidate
             // the entire gallery while the user is scrolling.
             preloadThumbnailBatches(
@@ -298,7 +314,7 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
             delay(350L)
 
             preloadThumbnailBatches(
-                items = items,
+                items = items.take(24),
                 batchSize = 6,
                 highQuality = true,
                 pauseBetweenBatchesMs = 80L,

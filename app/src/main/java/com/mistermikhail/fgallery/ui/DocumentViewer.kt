@@ -92,7 +92,7 @@ internal fun PdfViewer(item: MediaItem, onTap: () -> Unit) {
                         Text("${index + 1} / ${pdf.pageCount}", color = Color.LightGray)
                         val page = bitmap
                         if (page != null) {
-                            ZoomableDocumentPage(Modifier.fillMaxWidth().aspectRatio(page.width.toFloat() / page.height).testTag("pdf-page-$index"), onTap) { modifier ->
+                            ZoomableDocumentPage(Modifier.fillMaxWidth().aspectRatio(page.width.toFloat() / page.height).testTag("pdf-page-$index"), onTap, overlay = { transform, bounds -> PdfRegionOverlay(pdf, index, transform, bounds) }) { modifier ->
                                 Image(page.asImageBitmap(), "Страница ${index + 1}", contentScale = ContentScale.Fit, modifier = modifier)
                             }
                         } else if (failed) Text("Не удалось загрузить страницу", color = Color.White)
@@ -132,7 +132,9 @@ internal fun SvgViewer(item: MediaItem, onTap: () -> Unit) {
 }
 
 @Composable
-internal fun ZoomableDocumentPage(modifier: Modifier, onTap: () -> Unit, content: @Composable (Modifier) -> Unit) {
+internal fun ZoomableDocumentPage(modifier: Modifier, onTap: () -> Unit,
+    overlay: @Composable (DocumentTransform, androidx.compose.ui.unit.IntSize) -> Unit = { _, _ -> },
+    content: @Composable (Modifier) -> Unit) {
     var transform by remember { mutableStateOf(DocumentTransform()) }
     var bounds by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
     val scope = rememberCoroutineScope()
@@ -203,5 +205,27 @@ internal fun ZoomableDocumentPage(modifier: Modifier, onTap: () -> Unit, content
             scaleX = transform.scale; scaleY = transform.scale
             translationX = transform.x; translationY = transform.y
         })
+        overlay(transform, bounds)
+    }
+}
+
+@Composable
+private fun PdfRegionOverlay(pdf: PdfSession, index: Int, transform: DocumentTransform, bounds: androidx.compose.ui.unit.IntSize) {
+    // Reuse the scaled preview during motion. Once the gesture settles, replace
+    // just this viewport with native PDF pixels, rather than an 8x page bitmap.
+    data class Region(val transform: DocumentTransform, val bounds: androidx.compose.ui.unit.IntSize, val bitmap: Bitmap)
+    var region by remember(pdf, index) { mutableStateOf<Region?>(null) }
+    LaunchedEffect(pdf, index, transform, bounds) {
+        if (transform.scale <= 1.001f || bounds.width <= 0 || bounds.height <= 0) return@LaunchedEffect
+        kotlinx.coroutines.delay(100)
+        val bitmap = withContext(Dispatchers.IO) {
+            runCatching { pdf.renderRegion(index, bounds.width, bounds.height, transform.scale, transform.x, transform.y) }.getOrNull()
+        }
+        if (bitmap != null) region = Region(transform, bounds, bitmap)
+    }
+    val current = region
+    if (current != null && current.transform == transform && current.bounds == bounds) {
+        Image(current.bitmap.asImageBitmap(), null, contentScale = ContentScale.FillBounds,
+            modifier = Modifier.fillMaxSize().testTag("pdf-sharp-region"))
     }
 }

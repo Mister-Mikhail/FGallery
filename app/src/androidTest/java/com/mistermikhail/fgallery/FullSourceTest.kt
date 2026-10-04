@@ -45,4 +45,34 @@ class FullSourceTest {
             bitmap.recycle()
         }
     }
+    @Test fun pdfViewportRerenderRetainsDetailAtFullZoom() {
+        val file = File(context.cacheDir, "pdf-sharp-lines.pdf")
+        val source = android.graphics.pdf.PdfDocument()
+        try {
+            val page = source.startPage(android.graphics.pdf.PdfDocument.PageInfo.Builder(320, 240, 1).create())
+            page.canvas.drawColor(android.graphics.Color.WHITE)
+            val paint = android.graphics.Paint().apply { color = android.graphics.Color.BLACK }
+            for (i in 0 until 500) {
+                val x = 145f + i * .0625f
+                page.canvas.drawRect(x, 100f, x + .04f, 140f, paint)
+            }
+            source.finishPage(page)
+            file.outputStream().use { source.writeTo(it) }
+        } finally { source.close() }
+        PdfSession(context, Uri.fromFile(file)).use { document ->
+            val region = document.renderRegion(0, 1024, 768, 8f, 0f, 0f)
+            val base = document.render(0, 1800)
+            val magnified = android.graphics.Bitmap.createBitmap(1024, 768, android.graphics.Bitmap.Config.ARGB_8888)
+            val matrix = android.graphics.Matrix().apply {
+                setScale(8192f / base.width, 6144f / base.height)
+                postTranslate(-3584f, -2688f)
+            }
+            android.graphics.Canvas(magnified).drawBitmap(base, matrix, android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG))
+            fun black(bitmap: android.graphics.Bitmap) = (200 until 800).count { x -> android.graphics.Color.red(bitmap.getPixel(x, 384)) < 60 }
+            assertTrue("Native viewport must resolve fine PDF lines", black(region) > black(magnified) + 100)
+            region.recycle(); base.recycle(); magnified.recycle()
+        }
+        file.delete()
+    }
+
 }

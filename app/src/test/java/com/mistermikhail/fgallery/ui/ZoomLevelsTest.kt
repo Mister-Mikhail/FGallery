@@ -23,4 +23,15 @@ class ZoomLevelsTest {
             assertEquals(fit + (8f - fit) * .3f, nextDoubleTapZoom(fit, fit, 8f), .0001f)
         }
     }
+    @Test fun nativePixelRangeUsesImageFitInsteadOfOversamplingMaximum() {
+        for (fit in listOf(.08f, .25f, .8f)) {
+            val first = nextDoubleTapZoom(fit, fit, 1f)
+            val second = nextDoubleTapZoom(first, fit, 1f)
+            assertEquals(.30f, (first - fit) / (1f - fit), .0001f)
+            assertEquals(.90f, (second - fit) / (1f - fit), .0001f)
+            assertEquals(fit, nextDoubleTapZoom(second, fit, 1f), .0001f)
+        }
+        assertEquals(2f, nextDoubleTapZoom(2f, 2f, 2f), .0001f)
+    }
+
 }

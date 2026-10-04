@@ -125,3 +125,7 @@ Double tap: fit ×1.30 → 90% of maximum → fit. Pinch retains the point betwe
 
 ### User clarification for 0.2.4
 Device: Samsung Galaxy S23, Android 16. Zoom stops are 30% and 90% of the linear scale range between fit and configured maximum: fit + (maximum − fit) ×0.30 / ×0.90, then fit. This supersedes all earlier fit ×1.30 wording. SD cards and USB drives must refresh the library when connected/removed, and Cleanup must create a separate on-volume recycle bin for each drive. Disconnected drive records must survive removal and reappear when reconnected.
+
+
+### 0.2.5 clarified pixel zoom and startup requirements
+The user confirms the double-tap maximum for raster photos, TIFF and RAW is native 1:1 (one file pixel per screen pixel). Stops are fit + (native − fit) ×0.30 / ×0.90, then fit. Do not zoom smaller images below their fitted size. PDF retains its accepted screen-relative gesture range, with native rerendering of the visible area to avoid blur. Show a useful RAW/TIFF preview promptly while full detail becomes ready; preserve full sensor/native pixels. Reopening the app and opening albums must retain the catalogue and cached previews; refresh discovery in the background without clearing the visible grid.

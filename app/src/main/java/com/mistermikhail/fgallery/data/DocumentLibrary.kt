@@ -19,20 +19,7 @@ class DocumentLibrary(private val context: Context) {
 
     suspend fun load(): List<MediaItem> = withContext(Dispatchers.IO) {
         val picked = preferences.getStringSet("uris", emptySet()).orEmpty()
-        val indexedPaths = if (StorageFolders.hasFileAccess()) runCatching {
-            context.contentResolver.query(android.provider.MediaStore.Files.getContentUri("external"),
-                arrayOf(android.provider.MediaStore.MediaColumns.DATA),
-                "LOWER(${android.provider.MediaStore.MediaColumns.DISPLAY_NAME}) LIKE ? OR LOWER(${android.provider.MediaStore.MediaColumns.DISPLAY_NAME}) LIKE ? OR LOWER(${android.provider.MediaStore.MediaColumns.DISPLAY_NAME}) LIKE ?",
-                arrayOf("%.tif", "%.tiff", "%.svg"), null)?.use { cursor ->
-                    buildSet { while (cursor.moveToNext()) cursor.getString(0)?.let { add(it) } }
-                }.orEmpty()
-        }.getOrDefault(emptySet()) else emptySet()
-        val discovered = if (StorageFolders.hasFileAccess()) StorageFolders.roots(context).flatMap { root ->
-            root.walkTopDown().onEnter { it.name != "Android" && !it.name.startsWith('.') }
-                .filter { it.isFile && (it.extension.equals("pdf", true) || it.extension.equals("svg", true) || TiffImages.isTiff(it.name)) }
-                .filter { it.path !in indexedPaths }.map { Uri.fromFile(it).toString() }.toList()
-        } else emptyList()
-        (picked + discovered).mapNotNull { value ->
+        picked.mapNotNull { value ->
             runCatching {
                 val uri = Uri.parse(value)
                 val local = if (uri.scheme == "file") File(uri.path!!) else null
