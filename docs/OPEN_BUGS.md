@@ -142,3 +142,13 @@ User downloaded the direct artifact link and tested the delivered 45637f5 build.
 User requires the supplied 1000267911.jpg artwork exactly, including all four corner brackets. Previous foreground coordinates extended beyond the adaptive icon safe area and brackets were clipped by launcher masks. 0.2.2 uses the unmodified reference JPEG with proportional safe-area insets, for both normal and round adaptive resources. Acceptance: verify all four brackets remain visible under circle and rounded-square masks; confirm the packaged APK contains the reference bytes. Launcher/device appearance remains a device acceptance check.
 
 0.2.1 verification record: commit 0fef0e3497bb9f0b9c1cf5578992b450ccb8daae, GitHub run 37168505732 successful; 6 unit tests and 5 Android 15 Pixel 2 emulator tests passed (document gestures, 4000×4000 transparent PNG, upper crop handles, readable crop result, copy/replace and failed overwrite recovery). Real user video/RAW fixtures and device-specific storage behavior remain unchecked.
+
+
+## Latest device report — 2026-10-04 (0.2.2 follow-up)
+This supersedes prior emulator success for the real device. JPEG comes from Samsung Galaxy S23; Android version unknown.
+- PDF/SVG zoom closes the app. Test real document viewers, pinch release and taps, with finite transforms and cancellation.
+- S23 camera JPEG first double tap visually enlarges only 3–5%; first stop must be exactly fit ×1.30. Second stop is described as 90%; retain previous 90%-of-maximum requirement pending clarification. Third stop is fit. Manual pinch back to fit must restart the cycle. All supported still/document formats use the same policy.
+- Video crop must have draggable corners, as in the photo editor. Time-trim controls must show the actual frame at the selected boundary.
+- TIFF files do not display: implement discovery, thumbnail and full viewer decoding.
+- Screenshot 1000267925.jpg shows an undersized icon with a second dark inner plate. Enlarge the artwork and use the source image as the whole icon background, preserving outer corner brackets.
+All items remain open until repeatable acceptance checks pass.

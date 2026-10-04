@@ -53,6 +53,9 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.semantics.SemanticsPropertyKey
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.platform.testTag
@@ -554,6 +557,8 @@ private fun VideoPlayer(
 
 }
 
+internal val ViewerImageReady = SemanticsPropertyKey<Boolean>("ViewerImageReady")
+
 @Composable
 internal fun TiledZoomableImage(
     item: MediaItem,
@@ -562,13 +567,19 @@ internal fun TiledZoomableImage(
     onTrash: () -> Unit,
 ) {
     val context = LocalContext.current
-    var doubleTapStage by remember(item.id) { mutableIntStateOf(0) }
     var imageFailed by remember(item.uri) { mutableStateOf(false) }
+    var maximum by remember(item.uri) { mutableFloatStateOf(8f) }
 
     val zoomableState = rememberZoomableState(
-        zoomSpec = ZoomSpec(maxZoomFactor = 8f),
+        zoomSpec = ZoomSpec(maxZoomFactor = maximum),
     )
     val imageState = rememberZoomableImageState(zoomableState)
+    LaunchedEffect(zoomableState) {
+        snapshotFlow { zoomableState.contentTransformation.scaleMetadata.initialScale }.collect { fit ->
+            val scale = maxOf(fit.scaleX, fit.scaleY)
+            if (scale.isFinite() && scale > 0f) maximum = maxOf(8f, scale * 8f)
+        }
+    }
 
     val cachedPreview = remember(item.id, item.dateModifiedMillis) {
         val highPreview = ThumbnailCache.fileFor(
@@ -591,42 +602,20 @@ internal fun TiledZoomableImage(
 
 
     val doubleClick = remember(item.id, cleanupMode) {
-        DoubleClickToZoomListener { state, centroid ->
+        DoubleClickToZoomListener { _, centroid ->
+            val state = zoomableState
             if (cleanupMode) {
                 onTrash()
                 return@DoubleClickToZoomListener
             }
 
-            if (!state.contentTransformation.isSpecified || state.isAnimationRunning) return@DoubleClickToZoomListener
-            when (doubleTapStage) {
-                0 -> {
-                    state.zoomTo(
-                        zoomFactor = firstDoubleTapZoom(
-                            state.contentTransformation.scaleMetadata.initialScale.scaleX,
-                            state.zoomSpec.maximum.factor,
-                        ),
-                        centroid = centroid,
-                        animationSpec = tween(durationMillis = 240),
-                    )
-                    doubleTapStage = 1
-                }
-
-                1 -> {
-                    state.zoomTo(
-                        zoomFactor = state.zoomSpec.maximum.factor * 0.9f,
-                        centroid = centroid,
-                        animationSpec = tween(durationMillis = 260),
-                    )
-                    doubleTapStage = 2
-                }
-
-                else -> {
-                    state.resetZoom(
-                        animationSpec = tween(durationMillis = 260),
-                    )
-                    doubleTapStage = 0
-                }
-            }
+            if (!imageState.isImageDisplayed || !state.contentTransformation.isSpecified || state.isAnimationRunning) return@DoubleClickToZoomListener
+            val transformation = state.contentTransformation
+            val fit = maxOf(transformation.scaleMetadata.initialScale.scaleX, transformation.scaleMetadata.initialScale.scaleY)
+            val current = maxOf(transformation.scale.scaleX, transformation.scale.scaleY)
+            val target = nextDoubleTapZoom(current, fit, state.zoomSpec.maximum.factor)
+            if (target <= fit * 1.001f) state.resetZoom(animationSpec = tween(260))
+            else state.zoomTo(zoomFactor = target, centroid = centroid, animationSpec = tween(260))
         }
     }
 
@@ -645,8 +634,8 @@ internal fun TiledZoomableImage(
 
         if (imageFailed && cachedPreview == null) Text("Не удалось открыть изображение. Формат может не поддерживаться декодером устройства.", color = Color.White, modifier = Modifier.padding(24.dp))
         ZoomableAsyncImage(
-            model = coil3.request.ImageRequest.Builder(context).data(item.uri)
-                .memoryCacheKey("${item.uri}/${item.dateModifiedMillis}")
+            model = coil3.request.ImageRequest.Builder(context).data(if (imageFailed && cachedPreview != null) cachedPreview else item.uri)
+                .memoryCacheKey("${item.uri}/${item.dateModifiedMillis}/${if (imageFailed) "fallback" else "source"}")
                 .listener(onError = { _, _ -> imageFailed = true })
                 .build(),
             contentDescription = item.name,
@@ -657,8 +646,8 @@ internal fun TiledZoomableImage(
             alpha = 1f,
             modifier = Modifier.fillMaxSize().semantics {
                 stateDescription = "Zoom ${(zoomableState.contentTransformation.scaleMetadata.userZoom * 100).toInt()}%"
+                this[ViewerImageReady] = imageState.isImageDisplayed
             }.testTag("viewer-image"),
         )
     }
 }
-

@@ -60,7 +60,8 @@ object ThumbnailCache {
         MediaKind.PDF -> PdfSession(context, item.uri).use { it.render(0, edge) }
         MediaKind.SVG -> VisualDocuments.svgPreview(context, item.uri, edge)
         MediaKind.IMAGE, MediaKind.RAW ->
-            runCatching { context.contentResolver.loadThumbnail(item.uri, Size(edge, edge), null) }
+            if (TiffImages.isTiff(item.name, item.mimeType)) TiffImages.decode(context, item.uri, edge)
+            else runCatching { context.contentResolver.loadThumbnail(item.uri, Size(edge, edge), null) }
                 .getOrNull() ?: context.contentResolver.openInputStream(item.uri)?.use { input ->
                     val bytes = runCatching { ExifInterface(input).thumbnailBytes }.getOrNull()
                     bytes?.let { BitmapFactory.decodeByteArray(it, 0, it.size) }

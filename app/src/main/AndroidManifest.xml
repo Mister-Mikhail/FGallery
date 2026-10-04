@@ -11,11 +11,13 @@
         android:name=".FGalleryApplication"
         android:requestLegacyExternalStorage="true"
         android:allowBackup="true"
-        android:icon="@mipmap/ic_launcher"
-        android:roundIcon="@mipmap/ic_launcher_round"
+        android:icon="@drawable/fgallery_logo"
+        android:roundIcon="@drawable/fgallery_logo"
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/Theme.FGallery">
+        <!-- Artwork is already a complete square icon; Samsung must not add an inner container. -->
+        <meta-data android:name="com.samsung.android.icon_container" android:value="true" />
         <provider android:name="androidx.core.content.FileProvider" android:authorities="${applicationId}.files" android:exported="false" android:grantUriPermissions="true">
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" />
         </provider>

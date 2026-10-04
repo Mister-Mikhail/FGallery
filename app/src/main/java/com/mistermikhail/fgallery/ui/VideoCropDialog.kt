@@ -1,63 +1,120 @@
 package com.mistermikhail.fgallery.ui
 
+import android.graphics.Bitmap
+import android.media.MediaMetadataRetriever
 import android.net.Uri
-import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.media3.common.MediaItem as PlayerMediaItem
 import androidx.media3.common.MimeTypes
+import androidx.media3.common.Player
+import androidx.media3.common.VideoSize
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.SeekParameters
+import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.ui.PlayerView
 import androidx.media3.effect.Crop
 import androidx.media3.transformer.*
 import androidx.media3.transformer.Composition
-import coil3.compose.AsyncImage
 import com.mistermikhail.fgallery.data.MediaItem
-import com.mistermikhail.fgallery.data.ThumbnailCache
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.io.File
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun VideoCropDialog(item: MediaItem, onDismiss: () -> Unit, onExported: (Uri, Boolean) -> Unit) {
     val context = LocalContext.current
-    var time by remember { mutableStateOf(0f..1f) }
-    var horizontal by remember { mutableStateOf(0f..1f) }
-    var vertical by remember { mutableStateOf(0f..1f) }
+    var window by remember(item.uri) { mutableStateOf(TrimWindow()) }
+    var crop by remember(item.uri) { mutableStateOf(CropBounds()) }
     var exporting by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var transformer by remember { mutableStateOf<Transformer?>(null) }
     var output by remember { mutableStateOf<File?>(null) }
-    val thumbnail by produceState<File?>(null, item.uri) { value = ThumbnailCache.ensure(context, item) }
-    var duration by remember { mutableLongStateOf(item.durationMillis) }
-    LaunchedEffect(item.uri) {
-        if (duration <= 0) duration = withContext(Dispatchers.IO) {
-            runCatching {
-            val retriever = android.media.MediaMetadataRetriever()
-            try {
-                retriever.setDataSource(context, item.uri)
-                retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
-            } finally { retriever.release() }
-            }.getOrDefault(0L)
+    var clipDuration by remember { mutableLongStateOf(item.durationMillis) }
+    var shownMillis by remember { mutableLongStateOf(0L) }
+    var playing by remember { mutableStateOf(false) }
+    var aspect by remember { mutableFloatStateOf(item.aspectRatio) }
+    var previewReady by remember { mutableStateOf(false) }
+    val player = remember(item.uri) {
+        ExoPlayer.Builder(context).build().apply {
+            volume = 0f
+            setSeekParameters(SeekParameters.EXACT)
+            addListener(object : Player.Listener {
+                override fun onPlaybackStateChanged(state: Int) {
+                    this@apply.duration.takeIf { it > 0 }?.let { clipDuration = it }
+                }
+                override fun onIsPlayingChanged(isPlaying: Boolean) { playing = isPlaying }
+                override fun onRenderedFirstFrame() { previewReady = true }
+                override fun onVideoSizeChanged(size: VideoSize) {
+                    if (size.height > 0 && size.width > 0) aspect = size.width.toFloat() * size.pixelWidthHeightRatio / size.height
+                }
+                override fun onPlayerError(failure: androidx.media3.common.PlaybackException) { error = "Не удалось открыть видео" }
+            })
+            setMediaItem(PlayerMediaItem.fromUri(item.uri))
+            prepare()
+            playWhenReady = false
         }
     }
-    DisposableEffect(Unit) {
-        onDispose { transformer?.cancel(); output?.delete() }
+    val frames by produceState<List<Bitmap>>(emptyList(), item.uri) {
+        value = withContext(Dispatchers.IO) {
+            val retriever = MediaMetadataRetriever()
+            val images = mutableListOf<Bitmap>()
+            try {
+                retriever.setDataSource(context, item.uri)
+                val length = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: item.durationMillis
+                if (length > 0) {
+                    for (index in 0..7) {
+                        ensureActive()
+                        runCatching { retriever.getScaledFrameAtTime((length * index / 7).coerceAtMost(length - 1) * 1000,
+                            MediaMetadataRetriever.OPTION_CLOSEST, 160, 100) }.getOrNull()?.let { images.add(it) }
+                    }
+                }
+                images
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                images.forEach(Bitmap::recycle)
+                throw e
+            } catch (_: Exception) { images }
+            finally { retriever.release() }
+        }
+    }
+    // Keep frame bitmaps alive while Canvas can still be recording them; normal GC owns disposal.
+    LaunchedEffect(player, playing) {
+        while (playing) {
+            shownMillis = player.currentPosition
+            if (shownMillis >= (window.end * clipDuration).toLong()) {
+                player.pause()
+                player.seekTo((window.start * clipDuration).toLong())
+            }
+            delay(60)
+        }
+    }
+    DisposableEffect(player) {
+        onDispose { player.release(); transformer?.cancel(); output?.delete() }
     }
     fun cancel() { transformer?.cancel(); output?.delete(); exporting = false; onDismiss() }
+    fun seekBoundary(next: TrimWindow, start: Boolean) {
+        window = next
+        player.pause()
+        shownMillis = ((if (start) next.start else next.end) * clipDuration).toLong().coerceIn(0, (clipDuration - 1).coerceAtLeast(0))
+        player.seekTo(shownMillis)
+    }
     fun export(replace: Boolean) {
-        if (duration <= 0) { error = "Не удалось определить длительность видео"; return }
+        if (clipDuration <= 0) { error = "Не удалось определить длительность видео"; return }
         exporting = true
         error = null
         try {
@@ -65,13 +122,13 @@ internal fun VideoCropDialog(item: MediaItem, onDismiss: () -> Unit, onExported:
             output = destination
             val media = PlayerMediaItem.Builder().setUri(item.uri).setClippingConfiguration(
                 PlayerMediaItem.ClippingConfiguration.Builder()
-                    .setStartPositionMs((duration * time.start).toLong())
-                    .setEndPositionMs((duration * time.endInclusive).toLong())
+                    .setStartPositionMs((clipDuration * window.start).toLong())
+                    .setEndPositionMs((clipDuration * window.end).toLong())
                     .build()
             ).build()
             val effects = Effects(emptyList(), listOf(Crop(
-                horizontal.start * 2f - 1f, horizontal.endInclusive * 2f - 1f,
-                1f - vertical.endInclusive * 2f, 1f - vertical.start * 2f,
+                crop.left * 2f - 1f, crop.right * 2f - 1f,
+                1f - crop.bottom * 2f, 1f - crop.top * 2f,
             )))
             val edited = EditedMediaItem.Builder(media).setEffects(effects).build()
             val exporter = Transformer.Builder(context)
@@ -101,33 +158,49 @@ internal fun VideoCropDialog(item: MediaItem, onDismiss: () -> Unit, onExported:
     }
     Dialog(onDismissRequest = ::cancel, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(Modifier.fillMaxSize().systemBarsPadding()) {
-            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
-                Text("Кадрировать видео", style = MaterialTheme.typography.titleLarge)
-                Text(item.name, maxLines = 1)
-                Box(Modifier.fillMaxWidth().padding(vertical = 12.dp).aspectRatio(item.aspectRatio)) {
-                    AsyncImage(thumbnail, "Область кадрирования", modifier = Modifier.fillMaxSize(), contentScale = androidx.compose.ui.layout.ContentScale.Fit)
-                    Canvas(Modifier.fillMaxSize()) {
-                        val left = size.width * horizontal.start
-                        val top = size.height * vertical.start
-                        val width = size.width * (horizontal.endInclusive - horizontal.start)
-                        val height = size.height * (vertical.endInclusive - vertical.start)
-                        drawRect(Color.White, Offset(left, top), Size(width, height), style = Stroke(3.dp.toPx()))
+            Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                    TextButton(onClick = ::cancel) { Text("Отмена") }
+                    Text("Кадрировать видео", style = MaterialTheme.typography.titleMedium)
+                    TextButton(enabled = !exporting && clipDuration > 0, onClick = {
+                        if (playing) player.pause() else {
+                            if (player.currentPosition < (window.start * clipDuration).toLong() || player.currentPosition >= (window.end * clipDuration).toLong()) player.seekTo((window.start * clipDuration).toLong())
+                            player.play()
+                        }
+                    }) { Text(if (playing) "Пауза" else "Просмотр") }
+                }
+                Text(item.name, maxLines = 1, style = MaterialTheme.typography.bodySmall)
+                BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().padding(vertical = 12.dp).background(Color.Black), contentAlignment = Alignment.Center) {
+                    val ratio = aspect.takeIf { it.isFinite() && it > 0f } ?: 1f
+                    val videoModifier = if (maxWidth / maxHeight > ratio) Modifier.height(maxHeight).aspectRatio(ratio)
+                        else Modifier.width(maxWidth).aspectRatio(ratio)
+                    Box(videoModifier) {
+                        AndroidView(factory = { ctx ->
+                            (android.view.LayoutInflater.from(ctx).inflate(com.mistermikhail.fgallery.R.layout.player_view_preview, null, false) as PlayerView).apply {
+                                this.player = player
+                                useController = false
+                                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                                setKeepContentOnPlayerReset(true)
+                                setShutterBackgroundColor(android.graphics.Color.TRANSPARENT)
+                            }
+                        }, modifier = Modifier.fillMaxSize().testTag("video-crop-preview").semantics {
+                            stateDescription = "Frame $shownMillis; Ready $previewReady"
+                        })
+                        CropFrame(crop, !exporting) { crop = it }
                     }
                 }
-                Text("Начало / конец: %.1f — %.1f сек".format(duration * time.start / 1000, duration * time.endInclusive / 1000))
-                RangeSlider(time, onValueChange = { if (it.endInclusive - it.start >= 0.01f) time = it }, enabled = !exporting)
-                Text("Левая / правая граница кадра")
-                RangeSlider(horizontal, onValueChange = { if (it.endInclusive - it.start >= 0.05f) horizontal = it }, enabled = !exporting)
-                Text("Верхняя / нижняя граница кадра")
-                RangeSlider(vertical, onValueChange = { if (it.endInclusive - it.start >= 0.05f) vertical = it }, enabled = !exporting)
-                error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                if (exporting) {
-                    LinearProgressIndicator(Modifier.fillMaxWidth())
-                    Text("Идёт экспорт. Оригинал остаётся без изменений до успешного завершения.")
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(videoTime((clipDuration * window.start).toLong()), style = MaterialTheme.typography.labelMedium)
+                    Text(videoTime(shownMillis), style = MaterialTheme.typography.labelMedium)
+                    Text(videoTime((clipDuration * window.end).toLong()), style = MaterialTheme.typography.labelMedium)
                 }
-                Button(onClick = { export(false) }, enabled = !exporting, modifier = Modifier.fillMaxWidth()) { Text("Сохранить копию") }
-                OutlinedButton(onClick = { export(true) }, enabled = !exporting, modifier = Modifier.fillMaxWidth()) { Text("Заменить оригинал") }
-                TextButton(onClick = ::cancel, modifier = Modifier.fillMaxWidth()) { Text(if (exporting) "Отменить экспорт" else "Отмена") }
+                TrimTimeline(window, clipDuration, frames, shownMillis, !exporting, ::seekBoundary)
+                error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+                if (exporting) LinearProgressIndicator(Modifier.fillMaxWidth())
+                Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = { player.pause(); export(false) }, enabled = !exporting && clipDuration > 0, modifier = Modifier.weight(1f)) { Text("Сохранить копию") }
+                    OutlinedButton(onClick = { player.pause(); export(true) }, enabled = !exporting && clipDuration > 0, modifier = Modifier.weight(1f)) { Text("Заменить оригинал") }
+                }
             }
         }
     }

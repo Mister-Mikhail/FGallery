@@ -43,11 +43,11 @@ class MediaRepository(private val context: Context) {
         )
         val selection =
             "${MediaStore.Files.FileColumns.MEDIA_TYPE}=? OR ${MediaStore.Files.FileColumns.MEDIA_TYPE}=?" +
-                if (StorageFolders.hasFileAccess()) RAW_EXTENSIONS.joinToString("", prefix = "") { " OR LOWER(${MediaStore.MediaColumns.DISPLAY_NAME}) LIKE ?" } else ""
+                if (StorageFolders.hasFileAccess()) (RAW_EXTENSIONS + listOf(".tif", ".tiff")).joinToString("", prefix = "") { " OR LOWER(${MediaStore.MediaColumns.DISPLAY_NAME}) LIKE ?" } else ""
         val args = arrayOf(
             MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString(),
             MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString(),
-        ) + if (StorageFolders.hasFileAccess()) RAW_EXTENSIONS.map { "%$it" }.toTypedArray() else emptyArray()
+        ) + if (StorageFolders.hasFileAccess()) (RAW_EXTENSIONS + listOf(".tif", ".tiff")).map { "%$it" }.toTypedArray() else emptyArray()
         val sort =
             "${MediaStore.MediaColumns.DATE_TAKEN} DESC, ${MediaStore.MediaColumns.DATE_ADDED} DESC"
 

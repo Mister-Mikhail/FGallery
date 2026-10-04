@@ -25,6 +25,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -109,13 +110,15 @@ internal fun SvgViewer(item: MediaItem, onTap: () -> Unit) {
     }
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         val image = svg
-        if (image != null) {
+        if (image != null && !error) {
             val ratio = image.documentAspectRatio.takeIf { it > 0f && it.isFinite() } ?: 1f
             BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 val imageModifier = if (maxWidth / maxHeight > ratio) Modifier.height(maxHeight).aspectRatio(ratio) else Modifier.width(maxWidth).aspectRatio(ratio)
                 ZoomableDocumentPage(imageModifier, onTap) { modifier ->
                     Canvas(modifier.background(Color(0xFF303030))) {
-                        drawIntoCanvas { canvas -> image.renderToCanvas(canvas.nativeCanvas, RectF(0f, 0f, size.width, size.height)) }
+                        drawIntoCanvas { canvas ->
+                            runCatching { image.renderToCanvas(canvas.nativeCanvas, RectF(0f, 0f, size.width, size.height)) }.onFailure { error = true }
+                        }
                     }
                 }
             }
@@ -127,7 +130,6 @@ internal fun SvgViewer(item: MediaItem, onTap: () -> Unit) {
 @Composable
 internal fun ZoomableDocumentPage(modifier: Modifier, onTap: () -> Unit, content: @Composable (Modifier) -> Unit) {
     var transform by remember { mutableStateOf(DocumentTransform()) }
-    var stage by remember { mutableIntStateOf(0) }
     var bounds by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
     val scope = rememberCoroutineScope()
     var animation by remember { mutableStateOf<Job?>(null) }
@@ -135,14 +137,15 @@ internal fun ZoomableDocumentPage(modifier: Modifier, onTap: () -> Unit, content
     val connection = remember { object : NestedScrollConnection {} }
     val latestTap by rememberUpdatedState(onTap)
     Box(modifier
+        .clipToBounds()
         .onSizeChanged { bounds = it }
         .nestedScroll(connection, scrollDispatcher)
         .semantics { stateDescription = "Zoom ${(transform.scale * 100).toInt()}%" }
         .pointerInput(Unit) {
             detectTapGestures(onTap = { latestTap() }, onDoubleTap = { focus ->
                 animation?.cancel()
-                val target = when (stage) { 0 -> 1.3f; 1 -> 7.2f; else -> 1f }
-                stage = (stage + 1) % 3
+                if (!focus.x.isFinite() || !focus.y.isFinite() || bounds.width <= 0 || bounds.height <= 0) return@detectTapGestures
+                val target = nextDoubleTapZoom(transform.scale, 1f, 8f)
                 val start = transform
                 animation = scope.launch {
                     animate(start.scale, target, animationSpec = tween(240)) { scale, _ ->
@@ -161,6 +164,7 @@ internal fun ZoomableDocumentPage(modifier: Modifier, onTap: () -> Unit, content
                     val event = awaitPointerEvent(PointerEventPass.Main)
                     if (event.changes.any { it.isConsumed }) break
                     val pointers = event.changes.count { it.pressed }
+                    if (pointers == 0) break // A release event has no centroid; never transform it.
                     val pan = event.calculatePan()
                     val zoom = event.calculateZoom()
                     // A normal one-finger drag belongs to the PDF LazyColumn.
@@ -174,13 +178,15 @@ internal fun ZoomableDocumentPage(modifier: Modifier, onTap: () -> Unit, content
                         if (pastSlop) {
                             animation?.cancel()
                             val focus = event.calculateCentroid(useCurrent = false)
+                            if (!focus.x.isFinite() || !focus.y.isFinite() || !zoom.isFinite() || zoom <= 0f) continue
                             val before = transform
                             transform = transformDocument(before, focus.x, focus.y, pan.x, pan.y,
                                 before.scale * zoom, size.width.toFloat(), size.height.toFloat())
                             // Once pan reaches an edge, forward the remaining drag to the page list.
                             if (pointers == 1 && zoom == 1f) {
                                 val consumed = Offset(transform.x - before.x, transform.y - before.y)
-                                scrollDispatcher.dispatchPostScroll(consumed, pan - consumed, NestedScrollSource.UserInput)
+                                val remaining = pan - consumed
+                                if (remaining.getDistance() > 0f) scrollDispatcher.dispatchPostScroll(consumed, remaining, NestedScrollSource.UserInput)
                             }
                             event.changes.forEach { if (it.positionChanged()) it.consume() }
                         }

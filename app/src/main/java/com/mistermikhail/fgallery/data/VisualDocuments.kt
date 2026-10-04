@@ -19,6 +19,7 @@ class PdfSession(context: Context, uri: Uri) : Closeable {
     private var descriptor: ParcelFileDescriptor? = null
     private var renderer: PdfRenderer? = null
 
+    val pageCount: Int
     init {
         try {
             context.contentResolver.openInputStream(uri)?.use { input ->
@@ -26,13 +27,12 @@ class PdfSession(context: Context, uri: Uri) : Closeable {
             } ?: error("Нет доступа к PDF")
             descriptor = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
             renderer = PdfRenderer(descriptor!!)
+            pageCount = renderer!!.pageCount
         } catch (e: Exception) {
             close()
             throw e
         }
     }
-
-    val pageCount: Int get() = renderer!!.pageCount
 
     @Synchronized
     fun render(index: Int, edge: Int): Bitmap {

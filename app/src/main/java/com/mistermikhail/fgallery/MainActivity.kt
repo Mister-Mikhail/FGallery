@@ -189,6 +189,8 @@ class MainActivity : ComponentActivity() {
                         androidx.core.content.FileProvider.getUriForFile(this@MainActivity, "$packageName.files", file)
                     } else item.uri
                 }.getOrDefault(item.uri)
+            } else if (com.mistermikhail.fgallery.data.TiffImages.isTiff(item.name, item.mimeType)) withContext(Dispatchers.IO) {
+                runCatching { com.mistermikhail.fgallery.data.TiffImages.cropSource(this@MainActivity, item.uri) }.getOrDefault(item.uri)
             } else item.uri
             runCatching {
                 cropLauncher.launch(Intent(this@MainActivity, ImageCropActivity::class.java).apply {
@@ -728,7 +730,7 @@ class MainActivity : ComponentActivity() {
                         permissionLauncher.launch(requiredPermissions())
                     },
                     onRefresh = viewModel::refresh,
-                    onImportDocuments = { documentsLauncher.launch(arrayOf("application/pdf", "image/svg+xml")) },
+                    onImportDocuments = { documentsLauncher.launch(arrayOf("application/pdf", "image/svg+xml", "image/tiff", "image/x-tiff")) },
                     onManageFileAccess = { openFileAccessSettings() },
                     onOpenAlbum = { album ->
                         selectedIds = emptySet()

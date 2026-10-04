@@ -12,6 +12,7 @@ class FGalleryApplication : Application() {
         SingletonImageLoader.setSafe { context ->
             ImageLoader.Builder(context)
                 .components {
+                    add(com.mistermikhail.fgallery.data.TiffDecoder.Factory())
                     add(AnimatedImageDecoder.Factory())
                     add(VideoFrameDecoder.Factory())
                 }.build()

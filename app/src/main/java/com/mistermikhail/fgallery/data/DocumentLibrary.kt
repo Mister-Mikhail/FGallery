@@ -19,16 +19,24 @@ class DocumentLibrary(private val context: Context) {
 
     suspend fun load(): List<MediaItem> = withContext(Dispatchers.IO) {
         val picked = preferences.getStringSet("uris", emptySet()).orEmpty()
+        val indexedPaths = if (StorageFolders.hasFileAccess()) runCatching {
+            context.contentResolver.query(android.provider.MediaStore.Files.getContentUri("external"),
+                arrayOf(android.provider.MediaStore.MediaColumns.DATA),
+                "LOWER(${android.provider.MediaStore.MediaColumns.DISPLAY_NAME}) LIKE ? OR LOWER(${android.provider.MediaStore.MediaColumns.DISPLAY_NAME}) LIKE ? OR LOWER(${android.provider.MediaStore.MediaColumns.DISPLAY_NAME}) LIKE ?",
+                arrayOf("%.tif", "%.tiff", "%.svg"), null)?.use { cursor ->
+                    buildSet { while (cursor.moveToNext()) cursor.getString(0)?.let { add(it) } }
+                }.orEmpty()
+        }.getOrDefault(emptySet()) else emptySet()
         val discovered = if (StorageFolders.hasFileAccess()) StorageFolders.roots(context).flatMap { root ->
             root.walkTopDown().onEnter { it.name != "Android" && !it.name.startsWith('.') }
-                .filter { it.isFile && (it.extension.equals("pdf", true) || it.extension.equals("svg", true)) }
-                .map { Uri.fromFile(it).toString() }.toList()
+                .filter { it.isFile && (it.extension.equals("pdf", true) || it.extension.equals("svg", true) || TiffImages.isTiff(it.name)) }
+                .filter { it.path !in indexedPaths }.map { Uri.fromFile(it).toString() }.toList()
         } else emptyList()
         (picked + discovered).mapNotNull { value ->
             runCatching {
                 val uri = Uri.parse(value)
                 val local = if (uri.scheme == "file") File(uri.path!!) else null
-                val mime = if (local != null) { if (local.extension.equals("pdf", true)) "application/pdf" else "image/svg+xml" } else context.contentResolver.getType(uri)
+                val mime = if (local != null) { when { local.extension.equals("pdf", true) -> "application/pdf"; TiffImages.isTiff(local.name) -> "image/tiff"; else -> "image/svg+xml" } } else context.contentResolver.getType(uri)
                 var name = local?.name ?: uri.lastPathSegment.orEmpty()
                 var size = local?.length() ?: 0L
                 if (local == null) context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null)?.use { cursor ->
@@ -40,6 +48,7 @@ class DocumentLibrary(private val context: Context) {
                 val kind = when {
                     mime == "application/pdf" || name.endsWith(".pdf", true) -> MediaKind.PDF
                     mime == "image/svg+xml" || name.endsWith(".svg", true) -> MediaKind.SVG
+                    TiffImages.isTiff(name, mime) -> MediaKind.IMAGE
                     else -> return@runCatching null
                 }
                 val modified = local?.lastModified() ?: DocumentFile.fromSingleUri(context, uri)?.lastModified() ?: 0L
