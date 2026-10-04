@@ -124,3 +124,15 @@ This report supersedes conflicting older entries above. The exact APK/commit and
 - SVG vector rendering and vertically paged PDF rendering/zoom with error states.
 
 These are code changes awaiting CI and device acceptance, **not verified bug closures**. Test with the exact APK/commit delivered in the chat. In particular check all-files permission grant/deny/Back, actual move results, crop saved pixels and playback, overwrite failure recovery, 360 sensor orientation, RAW samples, and large/password-protected PDFs.
+
+
+## Latest APK 0.2.0 device report — supersedes earlier symptoms
+User downloaded the direct artifact link and tested the delivered 45637f5 build. Device/Android not supplied.
+- PDF and SVG open. PDF pinch fails to retain the finger focus; dragging pages does not scroll the document.
+- First double tap only enlarges about 3–5%. Required cycle is fit ×1.30, then 90% of maximum, then fit.
+- Transparent PNG shows an unmoving original behind the zoomed image.
+- Live video previews work, but start with black frames and restart when scrolling changes the visible candidates. A visible active tile must keep its player and playback clock.
+- Photo crop opens without crashing. Upper corners cannot move down. Saving offers copy/original, then another unwanted window, and does not persist changes.
+- Save choices must be concise: Сохранить копию / Заменить оригинал / Отмена. Choosing replace is the authorization; no second application confirmation, for either photo or video. RAW remains copy-only.
+
+0.2.1 changes under verification: focal document transforms with single-finger page scrolling; removal of static PNG backing after decode; preserved preview lifetime and poster until first frame; crop handles without autozoom and byte-verified saving with rollback; concise single save choice and nonmodal progress. Android regression checks cover gestures, transparent PNG, upper handles, crop result, copy/replace bytes and failed overwrite recovery. No blocker closed before their checks pass; real sample files, video export/360 and device-specific behavior remain device acceptance checks.

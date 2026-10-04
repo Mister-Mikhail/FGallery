@@ -6,7 +6,11 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateCentroid
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -22,6 +26,20 @@ import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChanged
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.nestedscroll.NestedScrollDispatcher
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.tween
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -58,7 +76,7 @@ internal fun PdfViewer(item: MediaItem, onTap: () -> Unit) {
         when {
             error != null -> Text(error!!, color = Color.White, modifier = Modifier.padding(24.dp))
             pdf == null -> CircularProgressIndicator()
-            else -> LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(vertical = 64.dp)) {
+            else -> LazyColumn(Modifier.fillMaxSize().testTag("pdf-pages"), contentPadding = PaddingValues(vertical = 64.dp)) {
                 items((0 until pdf.pageCount).toList(), key = { it }) { index ->
                     var failed by remember { mutableStateOf(false) }
                     val bitmap by produceState<Bitmap?>(null, item.uri, index) {
@@ -69,7 +87,7 @@ internal fun PdfViewer(item: MediaItem, onTap: () -> Unit) {
                         Text("${index + 1} / ${pdf.pageCount}", color = Color.LightGray)
                         val page = bitmap
                         if (page != null) {
-                            ZoomableDocumentPage(Modifier.fillMaxWidth().aspectRatio(page.width.toFloat() / page.height), onTap) { modifier ->
+                            ZoomableDocumentPage(Modifier.fillMaxWidth().aspectRatio(page.width.toFloat() / page.height).testTag("pdf-page-$index"), onTap) { modifier ->
                                 Image(page.asImageBitmap(), "Страница ${index + 1}", contentScale = ContentScale.Fit, modifier = modifier)
                             }
                         } else if (failed) Text("Не удалось загрузить страницу", color = Color.White)
@@ -107,27 +125,73 @@ internal fun SvgViewer(item: MediaItem, onTap: () -> Unit) {
 }
 
 @Composable
-private fun ZoomableDocumentPage(modifier: Modifier, onTap: () -> Unit, content: @Composable (Modifier) -> Unit) {
-    var zoom by remember { mutableFloatStateOf(1f) }
-    var pan by remember { mutableStateOf(Offset.Zero) }
+internal fun ZoomableDocumentPage(modifier: Modifier, onTap: () -> Unit, content: @Composable (Modifier) -> Unit) {
+    var transform by remember { mutableStateOf(DocumentTransform()) }
     var stage by remember { mutableIntStateOf(0) }
-    Box(modifier, contentAlignment = Alignment.Center) {
-        content(Modifier.fillMaxSize()
-            .pointerInput(Unit) {
-                detectTapGestures(onTap = { onTap() }, onDoubleTap = {
-                    zoom = when (stage) { 0 -> 1.3f; 1 -> 8f; else -> 1f }
-                    stage = (stage + 1) % 3
-                    pan = Offset.Zero
-                })
-            }
-            .pointerInput(Unit) {
-                detectTransformGestures { _, delta, factor, _ ->
-                    zoom = (zoom * factor).coerceIn(1f, 8f)
-                    val maxX = size.width * (zoom - 1) / 2
-                    val maxY = size.height * (zoom - 1) / 2
-                    pan = Offset((pan.x + delta.x).coerceIn(-maxX, maxX), (pan.y + delta.y).coerceIn(-maxY, maxY))
+    var bounds by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
+    val scope = rememberCoroutineScope()
+    var animation by remember { mutableStateOf<Job?>(null) }
+    val scrollDispatcher = remember { NestedScrollDispatcher() }
+    val connection = remember { object : NestedScrollConnection {} }
+    val latestTap by rememberUpdatedState(onTap)
+    Box(modifier
+        .onSizeChanged { bounds = it }
+        .nestedScroll(connection, scrollDispatcher)
+        .semantics { stateDescription = "Zoom ${(transform.scale * 100).toInt()}%" }
+        .pointerInput(Unit) {
+            detectTapGestures(onTap = { latestTap() }, onDoubleTap = { focus ->
+                animation?.cancel()
+                val target = when (stage) { 0 -> 1.3f; 1 -> 7.2f; else -> 1f }
+                stage = (stage + 1) % 3
+                val start = transform
+                animation = scope.launch {
+                    animate(start.scale, target, animationSpec = tween(240)) { scale, _ ->
+                        transform = transformDocument(start, focus.x, focus.y, 0f, 0f, scale, bounds.width.toFloat(), bounds.height.toFloat())
+                    }
                 }
+            })
+        }
+        .pointerInput(Unit) {
+            awaitEachGesture {
+                awaitFirstDown(requireUnconsumed = false)
+                var pastSlop = false
+                var accumulatedPan = Offset.Zero
+                var accumulatedZoom = 1f
+                do {
+                    val event = awaitPointerEvent(PointerEventPass.Main)
+                    if (event.changes.any { it.isConsumed }) break
+                    val pointers = event.changes.count { it.pressed }
+                    val pan = event.calculatePan()
+                    val zoom = event.calculateZoom()
+                    // A normal one-finger drag belongs to the PDF LazyColumn.
+                    if (pointers >= 2 || transform.scale > 1.001f) {
+                        accumulatedPan += pan
+                        accumulatedZoom *= zoom
+                        if (!pastSlop) {
+                            pastSlop = accumulatedPan.getDistance() > viewConfiguration.touchSlop ||
+                                kotlin.math.abs(1f - accumulatedZoom) * minOf(size.width, size.height) > viewConfiguration.touchSlop
+                        }
+                        if (pastSlop) {
+                            animation?.cancel()
+                            val focus = event.calculateCentroid(useCurrent = false)
+                            val before = transform
+                            transform = transformDocument(before, focus.x, focus.y, pan.x, pan.y,
+                                before.scale * zoom, size.width.toFloat(), size.height.toFloat())
+                            // Once pan reaches an edge, forward the remaining drag to the page list.
+                            if (pointers == 1 && zoom == 1f) {
+                                val consumed = Offset(transform.x - before.x, transform.y - before.y)
+                                scrollDispatcher.dispatchPostScroll(consumed, pan - consumed, NestedScrollSource.UserInput)
+                            }
+                            event.changes.forEach { if (it.positionChanged()) it.consume() }
+                        }
+                    }
+                } while (event.changes.any { it.pressed })
             }
-            .graphicsLayer { scaleX = zoom; scaleY = zoom; translationX = pan.x; translationY = pan.y })
+        }, contentAlignment = Alignment.Center) {
+        // Gesture coordinates stay in the fixed outer Box; only the drawing is transformed.
+        content(Modifier.fillMaxSize().graphicsLayer {
+            scaleX = transform.scale; scaleY = transform.scale
+            translationX = transform.x; translationY = transform.y
+        })
     }
 }

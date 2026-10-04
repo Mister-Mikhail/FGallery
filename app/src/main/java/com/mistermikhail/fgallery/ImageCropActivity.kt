@@ -55,7 +55,16 @@ class ImageCropActivity : ComponentActivity() {
                     AndroidView(
                         factory = { context ->
                             CropImageView(context).apply {
+                                id = R.id.crop_image_view
                                 guidelines = CropImageView.Guidelines.ON
+                                isAutoZoomEnabled = false
+                                setFixedAspectRatio(false)
+                                setMultiTouchEnabled(true)
+                                setMinCropResultSize(1, 1)
+                                setOnTouchListener { _, event ->
+                                    if (event.actionMasked == android.view.MotionEvent.ACTION_DOWN) parent?.requestDisallowInterceptTouchEvent(true)
+                                    false
+                                }
                                 setOnSetImageUriCompleteListener { _, _, failure ->
                                     loaded = failure == null
                                     if (failure != null) error = "Этот формат не удалось открыть для кадрирования. Оригинал сохранён."
@@ -64,7 +73,7 @@ class ImageCropActivity : ComponentActivity() {
                                     saving = false
                                     val uri = result.uriContent
                                     if (result.error == null && uri != null) {
-                                        setResult(RESULT_OK, Intent().setData(uri))
+                                        setResult(RESULT_OK, Intent().setData(uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
                                         finish()
                                     } else error = "Не удалось кадрировать изображение. Оригинал сохранён."
                                 }

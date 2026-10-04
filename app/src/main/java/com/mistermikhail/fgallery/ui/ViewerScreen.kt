@@ -53,6 +53,9 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -552,7 +555,7 @@ private fun VideoPlayer(
 }
 
 @Composable
-private fun TiledZoomableImage(
+internal fun TiledZoomableImage(
     item: MediaItem,
     onSingleTap: () -> Unit,
     cleanupMode: Boolean,
@@ -586,11 +589,6 @@ private fun TiledZoomableImage(
         }
     }
 
-    val tiledAlpha by animateFloatAsState(
-        targetValue = if (imageState.isImageDisplayed) 1f else 0f,
-        animationSpec = tween(durationMillis = 120),
-        label = "tiled-image-fade",
-    )
 
     val doubleClick = remember(item.id, cleanupMode) {
         DoubleClickToZoomListener { state, centroid ->
@@ -599,6 +597,7 @@ private fun TiledZoomableImage(
                 return@DoubleClickToZoomListener
             }
 
+            if (!state.contentTransformation.isSpecified || state.isAnimationRunning) return@DoubleClickToZoomListener
             when (doubleTapStage) {
                 0 -> {
                     state.zoomTo(
@@ -614,7 +613,7 @@ private fun TiledZoomableImage(
 
                 1 -> {
                     state.zoomTo(
-                        zoomFactor = state.zoomSpec.maximum.factor,
+                        zoomFactor = state.zoomSpec.maximum.factor * 0.9f,
                         centroid = centroid,
                         animationSpec = tween(durationMillis = 260),
                     )
@@ -635,7 +634,7 @@ private fun TiledZoomableImage(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center,
     ) {
-        if (cachedPreview != null) {
+        if (cachedPreview != null && !imageState.isImageDisplayed) {
             AsyncImage(
                 model = cachedPreview,
                 contentDescription = item.name,
@@ -655,8 +654,10 @@ private fun TiledZoomableImage(
             contentScale = ContentScale.Fit,
             onClick = { onSingleTap() },
             onDoubleClick = doubleClick,
-            alpha = if (cachedPreview == null) 1f else tiledAlpha,
-            modifier = Modifier.fillMaxSize(),
+            alpha = 1f,
+            modifier = Modifier.fillMaxSize().semantics {
+                stateDescription = "Zoom ${(zoomableState.contentTransformation.scaleMetadata.userZoom * 100).toInt()}%"
+            }.testTag("viewer-image"),
         )
     }
 }

@@ -110,3 +110,7 @@ Priorities:
 - On first launch explain all-files access and open its Android settings page. Permit denial and Back; keep the access entry in the menu.
 - With access granted and extra move confirmation disabled (default), choosing a destination starts the move. Folder creation is available from the destination toolbar.
 - Crop photo/video, then save a copy or explicitly confirm replacing the original; RAW has copy-only output.
+
+
+### Latest viewer/edit requirements (2026-10-04)
+Double tap: fit ×1.30 → 90% of maximum → fit. Pinch retains the point between fingers. PDF pages accept ordinary vertical drags. Transparent images must not retain a static backing copy during zoom. Visible live video tiles keep their player during scrolling; keep a poster until the first video frame. Crop offers concise copy/original choices once; choosing original authorizes replacement, with backup and recovery, without another app confirmation. RAW saves only a copy.

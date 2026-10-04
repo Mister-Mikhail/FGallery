@@ -10,10 +10,11 @@ android {
 
     defaultConfig {
         applicationId = "com.mistermikhail.fgallery"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         minSdk = 29
         targetSdk = 35
-        versionCode = 2
-        versionName = "0.2.0"
+        versionCode = 3
+        versionName = "0.2.1"
     }
 
     buildFeatures { compose = true }
@@ -45,6 +46,12 @@ dependencies {
     implementation("io.coil-kt.coil3:coil-video:3.1.0")
     implementation("com.caverock:androidsvg-aar:1.4")
     testImplementation("junit:junit:4.13.2")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test:core-ktx:1.6.1")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4:1.7.6")
+    debugImplementation("androidx.compose.ui:ui-test-manifest:1.7.6")
     implementation("me.saket.telephoto:zoomable-image-coil3:0.15.1")
     implementation("com.vanniktech:android-image-cropper:4.7.0")
     implementation("androidx.exifinterface:exifinterface:1.3.7")

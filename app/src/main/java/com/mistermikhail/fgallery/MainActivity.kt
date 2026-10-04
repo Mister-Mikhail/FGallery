@@ -37,6 +37,8 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -122,7 +124,6 @@ class MainActivity : ComponentActivity() {
         var operationBusy by remember { mutableStateOf(false) }
         var operationMessage by remember { mutableStateOf("Операция с файлами") }
         var videoCropItem by remember { mutableStateOf<MediaItem?>(null) }
-        var pendingVideoReplace by remember { mutableStateOf<PendingWriteOperation.Replace?>(null) }
         val uiScope = rememberCoroutineScope()
         val extraFolders by produceState<List<String>>(emptyList(), pendingMoveItems.isNotEmpty(), folderRevision) {
             if (pendingMoveItems.isNotEmpty()) value = withContext(Dispatchers.IO) { StorageFolders.primaryFolders() }
@@ -818,7 +819,7 @@ class MainActivity : ComponentActivity() {
                         items = state.visibleItems,
                         initialItem = animatedItem,
                         onBack = { selectedItem = null },
-                        active = videoCropItem == null && !operationBusy && pendingVideoReplace == null,
+                        active = videoCropItem == null && !operationBusy,
                         onTrash = { requestTrash(listOf(it), keepViewerOpen = true) },
                         quickExifEnabled = state.quickExifEnabled,
                         cleanupMode = cleanupMode,
@@ -892,7 +893,6 @@ class MainActivity : ComponentActivity() {
             AlertDialog(
                 onDismissRequest = { pendingCropSave = null },
                 title = { Text("Сохранить кадрирование") },
-                text = { Text("Сохранить копию рядом с ${source.name}?" + if (source.kind == MediaKind.RAW) " RAW останется без изменений; результат — JPEG." else " Замена оригинала требует отдельного подтверждения.") },
                 confirmButton = {
                     TextButton(onClick = {
                         pendingCropSave = null
@@ -909,29 +909,17 @@ class MainActivity : ComponentActivity() {
                     androidx.compose.foundation.layout.Row {
                         if (canReplace) TextButton(onClick = {
                             pendingCropSave = null
-                            pendingVideoReplace = PendingWriteOperation.Replace(source, croppedUri, mime, extension)
-                        }) { Text("Заменить оригинал…") }
+                            requestWrite(PendingWriteOperation.Replace(source, croppedUri, mime, extension), skipConfirmation = true)
+                        }) { Text("Заменить оригинал") }
                         TextButton(onClick = { pendingCropSave = null }) { Text("Отмена") }
                     }
                 },
             )
         }
-        pendingVideoReplace?.let { operation ->
-            AlertDialog(
-                onDismissRequest = { pendingVideoReplace = null },
-                title = { Text("Заменить оригинал?") },
-                text = { Text("Файл ${operation.item.name} будет заменён готовым кадрированным результатом. Во время записи сохраняется резервная копия для восстановления при ошибке.") },
-                confirmButton = { TextButton(onClick = {
-                    pendingVideoReplace = null
-                    requestWrite(operation, skipConfirmation = true)
-                }) { Text("Заменить") } },
-                dismissButton = { TextButton(onClick = { pendingVideoReplace = null }) { Text("Отмена") } },
-            )
-        }
         videoCropItem?.let { item ->
             VideoCropDialog(item = item, onDismiss = { videoCropItem = null }, onExported = { uri, replace ->
                 videoCropItem = null
-                if (replace) pendingVideoReplace = PendingWriteOperation.Replace(item, uri, "video/mp4", "mp4")
+                if (replace) requestWrite(PendingWriteOperation.Replace(item, uri, "video/mp4", "mp4"), skipConfirmation = true)
                 else {
                     operationBusy = true
                     operationMessage = "Сохранение видео"
@@ -945,12 +933,9 @@ class MainActivity : ComponentActivity() {
         }
         if (operationBusy) {
             BackHandler { }
-            AlertDialog(
-                onDismissRequest = {},
-                title = { Text(operationMessage) },
-                text = { androidx.compose.material3.LinearProgressIndicator() },
-                confirmButton = {},
-            )
+            Box(Modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.Alignment.BottomCenter) {
+                androidx.compose.material3.LinearProgressIndicator(Modifier.fillMaxWidth().navigationBarsPadding())
+            }
         }
 
     }

@@ -11,6 +11,7 @@ class EditedMediaStore(private val context: Context) {
     private val resolver = context.contentResolver
 
     fun saveCopy(source: MediaItem, edited: Uri, mime: String, extension: String): Uri {
+        if (StorageFolders.hasFileAccess()) return saveCopyFile(source, edited, extension)
         val collection = if (mime.startsWith("video/")) MediaStore.Video.Media.EXTERNAL_CONTENT_URI else MediaStore.Images.Media.EXTERNAL_CONTENT_URI
         val values = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, "${source.name.substringBeforeLast('.')}_crop_${System.currentTimeMillis()}.$extension")
@@ -64,7 +65,9 @@ class EditedMediaStore(private val context: Context) {
         }
         val original = File(path ?: error("Не найден оригинал")).canonicalFile
         val parent = original.parentFile ?: error("Не найдена папка оригинала")
-        val destination = File(parent, "${original.nameWithoutExtension}.$extension")
+        val originalExtension = original.extension.lowercase()
+        val sameFormat = originalExtension == extension || (extension == "jpg" && originalExtension == "jpeg")
+        val destination = if (sameFormat) original else File(parent, "${original.nameWithoutExtension}.$extension")
         check(destination == original || !destination.exists()) { "Файл с таким именем уже существует" }
         val staged = File.createTempFile(".fgallery_edit_", ".$extension", parent)
         val backup = File.createTempFile(".fgallery_original_", ".backup", parent).also { check(it.delete()) }
@@ -90,19 +93,57 @@ class EditedMediaStore(private val context: Context) {
         }
     }
 
+    private fun saveCopyFile(source: MediaItem, edited: Uri, extension: String): Uri {
+        val path = if (source.uri.scheme == "file") source.uri.path else resolver.query(source.uri, arrayOf(MediaStore.MediaColumns.DATA), null, null, null)?.use {
+            if (it.moveToFirst()) it.getString(0) else null
+        }
+        val original = File(path ?: error("Не найден исходный файл")).canonicalFile
+        val parent = original.parentFile ?: error("Не найдена папка")
+        val destination = File(parent, "${original.nameWithoutExtension}_crop_${java.util.UUID.randomUUID().toString().take(8)}.$extension")
+        val staged = File.createTempFile(".fgallery_copy_", ".$extension", parent)
+        try {
+            copy(edited, Uri.fromFile(staged))
+            check(!destination.exists() && staged.renameTo(destination)) { "Не удалось сохранить копию" }
+            val scanned = java.util.concurrent.CountDownLatch(1)
+            var mediaUri: Uri? = null
+            android.media.MediaScannerConnection.scanFile(context, arrayOf(destination.path), null) { _, uri -> mediaUri = uri; scanned.countDown() }
+            scanned.await(20, java.util.concurrent.TimeUnit.SECONDS)
+            return mediaUri ?: Uri.fromFile(destination)
+        } finally { staged.delete() }
+    }
+
     private fun copy(from: Uri, to: Uri) {
-        val expected = resolver.openAssetFileDescriptor(from, "r")?.use { it.length } ?: -1L
+        // Some content providers report an inaccurate descriptor length. Verify actual bytes instead.
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
         val written = resolver.openInputStream(from)?.use { input ->
-            resolver.openOutputStream(to, "wt")?.use { output -> input.copyTo(output) }
-                ?: error("Нет доступа к записи")
+            resolver.openOutputStream(to, "w")?.use { output ->
+                val buffer = ByteArray(64 * 1024)
+                var count = 0L
+                while (true) {
+                    val n = input.read(buffer)
+                    if (n < 0) break
+                    output.write(buffer, 0, n)
+                    digest.update(buffer, 0, n)
+                    count += n
+                }
+                output.flush()
+                if (output is FileOutputStream) output.fd.sync()
+                count
+            } ?: error("Нет доступа к записи")
         } ?: error("Нет доступа к источнику")
-        check(written > 0 && (expected < 0 || written == expected)) { "Неполная запись файла" }
+        check(written > 0) { "Пустой результат кадрирования" }
+        val verification = java.security.MessageDigest.getInstance("SHA-256")
         val verified = resolver.openInputStream(to)?.use { input ->
             val buffer = ByteArray(64 * 1024)
             var count = 0L
-            while (true) { val n = input.read(buffer); if (n < 0) break; count += n }
+            while (true) {
+                val n = input.read(buffer)
+                if (n < 0) break
+                verification.update(buffer, 0, n)
+                count += n
+            }
             count
         } ?: error("Не удалось проверить сохранённый файл")
-        check(verified == written) { "Размер сохранённого файла не совпадает" }
+        check(verified == written && verification.digest().contentEquals(digest.digest())) { "Сохранённый файл не совпадает с результатом кадрирования" }
     }
 }

@@ -55,6 +55,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -174,22 +175,14 @@ fun GalleryScreen(
 
     val effectiveLiveVideoId = if (livePreviewEnabled) activeLiveVideoId else null
 
-    LaunchedEffect(visibleVideoIds, mediaGridScrolling, livePreviewEnabled) {
-        activeLiveVideoId = null
-
-        if (!livePreviewEnabled || mediaGridScrolling || visibleVideoIds.isEmpty()) {
-            return@LaunchedEffect
-        }
-
-        // Never spin up an ExoPlayer during a fling. Wait until the grid is stable,
-        // then rotate one muted live preview at a time.
-        delay(700L)
-
-        var index = 0
+    val latestVisibleVideoIds by rememberUpdatedState(visibleVideoIds)
+    val latestScrolling by rememberUpdatedState(mediaGridScrolling)
+    LaunchedEffect(inAlbum, livePreviewEnabled) {
+        if (!inAlbum || !livePreviewEnabled) { activeLiveVideoId = null; return@LaunchedEffect }
+        val rotation = LivePreviewRotation()
         while (true) {
-            activeLiveVideoId = visibleVideoIds[index]
-            delay(5_000L)
-            index = (index + 1) % visibleVideoIds.size
+            activeLiveVideoId = rotation.update(latestVisibleVideoIds, latestScrolling, android.os.SystemClock.elapsedRealtime())
+            delay(100L)
         }
     }
     val selectedItems = visibleItems.filter { it.id in selectedIds }
@@ -943,16 +936,19 @@ private fun InlineVideoPreview(
     onError: () -> Unit,
 ) {
     val context = LocalContext.current
+    var firstFrameReady by remember(item.uri) { mutableStateOf(false) }
+    val latestError by rememberUpdatedState(onError)
     val player = remember(item.uri) {
         ExoPlayer.Builder(context).build().apply {
             setMediaItem(PlayerMediaItem.fromUri(item.uri))
             volume = 0f
             repeatMode = Player.REPEAT_MODE_ONE
             addListener(object : Player.Listener {
-                override fun onPlayerError(error: androidx.media3.common.PlaybackException) { onError() }
+                override fun onPlayerError(error: androidx.media3.common.PlaybackException) { latestError() }
+                override fun onRenderedFirstFrame() { firstFrameReady = true }
             })
             prepare()
-            seekTo(750L.coerceAtMost((item.durationMillis - 1L).coerceAtLeast(0L)))
+            seekTo(0L)
             playWhenReady = true
         }
     }
@@ -971,8 +967,12 @@ private fun InlineVideoPreview(
                 resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                 isClickable = false
                 isFocusable = false
+                setShutterBackgroundColor(android.graphics.Color.TRANSPARENT)
+                setKeepContentOnPlayerReset(true)
+                alpha = 0f
             }
         },
+        update = { view -> view.alpha = if (firstFrameReady) 1f else 0f },
         modifier = modifier,
     )
 }

@@ -126,7 +126,7 @@ internal fun VideoCropDialog(item: MediaItem, onDismiss: () -> Unit, onExported:
                     Text("Идёт экспорт. Оригинал остаётся без изменений до успешного завершения.")
                 }
                 Button(onClick = { export(false) }, enabled = !exporting, modifier = Modifier.fillMaxWidth()) { Text("Сохранить копию") }
-                OutlinedButton(onClick = { export(true) }, enabled = !exporting, modifier = Modifier.fillMaxWidth()) { Text("Заменить оригинал…") }
+                OutlinedButton(onClick = { export(true) }, enabled = !exporting, modifier = Modifier.fillMaxWidth()) { Text("Заменить оригинал") }
                 TextButton(onClick = ::cancel, modifier = Modifier.fillMaxWidth()) { Text(if (exporting) "Отменить экспорт" else "Отмена") }
             }
         }
