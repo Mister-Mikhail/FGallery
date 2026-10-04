@@ -1,7 +1,0 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <application>
-        <provider android:name="com.mistermikhail.fgallery.TestDriveProvider" android:authorities="com.mistermikhail.fgallery.test.drives" android:exported="true" android:grantUriPermissions="true">
-            <intent-filter><action android:name="android.content.action.DOCUMENTS_PROVIDER" /></intent-filter>
-        </provider>
-    </application>
-</manifest>

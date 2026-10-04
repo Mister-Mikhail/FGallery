@@ -64,6 +64,9 @@ class DriveStorageTest {
         } finally { base.deleteRecursively() }
     }
     @Test fun documentOnlyDriveSupportsMoveBinAndRestore() = runBlocking {
+        val component = android.content.ComponentName(context, TestDriveProvider::class.java)
+        context.packageManager.setComponentEnabledSetting(component, android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED, android.content.pm.PackageManager.DONT_KILL_APP)
+        try {
         val authority = "com.mistermikhail.fgallery.test.drives"
         val tree = android.provider.DocumentsContract.buildTreeDocumentUri(authority, "root")
         val rootUri = android.provider.DocumentsContract.buildDocumentUriUsingTree(tree, "root")
@@ -84,6 +87,9 @@ class DriveStorageTest {
         StorageAccess.delete(context, restored)
         StorageAccess.delete(context, Uri.parse(folder))
         Unit
+        } finally {
+            context.packageManager.setComponentEnabledSetting(component, android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED, android.content.pm.PackageManager.DONT_KILL_APP)
+        }
     }
 
 }
