@@ -15,8 +15,12 @@ android {
         targetSdk = 35
         versionCode = 5
         versionName = "0.2.3"
+        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64") }
     }
 
+    externalNativeBuild {
+        cmake { path = file("src/main/cpp/CMakeLists.txt"); version = "3.22.1" }
+    }
     buildFeatures { compose = true }
 
     compileOptions {

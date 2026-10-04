@@ -11,7 +11,7 @@ import coil3.fetch.SourceFetchResult
 import coil3.request.Options
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import org.beyka.tiffbitmapfactory.TiffBitmapFactory
+import android.graphics.Matrix
 import java.io.File
 
 object TiffImages {
@@ -20,28 +20,22 @@ object TiffImages {
 
     /** Libtiff supports strips/tiles, LZW, Deflate, JPEG and 8/16-bit source samples. */
     @Synchronized fun decode(file: File, edge: Int = 4096): Bitmap {
-        val bounds = TiffBitmapFactory.Options().apply {
-            inJustDecodeBounds = true
-            inThrowException = true
-            inUseOrientationTag = true
-        }
-        TiffBitmapFactory.decodeFile(file, bounds)
-        check(bounds.outWidth > 0 && bounds.outHeight > 0) { "Некорректный TIFF" }
-        var sample = 1
-        while (maxOf(bounds.outWidth, bounds.outHeight) / sample > edge ||
-            bounds.outWidth.toLong() * bounds.outHeight / sample / sample > 12_000_000L) sample *= 2
-        while (sample <= 256) {
-            val options = TiffBitmapFactory.Options().apply {
-                inSampleSize = sample
-                inAvailableMemory = 128L * 1024 * 1024
-                inThrowException = false
-                inUseOrientationTag = true
+        val decoded = TiffNative.decode(file.absolutePath, edge) ?: error("Не удалось декодировать TIFF")
+        val width = decoded[0]; val height = decoded[1]; val orientation = decoded[2]
+        val bitmap = Bitmap.createBitmap(decoded, 3, width, width, height, Bitmap.Config.ARGB_8888)
+        if (orientation !in 2..8) return bitmap
+        val matrix = Matrix().apply {
+            when (orientation) {
+                2 -> setScale(-1f, 1f)
+                3 -> setRotate(180f)
+                4 -> { setRotate(180f); postScale(-1f, 1f) }
+                5 -> { setRotate(90f); postScale(-1f, 1f) }
+                6 -> setRotate(90f)
+                7 -> { setRotate(-90f); postScale(-1f, 1f) }
+                8 -> setRotate(-90f)
             }
-            val bitmap = TiffBitmapFactory.decodeFile(file, options)
-            if (bitmap != null) return bitmap
-            sample *= 2
         }
-        error("Не удалось декодировать TIFF")
+        return Bitmap.createBitmap(bitmap, 0, 0, width, height, matrix, true).also { if (it !== bitmap) bitmap.recycle() }
     }
 
     fun decode(context: Context, uri: Uri, edge: Int): Bitmap {
@@ -79,4 +73,12 @@ class TiffDecoder(private val result: SourceFetchResult) : Decoder {
             return if (tiff) TiffDecoder(result) else null
         }
     }
+}
+
+internal object TiffNative {
+    init {
+        System.loadLibrary("tiff")
+        System.loadLibrary("fgallery_tiff")
+    }
+    external fun decode(path: String, edge: Int): IntArray?
 }

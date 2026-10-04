@@ -41,14 +41,15 @@ class RealDocumentZoomTest {
 
     @Test fun realPdfPinchReleaseAndScroll() {
         val file = File(context.cacheDir, "gesture.pdf")
-        PdfDocument().use { pdf ->
+        val pdf = PdfDocument()
+        try {
             repeat(3) { index ->
                 val page = pdf.startPage(PdfDocument.PageInfo.Builder(320, 240, index + 1).create())
                 page.canvas.drawColor(android.graphics.Color.WHITE)
                 pdf.finishPage(page)
             }
             file.outputStream().use { pdf.writeTo(it) }
-        }
+        } finally { pdf.close() }
         rule.setContent { PdfViewer(item(file, MediaKind.PDF), {}) }
         rule.waitUntil(15000) { rule.onAllNodesWithTag("pdf-page-0").fetchSemanticsNodes().isNotEmpty() }
         exercise(rule.onNodeWithTag("pdf-page-0"))

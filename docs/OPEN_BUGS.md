@@ -152,3 +152,6 @@ This supersedes prior emulator success for the real device. JPEG comes from Sams
 - TIFF files do not display: implement discovery, thumbnail and full viewer decoding.
 - Screenshot 1000267925.jpg shows an undersized icon with a second dark inner plate. Enlarge the artwork and use the source image as the whole icon background, preserving outer corner brackets.
 All items remain open until repeatable acceptance checks pass.
+
+
+0.2.3 first verification: commit 4fd861d built successfully with unit checks, but Android TIFF decoding crashed the process (5 earlier emulator checks passed). Do not treat that artifact as verified. The third-party JNI wrapper installs process-wide SIGSEGV handlers incompatible with ART. Replacement under verification uses libtiff directly through a small JNI bridge, bounded strip/tile decoding and orientation handling, without that wrapper or signal handlers. Added real PDF/SVG gestures, EXIF JPEG pixel-scale and video crop/trim/export checks.
