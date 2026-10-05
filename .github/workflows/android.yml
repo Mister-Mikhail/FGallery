@@ -43,7 +43,7 @@ jobs:
           for abi in arm64-v8a universal; do
             fgallery_report=$("$fgallery_apksigner" verify --print-certs "app/build/outputs/apk/debug/app-$abi-debug.apk")
             printf '%s\n' "$fgallery_report"
-            fgallery_certificate=$(printf '%s\n' "$fgallery_report" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
+            fgallery_certificate=$(printf '%s\n' "$fgallery_report" | sed -nE 's/^.*certificate SHA-256 digest: ([0-9a-f]{64})$/\1/p')
             test "$fgallery_certificate" = "ce2293752c0a4a8c844caff57fa3bc28ee9206e927ad311dbcf3a5e71c803eb2"
           done
       - uses: actions/upload-artifact@v4
