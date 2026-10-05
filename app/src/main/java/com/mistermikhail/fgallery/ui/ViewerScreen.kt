@@ -99,6 +99,7 @@ fun ViewerScreen(
     onRename: (MediaItem, String) -> Unit,
     onMove: (MediaItem) -> Unit,
     deletingItemUri: String? = null,
+    recycleBinMode: Boolean = false,
 ) {
     val initialPage = items.indexOfFirst { it.uriKey == initialItem.uriKey }.coerceAtLeast(0)
     val pagerState = rememberPagerState(
@@ -162,7 +163,7 @@ fun ViewerScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(if (cleanupMode) Color(0xFF38100A) else Color.Black)
+            .background(if (cleanupMode && !recycleBinMode) Color(0xFF38100A) else Color.Black)
             .semantics { this[ViewerCurrentUri] = currentItem?.uriKey.orEmpty() }
             .testTag("viewer-root"),
     ) {
@@ -181,7 +182,7 @@ fun ViewerScreen(
                     controlsVisible = activePage && chromeVisible,
                     onSingleTap = ::toggleChrome,
                     onDoubleTap = {
-                        if (cleanupMode) onTrash(item)
+                        if (cleanupMode && !recycleBinMode) onTrash(item)
                     },
                 )
             } else if (item.kind == MediaKind.PDF) {
@@ -192,7 +193,7 @@ fun ViewerScreen(
                 TiledZoomableImage(
                     item = item,
                     onSingleTap = ::toggleChrome,
-                    cleanupMode = cleanupMode,
+                    cleanupMode = cleanupMode && !recycleBinMode,
                     onTrash = { onTrash(item) },
                     active = activePage,
                 )
@@ -247,11 +248,11 @@ fun ViewerScreen(
                                         onShare(currentItem)
                                     },
                                 )
-                                DropdownMenuItem(
+                                if (!recycleBinMode) DropdownMenuItem(
                                     text = { Text("Кадрировать видео") },
                                     onClick = { videoMenuExpanded = false; onCrop(currentItem) },
                                 )
-                                DropdownMenuItem(
+                                if (!recycleBinMode) DropdownMenuItem(
                                     text = { Text("Переименовать") },
                                     onClick = {
                                         videoMenuExpanded = false
@@ -259,7 +260,7 @@ fun ViewerScreen(
                                         renameText = currentItem.name
                                     },
                                 )
-                                DropdownMenuItem(
+                                if (!recycleBinMode) DropdownMenuItem(
                                     text = { Text("Переместить") },
                                     onClick = {
                                         videoMenuExpanded = false
@@ -273,7 +274,7 @@ fun ViewerScreen(
                                         showDetails = true
                                     },
                                 )
-                                DropdownMenuItem(
+                                if (!recycleBinMode) DropdownMenuItem(
                                     text = { Text("В корзину") },
                                     onClick = {
                                         videoMenuExpanded = false
@@ -317,14 +318,14 @@ fun ViewerScreen(
                                     tint = Color.White,
                                 )
                             }
-                            if (currentItem.kind != MediaKind.PDF && currentItem.kind != MediaKind.SVG) IconButton(onClick = { onCrop(currentItem) }) {
+                            if (!recycleBinMode && currentItem.kind != MediaKind.PDF && currentItem.kind != MediaKind.SVG) IconButton(onClick = { onCrop(currentItem) }) {
                                 Icon(
                                     Icons.Outlined.Crop,
                                     contentDescription = "Кадрировать",
                                     tint = Color.White,
                                 )
                             }
-                            IconButton(
+                            if (!recycleBinMode) IconButton(
                                 onClick = {
                                     renameTarget = currentItem
                                     renameText = currentItem.name
@@ -336,7 +337,7 @@ fun ViewerScreen(
                                     tint = Color.White,
                                 )
                             }
-                            IconButton(
+                            if (!recycleBinMode) IconButton(
                                 onClick = { onMove(currentItem) },
                             ) {
                                 Icon(
@@ -352,7 +353,7 @@ fun ViewerScreen(
                                     tint = Color.White,
                                 )
                             }
-                            IconButton(onClick = { onTrash(currentItem) }) {
+                            if (!recycleBinMode) IconButton(onClick = { onTrash(currentItem) }) {
                                 Icon(
                                     Icons.Outlined.DeleteOutline,
                                     contentDescription = "В корзину",

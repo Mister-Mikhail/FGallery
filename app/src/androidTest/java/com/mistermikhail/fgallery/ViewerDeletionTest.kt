@@ -61,14 +61,22 @@ class ViewerDeletionTest {
                     } && rule.onNodeWithTag("viewer-root").fetchSemanticsNode().config[ViewerCurrentUri] == item.uriKey
                 }
             }
+            fun trashThroughMenu() {
+                if (rule.onAllNodesWithContentDescription("Действия с файлом").fetchSemanticsNodes().isEmpty()) {
+                    rule.onNodeWithTag("viewer-root").performTouchInput { click(androidx.compose.ui.geometry.Offset(width * .15f, height * .35f)) }
+                    rule.mainClock.advanceTimeBy(400)
+                }
+                rule.onNodeWithContentDescription("Действия с файлом").performClick()
+                rule.onNodeWithText("В корзину").performClick()
+            }
             awaitVideo(items[1])
-            rule.onNodeWithTag("viewer-root").performTouchInput { doubleClick(center) }
+            trashThroughMenu()
             awaitVideo(items[2])
             assertFalse(File(items[1].sourcePath).exists())
-            rule.onNodeWithTag("viewer-root").performTouchInput { doubleClick(center) }
+            trashThroughMenu()
             awaitVideo(items[0])
             assertFalse(File(items[2].sourcePath).exists())
-            rule.onNodeWithTag("viewer-root").performTouchInput { doubleClick(center) }
+            trashThroughMenu()
             rule.waitUntil(15000) { current == null }
             rule.onNodeWithText("Папка пуста").assertExists()
             assertFalse(File(items[0].sourcePath).exists())

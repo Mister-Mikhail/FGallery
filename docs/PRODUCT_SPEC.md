@@ -292,3 +292,7 @@ The user now explicitly requests implementation and a new APK build, superseding
 - Large RGB/gray 8/16-bit contiguous TIFF strips receive a scanline fallback instead of rejection at the 12MP RGBA strip-buffer guard. Keep all source pixels. Libtiff may still allocate its own compressed-strip buffers; scanline output is not a promise of constant total decoder RAM. Huge tiled/unusual formats retain their existing guards and need samples.
 
 Acceptance remains pending CI and physical-device testing. A synthetic 8984×6732 RGB16 single-strip TIFF models the roughly 350MB P65+ conversion, and streaming RAW color is compared against the previous bitmap output. Original P65+ IIQ / Canon 5DS R samples and actual phone peak memory/timings remain unavailable.
+
+
+### Additional authorized requirement — recycle-bin viewing, 2026-10-05
+The user requests opening files already moved into the recycle bin. A normal tap on a bin tile opens the existing full viewer using the bin item's actual URI, with zoom, video playback, document viewing and paging within the bin. Back returns to the bin. A long press starts selection; taps continue selection while it is active. Viewing does not restore the file or move it again; Cleanup double-tap deletion is disabled within the bin. Editing/rename/move/Trash actions are hidden there; restore and permanent deletion remain the existing bin-list actions. Include this change in the current requested build. Acceptance: actual physically moved photo/video files open, zoom/page, remain in their bin, and return to the list.

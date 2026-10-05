@@ -60,6 +60,7 @@ fun RecycleBinScreen(
     onClearSelection: () -> Unit,
     onRestore: (List<MediaItem>) -> Unit,
     onDeleteForever: (List<MediaItem>) -> Unit,
+    onOpenItem: (MediaItem) -> Unit,
 ) {
     val selectedItems = items.filter { it.id in selectedIds }
     var menuExpanded by remember { mutableStateOf(false) }
@@ -176,6 +177,7 @@ fun RecycleBinScreen(
                         item = item,
                         selected = item.id in selectedIds,
                         onToggleSelection = onToggleSelection,
+                        onClick = { if (selectedIds.isEmpty()) onOpenItem(item) else onToggleSelection(item) },
                     )
                 }
             }
@@ -189,6 +191,7 @@ private fun RecycleBinTile(
     item: MediaItem,
     selected: Boolean,
     onToggleSelection: (MediaItem) -> Unit,
+    onClick: () -> Unit,
 ) {
     val shape = RoundedCornerShape(4.dp)
     val context = LocalContext.current
@@ -213,7 +216,7 @@ private fun RecycleBinTile(
             )
             .clip(shape)
             .combinedClickable(
-                onClick = { onToggleSelection(item) },
+                onClick = onClick,
                 onLongClick = { onToggleSelection(item) },
             ),
     ) {

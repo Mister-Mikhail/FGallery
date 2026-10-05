@@ -802,6 +802,7 @@ class MainActivity : ComponentActivity() {
                     },
                     onRestore = ::restoreFromRecycleBin,
                     onDeleteForever = ::deleteForever,
+                    onOpenItem = { selectedItem = it },
                 )
             } else {
                 GalleryScreen(
@@ -873,7 +874,7 @@ class MainActivity : ComponentActivity() {
             }
 
             AnimatedContent(
-                targetState = if (state.recycleBinVisible) null else current,
+                targetState = current,
                 modifier = Modifier.fillMaxSize(),
                 transitionSpec = {
                     if (targetState != null) {
@@ -900,7 +901,7 @@ class MainActivity : ComponentActivity() {
             ) { animatedItem ->
                 if (animatedItem != null) {
                     ViewerScreen(
-                        items = state.visibleItems,
+                        items = if (state.recycleBinVisible) state.recycleBinItems else state.visibleItems,
                         initialItem = animatedItem,
                         onBack = { selectedItem = null },
                         active = videoCropItem == null && !operationBusy,
@@ -916,6 +917,7 @@ class MainActivity : ComponentActivity() {
                             beginMove(listOf(item))
                         },
                         deletingItemUri = deletingItemUri,
+                        recycleBinMode = state.recycleBinVisible,
                     )
                 }
             }
