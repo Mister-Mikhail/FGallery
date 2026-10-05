@@ -36,7 +36,8 @@ fun QuickExifOverlay(
 
     val details by produceState<MediaDetails?>(
         initialValue = null,
-        key1 = item.id,
+        key1 = item.uriKey,
+        key2 = item.dateModifiedMillis,
     ) {
         value = repository.load(item)
     }
@@ -63,8 +64,6 @@ fun QuickExifOverlay(
         values["ISO"]?.let { add("ISO $it") }
     }
 
-    if (primary.isEmpty() && exposure.isEmpty()) return
-
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -81,6 +80,12 @@ fun QuickExifOverlay(
             color = Color.White,
             style = MaterialTheme.typography.bodySmall,
             fontWeight = FontWeight.SemiBold,
+        )
+        Text(
+            text = values["Путь"] ?: item.uriKey,
+            color = Color.White.copy(alpha = .85f),
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(top = 3.dp),
         )
 
         if (primary.isNotEmpty()) {

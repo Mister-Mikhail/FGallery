@@ -1,7 +1,6 @@
 package com.mistermikhail.fgallery.data
 
 import android.content.Context
-import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.exifinterface.media.ExifInterface
 import com.homesoft.photo.libraw.LibRaw
@@ -57,10 +56,16 @@ object FullResolutionFiles {
                                 val result = raw.dcrawProcess()
                                 currentCoroutineContext().ensureActive()
                                 check(result == 0) { "RAW не удалось декодировать" }
-                                val bitmap = raw.getMutableBitmap(Bitmap.Config.ARGB_8888)
-                                    ?: error("RAW не удалось преобразовать")
-                                try { check(TiffNative.writeBitmapPng(bitmap, output.absolutePath, 0)) { "Не удалось сохранить полный размер RAW" } }
-                                finally { bitmap.recycle() }
+                                val resultSize = TiffNative.writeRawPng(raw, output.absolutePath)
+                                    ?: error("Не удалось сохранить полный размер RAW")
+                                val orientation = intArrayOf(1, 2, 4, 3, 5, 8, 6, 7).getOrElse(resultSize[2]) { 1 }
+                                if (orientation != 1) ExifInterface(output).apply {
+                                    setAttribute(ExifInterface.TAG_ORIENTATION, orientation.toString()); saveAttributes()
+                                }
+                                val size = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                                BitmapFactory.decodeFile(output.path, size)
+                                check(size.outWidth == resultSize[0] && size.outHeight == resultSize[1]) { "RAW декодирован не полностью" }
+                                android.util.Log.i("FGallerySource", "RAW full=${size.outWidth}x${size.outHeight}; nativeBytes=${android.os.Debug.getNativeHeapAllocatedSize()}; heapLimit=${Runtime.getRuntime().maxMemory()}")
                             } finally { withContext(NonCancellable) { cancelDecode.cancelAndJoin() } }
                         }
                     }
@@ -74,6 +79,7 @@ object FullResolutionFiles {
                     val dimensions = BitmapFactory.Options().apply { inJustDecodeBounds = true }
                     BitmapFactory.decodeFile(output.absolutePath, dimensions)
                     check(dimensions.outWidth == metadata[0] && dimensions.outHeight == metadata[1]) { "TIFF декодирован не полностью" }
+                    android.util.Log.i("FGallerySource", "TIFF full=${dimensions.outWidth}x${dimensions.outHeight}; nativeBytes=${android.os.Debug.getNativeHeapAllocatedSize()}")
                 }
                 currentCoroutineContext().ensureActive()
                 check(output.length() > 0 && output.renameTo(target)) { "Не удалось подготовить полный размер" }

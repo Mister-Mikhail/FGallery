@@ -128,6 +128,9 @@ class MainActivity : ComponentActivity() {
         var directDeleteItems by remember { mutableStateOf<List<MediaItem>>(emptyList()) }
         var operationBusy by remember { mutableStateOf(false) }
         var operationMessage by remember { mutableStateOf("Операция с файлами") }
+        var pendingTrash by remember { mutableStateOf<Pair<List<MediaItem>, Boolean>?>(null) }
+        var deletingItemUri by remember { mutableStateOf<String?>(null) }
+        var updateChecks by remember { mutableStateOf(0) }
         var videoCropItem by remember { mutableStateOf<MediaItem?>(null) }
         val uiScope = rememberCoroutineScope()
         val extraFolders by produceState<List<StorageFolder>>(emptyList(), pendingMoveItems.isNotEmpty(), folderRevision) {
@@ -554,7 +557,7 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        fun requestTrash(
+        fun performTrash(
             items: List<MediaItem>,
             keepViewerOpen: Boolean = false,
         ) {
@@ -565,7 +568,7 @@ class MainActivity : ComponentActivity() {
                 items.size == 1
             ) {
                 val currentItems = state.visibleItems
-                val currentIndex = currentItems.indexOfFirst { it.id == items.first().id }
+                val currentIndex = currentItems.indexOfFirst { it.uriKey == items.first().uriKey }
 
                 when {
                     currentIndex < 0 -> null
@@ -578,16 +581,24 @@ class MainActivity : ComponentActivity() {
             }
 
             if (operationBusy) return
+            operationBusy = true
+            deletingItemUri = items.singleOrNull()?.uriKey
+            operationMessage = "Перемещение в корзину"
             uiScope.launch {
-                operationBusy = true
-                operationMessage = "Перемещение в корзину"
                 try {
                     viewModel.moveToRecycleBin(items)
                     selectedItem = if (keepViewerOpen) nextViewerItem else null
                     selectedIds = emptySet()
+                    if (!cleanupMode) notify("Перемещено в корзину")
                 } catch (e: Exception) { notify("Не удалось переместить в корзину: ${e.localizedMessage}") }
-                finally { operationBusy = false }
+                finally { deletingItemUri = null; operationBusy = false }
             }
+        }
+
+        fun requestTrash(items: List<MediaItem>, keepViewerOpen: Boolean = false) {
+            if (items.isEmpty() || operationBusy) return
+            if (cleanupMode) performTrash(items, keepViewerOpen)
+            else pendingTrash = items to keepViewerOpen
         }
 
         fun restoreFromRecycleBin(items: List<MediaItem>) {
@@ -828,6 +839,7 @@ class MainActivity : ComponentActivity() {
                     onShowSettings = viewModel::showSettings,
                     onHideSettings = viewModel::hideSettings,
                     onQuickExifChanged = viewModel::setQuickExifEnabled,
+                    onCheckForUpdates = { updateChecks++ },
                     onConfirmMoveChanged = viewModel::setConfirmMove,
                     onConfirmRenameChanged = viewModel::setConfirmRename,
                     livePreviewEnabled = current == null && pendingMoveItems.isEmpty(),
@@ -903,6 +915,7 @@ class MainActivity : ComponentActivity() {
                         onMove = { item ->
                             beginMove(listOf(item))
                         },
+                        deletingItemUri = deletingItemUri,
                     )
                 }
             }
@@ -1007,6 +1020,14 @@ class MainActivity : ComponentActivity() {
                 }
             })
         }
+        com.mistermikhail.fgallery.ui.AppUpdateHost(updateChecks)
+        pendingTrash?.let { (items, keepViewerOpen) ->
+            com.mistermikhail.fgallery.ui.TrashConfirmationDialog(
+                names = items.map { it.name },
+                onDismiss = { pendingTrash = null },
+                onConfirm = { pendingTrash = null; performTrash(items, keepViewerOpen) },
+            )
+        }
         if (operationBusy) {
             BackHandler { }
             Box(Modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.Alignment.BottomCenter) {
@@ -1034,4 +1055,3 @@ class MainActivity : ComponentActivity() {
             ) == PackageManager.PERMISSION_GRANTED
         }
 }
-

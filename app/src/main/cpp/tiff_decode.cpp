@@ -7,6 +7,9 @@
 #include <memory>
 #include <cstdio>
 #include <setjmp.h>
+#include <functional>
+#include <cstring>
+#include "libraw/libraw.h"
 
 struct PngApi {
     void* library = dlopen("libtiffconverter.so", RTLD_NOW | RTLD_LOCAL);
@@ -37,9 +40,47 @@ struct TiffApi {
     int (*tiled)(void*) = symbol<decltype(tiled)>("TIFFIsTiled");
     int (*strip)(void*, uint32_t, uint32_t*) = symbol<decltype(strip)>("TIFFReadRGBAStrip");
     int (*tile)(void*, uint32_t, uint32_t, uint32_t*) = symbol<decltype(tile)>("TIFFReadRGBATile");
+    intptr_t (*scanlineSize)(void*) = symbol<decltype(scanlineSize)>("TIFFScanlineSize");
+    int (*scanline)(void*, void*, uint32_t, uint16_t) = symbol<decltype(scanline)>("TIFFReadScanline");
     template<class T> T symbol(const char* name) { return library ? reinterpret_cast<T>(dlsym(library, name)) : nullptr; }
     bool valid() const { return open && close && get && set && tiled && strip && tile; }
 };
+
+// Large RGB/grayscale strips can be read row-by-row without a full RGBA strip buffer.
+static bool scanRgbaRows(TiffApi& tiff, void* image, uint32_t width, uint32_t height,
+                        const std::function<void(uint32_t, const unsigned char*)>& consume) {
+    if (!tiff.scanline || !tiff.scanlineSize) return false;
+    uint16_t bits = 8, samples = 1, planar = 1, photometric = 1, sampleFormat = 1;
+    tiff.get(image, 258, &bits); tiff.get(image, 277, &samples); tiff.get(image, 284, &planar);
+    tiff.get(image, 262, &photometric); tiff.get(image, 339, &sampleFormat);
+    if ((bits != 8 && bits != 16) || planar != 1 || sampleFormat != 1 ||
+        !((photometric == 2 && (samples == 3 || samples == 4)) || (photometric <= 1 && samples == 1))) return false;
+    const auto rowSize = tiff.scanlineSize(image);
+    if (rowSize <= 0 || rowSize > 4 * 1024 * 1024 ||
+        uint64_t(rowSize) < uint64_t(width) * samples * (bits / 8)) return false;
+    uint16_t extras = 0, *extraTypes = nullptr;
+    tiff.get(image, 338, &extras, &extraTypes);
+    const bool alpha = samples == 4 && extras && extraTypes && (extraTypes[0] == 1 || extraTypes[0] == 2);
+    const bool associated = alpha && extraTypes[0] == 1;
+    std::vector<unsigned char> input(size_t(rowSize), 0), output(size_t(width) * 4);
+    for (uint32_t y = 0; y < height; ++y) {
+        if (tiff.scanline(image, input.data(), y, 0) < 0) return false;
+        auto value = [&](size_t index) -> unsigned char {
+            if (bits == 8) return input[index];
+            uint16_t sample; std::memcpy(&sample, input.data() + index * 2, 2); return sample >> 8;
+        };
+        for (uint32_t x = 0; x < width; ++x) {
+            auto* pixel = output.data() + size_t(x) * 4;
+            if (photometric == 2) for (int c = 0; c < 3; ++c) pixel[c] = value(size_t(x) * samples + c);
+            else { unsigned char gray = value(x); if (photometric == 0) gray = 255 - gray; pixel[0] = pixel[1] = pixel[2] = gray; }
+            pixel[3] = alpha ? value(size_t(x) * samples + 3) : 255;
+            if (associated && pixel[3] && pixel[3] < 255) for (int c = 0; c < 3; ++c)
+                pixel[c] = std::min(255u, unsigned(pixel[c]) * 255 / pixel[3]);
+        }
+        consume(y, output.data());
+    }
+    return true;
+}
 
 extern "C" JNIEXPORT jintArray JNICALL
 Java_com_mistermikhail_fgallery_data_TiffNative_decode(JNIEnv* env, jobject, jstring path, jint edge) {
@@ -85,7 +126,18 @@ Java_com_mistermikhail_fgallery_data_TiffNative_decode(JNIEnv* env, jobject, jst
             uint32_t rows = height;
             api.get(image, 278, &rows);
             rows = std::min(rows, height);
-            if (!rows || uint64_t(width) * rows > 12000000) return nullptr;
+            if (!rows) return nullptr;
+            if (uint64_t(width) * rows > 12000000) {
+                if (!scanRgbaRows(api, image, width, height, [&](uint32_t y, const unsigned char* row) {
+                    if (y % sample) return;
+                    for (uint32_t x = 0; x < width; x += sample) {
+                        uint32_t rgba; std::memcpy(&rgba, row + size_t(x) * 4, 4); copyPixel(x, y, rgba);
+                    }
+                })) return nullptr;
+                auto output = env->NewIntArray(static_cast<jsize>(pixels.size()));
+                if (output) env->SetIntArrayRegion(output, 0, static_cast<jsize>(pixels.size()), pixels.data());
+                return output;
+            }
             std::vector<uint32_t> raster(size_t(width) * rows);
             for (uint32_t y = 0; y < height; y += rows) {
                 if (!api.strip(image, y, raster.data())) return nullptr;
@@ -181,12 +233,59 @@ Java_com_mistermikhail_fgallery_data_TiffNative_writePng(JNIEnv* env, jobject, j
                     for (uint32_t row = 0; row < actual; ++row)
                         png.row(writer, reinterpret_cast<unsigned char*>(block.data() + size_t(actual - 1 - row) * width));
                 }
+            } else if (rows) {
+                success = scanRgbaRows(tiff, image, width, height, [&](uint32_t, const unsigned char* row) {
+                    png.row(writer, row);
+                });
             }
         }
         if (success) png.end(writer, info);
     } catch (...) { success = false; }
     png.destroy(&writer, &info); fclose(file);
     return success ? JNI_TRUE : JNI_FALSE;
+}
+
+extern "C" JNIEXPORT jintArray JNICALL
+Java_com_mistermikhail_fgallery_data_TiffNative_writeRawPng(JNIEnv* env, jobject, jobject javaRaw, jstring destination) {
+    static PngApi png;
+    const auto field = env->GetFieldID(env->GetObjectClass(javaRaw), "mNativeContext", "J");
+    if (!field || !png.valid()) return nullptr;
+    auto* raw = reinterpret_cast<LibRaw*>(env->GetLongField(javaRaw, field));
+    if (!raw || !raw->imgdata.image || raw->imgdata.idata.colors != 3) return nullptr;
+    const uint32_t width = raw->imgdata.sizes.iwidth, height = raw->imgdata.sizes.iheight;
+    if (!width || !height || width > 100000 || height > 100000) return nullptr;
+    const char* path = env->GetStringUTFChars(destination, nullptr);
+    if (!path) return nullptr;
+    FILE* file = fopen(path, "wb"); env->ReleaseStringUTFChars(destination, path);
+    if (!file) return nullptr;
+    void* writer = png.create(png.version(nullptr), nullptr, nullptr, nullptr);
+    void* info = writer ? png.info(writer) : nullptr;
+    std::vector<unsigned char> row(size_t(width) * 4);
+    auto* jump = writer ? png.jump(writer, longjmp, sizeof(jmp_buf)) : nullptr;
+    bool success = false;
+    if (info && jump && !setjmp(*jump)) {
+        png.init(writer, file);
+        if (png.compression) png.compression(writer, 0);
+        if (png.filter) png.filter(writer, 0, 8);
+        png.header(writer, info, width, height, 8, 6, 0, 0, 0);
+        png.writeInfo(writer, info);
+        for (uint32_t y = 0; y < height; ++y) {
+            for (uint32_t x = 0; x < width; ++x) {
+                const auto* pixel = raw->imgdata.image[size_t(y) * width + x];
+                for (int c = 0; c < 3; ++c) row[size_t(x) * 4 + c] = raw->imgdata.color.curve[pixel[c]] >> 8;
+                row[size_t(x) * 4 + 3] = 255;
+            }
+            png.row(writer, row.data());
+        }
+        png.end(writer, info); success = true;
+    }
+    if (writer) png.destroy(&writer, &info);
+    fclose(file);
+    if (!success) return nullptr;
+    jint values[] = {static_cast<jint>(width), static_cast<jint>(height), raw->imgdata.sizes.flip};
+    auto result = env->NewIntArray(3);
+    if (result) env->SetIntArrayRegion(result, 0, 3, values);
+    return result;
 }
 
 // ARGB_8888 is RGBA in Android's native little-endian bitmap memory.

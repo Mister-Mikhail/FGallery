@@ -62,6 +62,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -97,8 +98,9 @@ fun ViewerScreen(
     onCrop: (MediaItem) -> Unit,
     onRename: (MediaItem, String) -> Unit,
     onMove: (MediaItem) -> Unit,
+    deletingItemUri: String? = null,
 ) {
-    val initialPage = items.indexOfFirst { it.id == initialItem.id }.coerceAtLeast(0)
+    val initialPage = items.indexOfFirst { it.uriKey == initialItem.uriKey }.coerceAtLeast(0)
     val pagerState = rememberPagerState(
         initialPage = initialPage,
         pageCount = { items.size },
@@ -110,7 +112,11 @@ fun ViewerScreen(
     var renameTarget by remember { mutableStateOf<MediaItem?>(null) }
     var renameText by remember { mutableStateOf("") }
     var videoMenuExpanded by remember { mutableStateOf(false) }
-    var sphericalOverrides by remember { mutableStateOf<Map<String, Boolean>>(emptyMap()) }
+
+    LaunchedEffect(initialItem.uriKey) {
+        val target = items.indexOfFirst { it.uriKey == initialItem.uriKey }
+        if (target >= 0 && target != pagerState.currentPage) pagerState.scrollToPage(target)
+    }
 
     LaunchedEffect(items.size) {
         if (items.isNotEmpty() && pagerState.currentPage > items.lastIndex) {
@@ -120,8 +126,10 @@ fun ViewerScreen(
 
     val currentItem = items.getOrNull(pagerState.currentPage)
     val currentIsVideo = currentItem?.kind == MediaKind.VIDEO
+    val deletingCurrent = currentItem?.uriKey == deletingItemUri && deletingItemUri != null
+    val mediaAlpha by animateFloatAsState(if (deletingCurrent) .45f else 1f, tween(160), label = "trash-fade")
 
-    LaunchedEffect(currentItem?.id, currentIsVideo) {
+    LaunchedEffect(currentItem?.uriKey, currentIsVideo) {
         showDetails = false
         videoMenuExpanded = false
         if (currentIsVideo) {
@@ -154,20 +162,22 @@ fun ViewerScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(if (cleanupMode) Color(0xFF38100A) else Color.Black),
+            .background(if (cleanupMode) Color(0xFF38100A) else Color.Black)
+            .semantics { this[ViewerCurrentUri] = currentItem?.uriKey.orEmpty() }
+            .testTag("viewer-root"),
     ) {
         HorizontalPager(
             state = pagerState,
-            modifier = Modifier.fillMaxSize(),
+            key = { items[it].uriKey },
+            modifier = Modifier.fillMaxSize().graphicsLayer { alpha = mediaAlpha },
         ) { page ->
-            val item = items[page]
+            val item = items.getOrNull(page) ?: return@HorizontalPager
             val activePage = active && page == pagerState.currentPage
 
             if (item.kind == MediaKind.VIDEO) {
                 VideoPlayer(
                     item = item,
                     active = activePage,
-                    sphericalOverride = sphericalOverrides[item.uriKey],
                     controlsVisible = activePage && chromeVisible,
                     onSingleTap = ::toggleChrome,
                     onDoubleTap = {
@@ -235,14 +245,6 @@ fun ViewerScreen(
                                     onClick = {
                                         videoMenuExpanded = false
                                         onShare(currentItem)
-                                    },
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(if (sphericalOverrides[currentItem.uriKey] ?: currentItem.isLikely360Video()) "Обычный просмотр" else "Просмотр 360°") },
-                                    onClick = {
-                                        val sphericalNow = sphericalOverrides[currentItem.uriKey] ?: currentItem.isLikely360Video()
-                                        sphericalOverrides = sphericalOverrides + (currentItem.uriKey to !sphericalNow)
-                                        videoMenuExpanded = false
                                     },
                                 )
                                 DropdownMenuItem(
@@ -366,14 +368,18 @@ fun ViewerScreen(
         if (
             chromeVisible &&
             quickExifEnabled &&
-            currentItem != null &&
-            currentItem.kind != MediaKind.VIDEO
+            currentItem != null
         ) {
             QuickExifOverlay(
                 item = currentItem,
-                modifier = Modifier.align(Alignment.BottomCenter),
+                modifier = if (currentIsVideo) Modifier.align(Alignment.TopCenter).padding(top = 64.dp)
+                    else Modifier.align(Alignment.BottomCenter),
             )
         }
+        if (deletingCurrent) CircularProgressIndicator(
+            modifier = Modifier.align(Alignment.Center).testTag("viewer-trash-progress"),
+            color = Color.White,
+        )
     }
 
     if (showDetails && currentItem != null) {
@@ -419,30 +425,10 @@ fun ViewerScreen(
 
 }
 
-private fun MediaItem.isLikely360Video(): Boolean {
-    if (kind != MediaKind.VIDEO) return false
-
-    val normalizedName = name.lowercase()
-    val explicit360 =
-        "360" in normalizedName ||
-            "spherical" in normalizedName ||
-            "equirect" in normalizedName ||
-            "vr360" in normalizedName
-
-    val ratio = if (height > 0) width.toFloat() / height.toFloat() else 0f
-    val highResolutionEquirectangular =
-        width >= 1600 &&
-            height >= 700 &&
-            ratio in 1.88f..2.12f
-
-    return explicit360 || highResolutionEquirectangular
-}
-
 @Composable
 private fun VideoPlayer(
     item: MediaItem,
     active: Boolean,
-    sphericalOverride: Boolean?,
     controlsVisible: Boolean,
     onSingleTap: () -> Unit,
     onDoubleTap: () -> Unit,
@@ -453,9 +439,15 @@ private fun VideoPlayer(
     val latestSingleTap by rememberUpdatedState(onSingleTap)
     val latestDoubleTap by rememberUpdatedState(onDoubleTap)
     var sphericalView by remember(item.uri) { mutableStateOf<ZoomableSphericalView?>(null) }
-    val spherical = remember(item.id, item.width, item.height, item.name, sphericalOverride) {
-        sphericalOverride ?: item.isLikely360Video()
+    val detected360 by androidx.compose.runtime.produceState<Boolean?>(null, item.uriKey, item.dateModifiedMillis) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            com.mistermikhail.fgallery.data.VideoProjection.isSpherical(context, item)
+        }
     }
+    var format360 by remember(item.uriKey) { mutableStateOf(false) }
+    var firstFrameRendered by remember(item.uriKey) { mutableStateOf(false) }
+    val spherical = detected360 == true || format360
+    val latestDetection by rememberUpdatedState(detected360)
 
     val player = remember(item.uri) {
         ExoPlayer.Builder(context).build().apply {
@@ -466,8 +458,22 @@ private fun VideoPlayer(
         }
     }
 
-    LaunchedEffect(active) {
-        if (active && lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+    DisposableEffect(player) {
+        val listener = object : Player.Listener {
+            override fun onRenderedFirstFrame() { firstFrameRendered = true }
+            override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
+                format360 = tracks.groups.any { group ->
+                    group.type == androidx.media3.common.C.TRACK_TYPE_VIDEO &&
+                        (0 until group.length).any { group.isTrackSelected(it) && group.getTrackFormat(it).projectionData != null }
+                }
+            }
+        }
+        player.addListener(listener)
+        onDispose { player.removeListener(listener) }
+    }
+
+    LaunchedEffect(active, detected360, spherical) {
+        if (active && detected360 != null && lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
             sphericalView?.onResume()
             player.volume = 1f
             player.play()
@@ -499,7 +505,7 @@ private fun VideoPlayer(
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_PAUSE -> { player.pause(); sphericalView?.onPause() }
-                Lifecycle.Event.ON_RESUME -> if (latestActive) { player.volume = 1f; player.play(); sphericalView?.onResume() }
+                Lifecycle.Event.ON_RESUME -> if (latestActive && latestDetection != null) { player.volume = 1f; player.play(); sphericalView?.onResume() }
                 else -> Unit
             }
         }
@@ -510,6 +516,11 @@ private fun VideoPlayer(
             player.release()
         }
     }
+
+    val videoModifier = Modifier.fillMaxSize().navigationBarsPadding().semantics {
+        this[ViewerVideoReady] = firstFrameRendered
+        this[ViewerCurrentUri] = player.currentMediaItem?.localConfiguration?.uri?.toString().orEmpty()
+    }.testTag("viewer-video")
 
     if (spherical) {
         AndroidView(
@@ -537,7 +548,7 @@ private fun VideoPlayer(
                 val controls = frame.getChildAt(1) as PlayerControlView
                 if (controlsVisible) controls.show() else controls.hide()
             },
-            modifier = Modifier.fillMaxSize().navigationBarsPadding(),
+            modifier = videoModifier,
         )
     } else {
         AndroidView(
@@ -551,8 +562,11 @@ private fun VideoPlayer(
                     setOnTouchListener { _, event -> gestureDetector.onTouchEvent(event); true }
                 }
             },
-            update = { view -> if (controlsVisible) view.showController() else view.hideController() },
-            modifier = Modifier.fillMaxSize().navigationBarsPadding(),
+            update = { view ->
+                if (view.player !== player) view.player = player
+                if (controlsVisible) view.showController() else view.hideController()
+            },
+            modifier = videoModifier,
         )
     }
 
@@ -560,6 +574,8 @@ private fun VideoPlayer(
 
 internal val ViewerZoomRange = SemanticsPropertyKey<Pair<Float, Float>>("ViewerZoomRange")
 internal val ViewerImageReady = SemanticsPropertyKey<Boolean>("ViewerImageReady")
+internal val ViewerCurrentUri = SemanticsPropertyKey<String>("ViewerCurrentUri")
+internal val ViewerVideoReady = SemanticsPropertyKey<Boolean>("ViewerVideoReady")
 
 @Composable
 internal fun TiledZoomableImage(
@@ -631,7 +647,7 @@ internal fun TiledZoomableImage(
             val transformation = state.contentTransformation
             val fit = maxOf(transformation.scaleMetadata.initialScale.scaleX, transformation.scaleMetadata.initialScale.scaleY)
             val current = maxOf(transformation.scale.scaleX, transformation.scale.scaleY)
-            val target = nextDoubleTapZoom(current, fit, maxOf(1f, fit))
+            val target = nextDoubleTapZoom(current, fit, maxOf(8f, fit * 8f), smallImage = fit * 2f >= 1f)
             if (target <= fit * 1.001f) state.resetZoom(animationSpec = tween(260))
             else state.zoomTo(zoomFactor = target, centroid = centroid, animationSpec = tween(260))
         }
@@ -664,7 +680,8 @@ internal fun TiledZoomableImage(
             modifier = Modifier.fillMaxSize().semantics {
                 stateDescription = "Zoom ${(zoomableState.contentTransformation.scaleMetadata.userZoom * 100).toInt()}%"
                 val initial = zoomableState.contentTransformation.scaleMetadata.initialScale
-                this[ViewerZoomRange] = maxOf(initial.scaleX, initial.scaleY) to maxOf(1f, maxOf(initial.scaleX, initial.scaleY))
+                val fit = maxOf(initial.scaleX, initial.scaleY)
+                this[ViewerZoomRange] = fit to maxOf(8f, fit * 8f)
                 this[ViewerImageReady] = imageState.isImageDisplayed && (!needsFullSource || fullDecoded)
             }.testTag("viewer-image"),
         )

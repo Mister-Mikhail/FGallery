@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 enum class MediaFilter { ALL, PHOTOS, VIDEOS, RAW }
 enum class GridMode { MOSAIC, UNIFORM }
@@ -225,14 +226,16 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
             val recycled = driveBin.load()
             val items = normal + recycled
 
-            _uiState.update { current ->
-                derive(
-                    current.copy(
-                        allItems = items,
-                        physicalBinUris = recycled.mapTo(mutableSetOf()) { it.uriKey },
-                        isLoading = false,
+            withContext(Dispatchers.Main) {
+                _uiState.update { current ->
+                    derive(
+                        current.copy(
+                            allItems = items,
+                            physicalBinUris = recycled.mapTo(mutableSetOf()) { it.uriKey },
+                            isLoading = false,
+                        )
                     )
-                )
+                }
             }
 
             runCatching { LibrarySnapshot.save(getApplication(), LibrarySnapshot.Value(items, recycled.mapTo(hashSetOf()) { it.uriKey }, _uiState.value.hasPermission)) }
@@ -323,7 +326,14 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
     }
 
     suspend fun moveToRecycleBin(items: List<MediaItem>) {
-        try { driveBin.trash(items) } finally { refresh() }
+        try {
+            driveBin.trash(items)
+            kotlinx.coroutines.withContext(Dispatchers.Main) {
+                refreshJob?.cancel()
+                val removed = items.mapTo(hashSetOf()) { it.uriKey }
+                _uiState.update { derive(it.copy(allItems = it.allItems.filterNot { item -> item.uriKey in removed })) }
+            }
+        } finally { refresh() }
     }
 
     suspend fun restoreFromRecycleBin(items: List<MediaItem>) {
@@ -425,4 +435,3 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
         settingsRepository.setQuickExifEnabled(enabled)
     }
 }
-

@@ -110,6 +110,7 @@ fun GalleryScreen(
     onShowSettings: () -> Unit,
     onHideSettings: () -> Unit,
     onQuickExifChanged: (Boolean) -> Unit,
+    onCheckForUpdates: () -> Unit,
     onConfirmMoveChanged: (Boolean) -> Unit,
     onConfirmRenameChanged: (Boolean) -> Unit,
     onOpenRecycleBin: () -> Unit,
@@ -513,6 +514,7 @@ fun GalleryScreen(
         SettingsSheet(
             quickExifEnabled = state.quickExifEnabled,
             onQuickExifChanged = onQuickExifChanged,
+            onCheckForUpdates = { onHideSettings(); onCheckForUpdates() },
             confirmMove = state.confirmMove,
             confirmRename = state.confirmRename,
             onConfirmMoveChanged = onConfirmMoveChanged,

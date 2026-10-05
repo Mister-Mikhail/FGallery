@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - feature/quickpic-masonry-mvp
+    tags:
+      - 'v*'
   pull_request:
     branches:
       - main
@@ -25,6 +27,10 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.13"
+      - name: Install shared test signing key
+        run: |
+          mkdir -p "$HOME/.android"
+          base64 --decode .github/debug-signing/debug.keystore.b64 > "$HOME/.android/debug.keystore"
       - name: Test and build debug APK
         run: gradle :app:testDebugUnitTest :app:assembleDebug
       - uses: actions/upload-artifact@v4
@@ -47,6 +53,10 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.13"
+      - name: Install shared test signing key
+        run: |
+          mkdir -p "$HOME/.android"
+          base64 --decode .github/debug-signing/debug.keystore.b64 > "$HOME/.android/debug.keystore"
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -64,3 +74,26 @@ jobs:
         with:
           name: Android-device-test-results
           path: app/build/reports/androidTests/connected/
+
+  publish-test-update:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build, device-tests]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: FGallery-*
+          path: artifacts
+      - name: Publish verified debug update
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION_TAG: ${{ github.ref_name }}
+        run: |
+          declared_version=$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts)
+          test "$VERSION_TAG" = "v$declared_version"
+          cp artifacts/FGallery-debug/app-arm64-v8a-debug.apk "FGallery-$declared_version-arm64-v8a.apk"
+          cp artifacts/FGallery-universal/app-universal-debug.apk "FGallery-$declared_version-universal.apk"
+          gh release create "$VERSION_TAG" "FGallery-$declared_version-arm64-v8a.apk" "FGallery-$declared_version-universal.apk" --title "FGallery $declared_version (debug)" --notes-file .github/debug-signing/release-notes.md --latest

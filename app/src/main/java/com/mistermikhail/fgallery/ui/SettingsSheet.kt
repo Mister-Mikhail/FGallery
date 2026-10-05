@@ -1,6 +1,8 @@
 package com.mistermikhail.fgallery.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -10,6 +12,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -22,6 +25,7 @@ import androidx.compose.ui.unit.dp
 fun SettingsSheet(
     quickExifEnabled: Boolean,
     onQuickExifChanged: (Boolean) -> Unit,
+    onCheckForUpdates: () -> Unit,
     confirmMove: Boolean,
     confirmRename: Boolean,
     onConfirmMoveChanged: (Boolean) -> Unit,
@@ -37,6 +41,7 @@ fun SettingsSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
                 .padding(start = 20.dp, end = 20.dp, bottom = 28.dp),
         ) {
             Text(
@@ -76,6 +81,7 @@ fun SettingsSheet(
 
             SettingSwitch("Подтверждать перемещение", "Дополнительный вопрос перед перемещением. Разрешение Android на чужие файлы может потребоваться отдельно.", confirmMove, onConfirmMoveChanged)
             SettingSwitch("Подтверждать переименование", "Дополнительный вопрос перед изменением имени файла.", confirmRename, onConfirmRenameChanged)
+            TextButton(onClick = onCheckForUpdates) { Text("Проверить обновления") }
 
             Text(
                 text = "Полные сведения о файле и EXIF всегда доступны через кнопку информации в просмотрщике.",
@@ -112,4 +118,3 @@ private fun SettingSwitch(
         Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }
-

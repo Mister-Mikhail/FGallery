@@ -20,6 +20,7 @@ class MediaDetailsRepository(
             title = "Файл",
             fields = buildList {
                 add(DetailField("Имя", item.name))
+                add(DetailField("Путь", MediaLocation.display(context, item)))
                 add(DetailField("Тип файла", fileExtension(item.name, item.mimeType)))
                 if (item.relativePath.isNotBlank()) {
                     add(DetailField("Папка", item.relativePath.trimEnd('/')))
@@ -250,4 +251,3 @@ class MediaDetailsRepository(
         return rounded + suffix
     }
 }
-

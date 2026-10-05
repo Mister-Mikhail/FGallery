@@ -54,10 +54,10 @@ class TiffImageTest {
         rule.waitUntil(15000) { runCatching { node.fetchSemanticsNode().config[ViewerImageReady] }.getOrDefault(false) }
         val (fit, max) = node.fetchSemanticsNode().config[ViewerZoomRange]
         fun percent() = node.fetchSemanticsNode().config[SemanticsProperties.StateDescription].removePrefix("Zoom ").removeSuffix("%").toInt()
-        assertEquals(1f, max, .001f)
+        assertEquals(maxOf(8f, fit * 8f), max, .001f)
         node.performTouchInput { doubleClick(center) }
         rule.waitForIdle()
-        assertTrue(kotlin.math.abs(((fit + (max - fit) * .3f) / fit * 100).toInt() - percent()) <= 1)
+        assertTrue(kotlin.math.abs(200 - percent()) <= 1)
         node.performTouchInput { doubleClick(center) }
         rule.waitForIdle()
         assertTrue(kotlin.math.abs(((fit + (max - fit) * .9f) / fit * 100).toInt() - percent()) <= 1)

@@ -45,7 +45,7 @@ class DocumentGestureTest {
         val page = rule.onNodeWithTag("page")
         page.performTouchInput { doubleClick(center) }
         rule.waitForIdle()
-        page.assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Zoom 310%"))
+        page.assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Zoom 200%"))
         page.performTouchInput { doubleClick(center) }
         rule.waitForIdle()
         page.assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Zoom 730%"))

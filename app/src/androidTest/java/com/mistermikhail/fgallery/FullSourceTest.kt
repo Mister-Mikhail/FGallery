@@ -34,6 +34,64 @@ class FullSourceTest {
         assertTrue(bitmap.getPixel(bitmap.width / 2, bitmap.height / 2) != android.graphics.Color.BLACK)
         bitmap.recycle()
     }
+    @Test fun streamingRawPngMatchesThePreviousColorCurvePixelForPixel() {
+        val file = fixture("synthetic.dng")
+        val output = File(context.cacheDir, "raw-stream-equivalence.png")
+        com.homesoft.photo.libraw.LibRaw().use { raw ->
+            raw.setHalfSize(false)
+            raw.setCameraWhiteBalance(true)
+            raw.setOutputColorSpace(com.homesoft.photo.libraw.LibRaw.COLORSPACE_SRGB)
+            assertEquals(0, raw.open(file.path))
+            raw.setQuality(3)
+            assertEquals(0, raw.dcrawProcess())
+            val original = raw.getMutableBitmap()!!
+            val size = TiffNative.writeRawPng(raw, output.path)!!
+            val streamed = BitmapFactory.decodeFile(output.path)
+            try {
+                assertEquals(original.width, size[0]); assertEquals(original.height, size[1])
+                assertEquals(original.width, streamed.width); assertEquals(original.height, streamed.height)
+                for (y in 0 until original.height) for (x in 0 until original.width)
+                    assertEquals("RAW color at $x,$y", original.getPixel(x, y), streamed.getPixel(x, y))
+            } finally { original.recycle(); streamed.recycle(); output.delete() }
+        }
+    }
+    @Test fun fullP65SizeRgb16SingleStripTiffRetainsNativePixels() {
+        val width = 8984; val height = 6732
+        val file = File(context.cacheDir, "p65-rgb16-single-strip.tif")
+        val output = File(context.cacheDir, "p65-full.png")
+        val tags = sortedMapOf(
+            256 to Triple(4, 1, width), 257 to Triple(4, 1, height),
+            258 to Triple(3, 3, 158), 259 to Triple(3, 1, 1), 262 to Triple(3, 1, 2),
+            273 to Triple(4, 1, 164), 274 to Triple(3, 1, 1), 277 to Triple(3, 1, 3),
+            278 to Triple(4, 1, height), 279 to Triple(4, 1, width * height * 6),
+            284 to Triple(3, 1, 1), 339 to Triple(3, 1, 1),
+        )
+        val header = java.nio.ByteBuffer.allocate(164).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+        header.put(73.toByte()).put(73.toByte()).putShort(42).putInt(8).putShort(tags.size.toShort())
+        for ((tag, value) in tags) header.putShort(tag.toShort()).putShort(value.first.toShort()).putInt(value.second).putInt(value.third)
+        header.putInt(0).putShort(16).putShort(16).putShort(16)
+        val row = java.nio.ByteBuffer.allocate(width * 6).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+        for (x in 0 until width) row.putShort(if (x % 2 == 0) (-1).toShort() else 0.toShort()).putShort(0).putShort(0)
+        try {
+            file.outputStream().buffered(128 * 1024).use { stream ->
+                stream.write(header.array()); repeat(height) { stream.write(row.array()) }
+            }
+            assertTrue("Fixture models a 350MiB RGB16 conversion", file.length() > 350L * 1024 * 1024 - 10L * 1024 * 1024)
+            val preview = TiffImages.decode(file, 720)
+            assertTrue(preview.width <= 720); preview.recycle()
+            assertTrue(TiffNative.writePng(file.path, output.path))
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeFile(output.path, bounds)
+            assertEquals(width, bounds.outWidth); assertEquals(height, bounds.outHeight)
+            @Suppress("DEPRECATION")
+            val decoder = android.graphics.BitmapRegionDecoder.newInstance(output.path, false)!!
+            try {
+                val region = decoder.decodeRegion(android.graphics.Rect(4000, 4000, 4052, 4002), BitmapFactory.Options())
+                try { for (x in 0 until region.width) assertEquals(if (x % 2 == 0) android.graphics.Color.RED else android.graphics.Color.BLACK, region.getPixel(x, 0)) }
+                finally { region.recycle() }
+            } finally { decoder.recycle() }
+        } finally { file.delete(); output.delete() }
+    }
     @Test fun compatiblePdfRendersOwnerRestrictedDocumentWithoutUserPassword() {
         val file = fixture("owner-only.pdf")
         PdfSession(context, Uri.fromFile(file), compatibleOnly = true).use { document ->

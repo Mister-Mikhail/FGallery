@@ -27,7 +27,7 @@ import java.io.File
 class ImageZoomTest {
     @get:Rule val rule = createComposeRule()
 
-    @Test fun transparentPngZoomsThirtyPercentWithoutStaticDuplicate() {
+    @Test fun transparentPngDoublesWithoutStaticDuplicate() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val file = File(context.cacheDir, "transparent-zoom.png")
         val bitmap = Bitmap.createBitmap(4000, 4000, Bitmap.Config.ARGB_8888)
@@ -59,9 +59,9 @@ class ImageZoomTest {
         run {
             val (fit, maximum) = node.fetchSemanticsNode().config[ViewerZoomRange]
             val actual = node.fetchSemanticsNode().config[SemanticsProperties.StateDescription].removePrefix("Zoom ").removeSuffix("%").toInt()
-            assertEquals("Tap maximum must be native 1:1", maxOf(1f, fit), maximum, .001f)
-            val expected = (fit + (maximum - fit) * .30f) / fit * 100f
-            assertTrue("30% of scale range: $actual vs $expected", kotlin.math.abs(actual - expected) < 2f)
+            assertEquals("Tap and pinch must share their ceiling", maxOf(8f, fit * 8f), maximum, .001f)
+            val expected = 200f
+            assertTrue("Twice fitted scale: $actual vs $expected", kotlin.math.abs(actual - expected) < 2f)
         }
         node.performTouchInput { doubleClick(Offset(width * .8f, height * .7f)) }
         rule.waitForIdle()
@@ -97,11 +97,11 @@ class ImageZoomTest {
         val before = redWidth()
         assertTrue(before > 10)
         val (fit, maximum) = node.fetchSemanticsNode().config[ViewerZoomRange]
-        val expected = (fit + (maximum - fit) * .30f) / fit
+        val expected = 2f
         node.performTouchInput { doubleClick(center) }
         rule.waitForIdle()
         val ratio = redWidth().toFloat() / before
-        assertTrue("First zoom must change visible pixels by 30%, got $ratio, expected $expected", kotlin.math.abs(ratio - expected) < expected * .08f)
+        assertTrue("First zoom must double visible pixels, got $ratio, expected $expected", kotlin.math.abs(ratio - expected) < expected * .08f)
         node.performTouchInput {
             pinch(start0 = center - Offset(100f, 0f), end0 = center - Offset(10f, 0f), start1 = center + Offset(100f, 0f), end1 = center + Offset(10f, 0f), durationMillis = 600)
         }
@@ -112,8 +112,8 @@ class ImageZoomTest {
         run {
             val (fit, maximum) = node.fetchSemanticsNode().config[ViewerZoomRange]
             val actual = node.fetchSemanticsNode().config[SemanticsProperties.StateDescription].removePrefix("Zoom ").removeSuffix("%").toInt()
-            val expected = (fit + (maximum - fit) * .30f) / fit * 100f
-            assertTrue("30% of scale range: $actual vs $expected", kotlin.math.abs(actual - expected) < 2f)
+            val expected = 200f
+            assertTrue("Twice fitted scale: $actual vs $expected", kotlin.math.abs(actual - expected) < 2f)
         }
     }
 
