@@ -76,7 +76,7 @@ jobs:
           path: app/build/reports/androidTests/connected/
 
   publish-test-update:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/feature/quickpic-masonry-mvp' || startsWith(github.ref, 'refs/tags/v'))
     needs: [build, device-tests]
     runs-on: ubuntu-latest
     permissions:
@@ -90,10 +90,26 @@ jobs:
       - name: Publish verified debug update
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION_TAG: ${{ github.ref_name }}
+          BUILD_REF: ${{ github.ref }}
+          BUILD_SHA: ${{ github.sha }}
         run: |
           declared_version=$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts)
-          test "$VERSION_TAG" = "v$declared_version"
+          version_tag="v$declared_version"
+          if [[ "$BUILD_REF" == refs/tags/* ]]; then test "$BUILD_REF" = "refs/tags/$version_tag"; fi
           cp artifacts/FGallery-debug/app-arm64-v8a-debug.apk "FGallery-$declared_version-arm64-v8a.apk"
           cp artifacts/FGallery-universal/app-universal-debug.apk "FGallery-$declared_version-universal.apk"
-          gh release create "$VERSION_TAG" "FGallery-$declared_version-arm64-v8a.apk" "FGallery-$declared_version-universal.apk" --title "FGallery $declared_version (debug)" --notes-file .github/debug-signing/release-notes.md --latest
+          if gh release view "$version_tag" >/dev/null 2>&1; then
+            released_sha=$(gh api "repos/$GITHUB_REPOSITORY/commits/$version_tag" --jq '.sha')
+            if [[ "$released_sha" != "$BUILD_SHA" ]]; then
+              echo "Version $declared_version is already released from $released_sha; increase versionName and versionCode."
+              exit 1
+            fi
+            for abi in arm64-v8a universal; do
+              asset="FGallery-$declared_version-$abi.apk"
+              if ! gh release view "$version_tag" --json assets --jq '.assets[].name' | grep -Fxq "$asset"; then
+                gh release upload "$version_tag" "$asset"
+              fi
+            done
+          else
+            gh release create "$version_tag" "FGallery-$declared_version-arm64-v8a.apk" "FGallery-$declared_version-universal.apk" --target "$BUILD_SHA" --title "FGallery $declared_version (debug)" --notes-file .github/debug-signing/release-notes.md --latest
+          fi

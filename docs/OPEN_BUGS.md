@@ -222,3 +222,13 @@ Acceptance remains pending CI and physical-device testing. A synthetic 8984×673
 
 ### Additional authorized requirement — recycle-bin viewing, 2026-10-05
 The user requests opening files already moved into the recycle bin. A normal tap on a bin tile opens the existing full viewer using the bin item's actual URI, with zoom, video playback, document viewing and paging within the bin. Back returns to the bin. A long press starts selection; taps continue selection while it is active. Viewing does not restore the file or move it again; Cleanup double-tap deletion is disabled within the bin. Editing/rename/move/Trash actions are hidden there; restore and permanent deletion remain the existing bin-list actions. Include this change in the current requested build. Acceptance: actual physically moved photo/video files open, zoom/page, remain in their bin, and return to the list.
+
+
+### Debug update delivery pipeline — 2026-10-05
+For the user's test-build update/delivery requirement, the active-branch push workflow now publishes a public debug release only after both build and Android device tests pass. The release tag points to that exact source SHA, with direct arm64/universal APK assets. PR runs do not publish. A released version cannot be replaced from another commit; the next shipped change must increase versionName/versionCode. This replaces the earlier tag-only/branch-artifact plan and makes the in-app release checker usable for the ongoing debug test cycle.
+
+
+### Verified functional snapshot — 2026-10-05
+Source 4d7af3a1fdf5a5abbad0e09a6a87d6d8d2ca088d, push run 37251328554: build/unit job and Android 16 Pixel 2 emulator job successful; all 34 instrumented tests passed. Checks include small/raster/document tap cycles and pinch reset, transparency, TIFF compressed/oriented fixtures, a native 8984×6732 RGB16 single-strip TIFF (~363MB source) with full PNG bounds and selected native pixels, streamed RAW PNG colors matched pixel-for-pixel against the previous bitmap on a synthetic DNG, APK update validation/cancellation/incomplete downloads/signature rejection, compact trash confirmation/cancel, actual rendered next/previous video after physical bin moves, path text in video information, and photo/video viewing/paging in the bin without another move. Initial verification failures were a wrong bitmap-config argument in the new test and a test tap hitting player controls; both were corrected before this successful run.
+
+This is synthetic/emulator evidence, not physical P65+ IIQ / 5DS R RAW acceptance, measured S23 memory peaks/timings, unmarked camera 360 metadata acceptance, or actual USB/SD hardware testing. Public release publication is the remaining CI configuration check.

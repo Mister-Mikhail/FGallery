@@ -296,3 +296,7 @@ Acceptance remains pending CI and physical-device testing. A synthetic 8984×673
 
 ### Additional authorized requirement — recycle-bin viewing, 2026-10-05
 The user requests opening files already moved into the recycle bin. A normal tap on a bin tile opens the existing full viewer using the bin item's actual URI, with zoom, video playback, document viewing and paging within the bin. Back returns to the bin. A long press starts selection; taps continue selection while it is active. Viewing does not restore the file or move it again; Cleanup double-tap deletion is disabled within the bin. Editing/rename/move/Trash actions are hidden there; restore and permanent deletion remain the existing bin-list actions. Include this change in the current requested build. Acceptance: actual physically moved photo/video files open, zoom/page, remain in their bin, and return to the list.
+
+
+### Debug update delivery pipeline — 2026-10-05
+For the user's test-build update/delivery requirement, the active-branch push workflow now publishes a public debug release only after both build and Android device tests pass. The release tag points to that exact source SHA, with direct arm64/universal APK assets. PR runs do not publish. A released version cannot be replaced from another commit; the next shipped change must increase versionName/versionCode. This replaces the earlier tag-only/branch-artifact plan and makes the in-app release checker usable for the ongoing debug test cycle.
