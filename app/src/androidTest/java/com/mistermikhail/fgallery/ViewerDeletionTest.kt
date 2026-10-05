@@ -88,4 +88,17 @@ class ViewerDeletionTest {
         assertEquals(1, confirmations)
         rule.onNodeWithText("Удалить файл?").assertDoesNotExist()
     }
+
+    @Test fun quickVideoInformationContainsTheActualPathInItsOwnTextNode() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val context = instrumentation.targetContext
+        val file = File(context.cacheDir, "path-information.mp4")
+        instrumentation.context.assets.open("crop-video.mp4").use { source -> file.outputStream().use { source.copyTo(it) } }
+        val item = MediaItem(987660, Uri.fromFile(file), file.name, "video/mp4", MediaKind.VIDEO, 0, 320, 240, 4000,
+            "Tests", "", file.length(), sourcePath = file.path)
+        rule.setContent { QuickExifOverlay(item) }
+        rule.waitUntil(15000) { rule.onAllNodesWithText(file.path).fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithText(file.path).assertExists()
+        rule.onNodeWithText(file.name).assertExists()
+    }
 }

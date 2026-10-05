@@ -44,7 +44,7 @@ class FullSourceTest {
             assertEquals(0, raw.open(file.path))
             raw.setQuality(3)
             assertEquals(0, raw.dcrawProcess())
-            val original = raw.getMutableBitmap()!!
+            val original = raw.getMutableBitmap(android.graphics.Bitmap.Config.ARGB_8888)!!
             val size = TiffNative.writeRawPng(raw, output.path)!!
             val streamed = BitmapFactory.decodeFile(output.path)
             try {

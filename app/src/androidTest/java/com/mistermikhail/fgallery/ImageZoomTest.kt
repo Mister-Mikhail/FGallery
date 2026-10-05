@@ -27,6 +27,23 @@ import java.io.File
 class ImageZoomTest {
     @get:Rule val rule = createComposeRule()
 
+    @Test fun smallImageDoublesAndReturnsOnTheSecondTap() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val file = File(context.cacheDir, "small-zoom.png")
+        val bitmap = Bitmap.createBitmap(64, 48, Bitmap.Config.ARGB_8888).apply { eraseColor(android.graphics.Color.GREEN) }
+        file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }; bitmap.recycle()
+        val item = MediaItem(987650, Uri.fromFile(file), file.name, "image/png", MediaKind.IMAGE, 0, 64, 48, 0, "Tests", "", file.length())
+        rule.setContent { Box(Modifier.fillMaxSize().background(Color.Black)) { TiledZoomableImage(item, {}, false, {}) } }
+        val node = rule.onNodeWithTag("viewer-image")
+        rule.waitUntil(15000) { runCatching { node.fetchSemanticsNode().config[ViewerImageReady] }.getOrDefault(false) }
+        node.performTouchInput { doubleClick(center) }
+        rule.waitForIdle()
+        node.assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Zoom 200%"))
+        node.performTouchInput { doubleClick(center) }
+        rule.waitForIdle()
+        node.assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Zoom 100%"))
+    }
+
     @Test fun transparentPngDoublesWithoutStaticDuplicate() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val file = File(context.cacheDir, "transparent-zoom.png")

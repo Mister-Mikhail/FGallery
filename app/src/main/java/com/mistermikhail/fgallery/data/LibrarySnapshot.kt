@@ -40,4 +40,7 @@ internal object LibrarySnapshot {
         check(temp.renameTo(File(context.filesDir, "library_snapshot_v1.json")))
     }
     internal fun forgetMemory() { memory = null }
+    internal fun removeItems(uris: Set<String>) {
+        memory = memory?.let { it.copy(items = it.items.filterNot { item -> item.uriKey in uris }) }
+    }
 }

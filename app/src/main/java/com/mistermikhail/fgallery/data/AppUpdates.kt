@@ -15,22 +15,33 @@ import java.security.MessageDigest
 
 data class AvailableUpdate(val version: String, val url: String, val size: Long, val digest: String?)
 
-class AppUpdates(private val context: Context) {
+class AppUpdates(
+    private val context: Context,
+    private val openConnection: (String) -> HttpURLConnection = { URL(it).openConnection() as HttpURLConnection },
+    private val packageInfo: () -> android.content.pm.PackageInfo = {
+        context.packageManager.getPackageInfo(context.packageName, PackageManager.GET_SIGNING_CERTIFICATES)
+    },
+) {
     private val preferences = context.getSharedPreferences("fgallery_updates", Context.MODE_PRIVATE)
     private val flags = PackageManager.GET_SIGNING_CERTIFICATES
-    private fun installed() = context.packageManager.getPackageInfo(context.packageName, flags)
+    private fun installed() = packageInfo()
     val installedVersion: String get() = installed().versionName.orEmpty()
 
     suspend fun check(manual: Boolean): AvailableUpdate? = withContext(Dispatchers.IO) {
         if (!manual && System.currentTimeMillis() - preferences.getLong("checked", 0) < 6 * 60 * 60 * 1000L) return@withContext null
-        preferences.edit().putLong("checked", System.currentTimeMillis()).apply()
         val connection = connection("https://api.github.com/repos/Mister-Mikhail/FGallery/releases/latest")
         try {
-            if (connection.responseCode == 404) return@withContext null
+            if (connection.responseCode == 404) {
+                currentCoroutineContext().ensureActive()
+                preferences.edit().putLong("checked", System.currentTimeMillis()).apply()
+                return@withContext null
+            }
             check(connection.responseCode == 200) { "Не удалось проверить обновления (${connection.responseCode})" }
             val text = connection.inputStream.bufferedReader().use { it.readText() }
             val release = JSONObject(text)
             val version = release.getString("tag_name").removePrefix("v")
+            currentCoroutineContext().ensureActive()
+            preferences.edit().putLong("checked", System.currentTimeMillis()).apply()
             if (!isNewerVersion(version, installedVersion)) return@withContext null
             if (!manual && preferences.getString("declined", "") == version) return@withContext null
             val assets = release.getJSONArray("assets")
@@ -85,7 +96,7 @@ class AppUpdates(private val context: Context) {
         } finally { connection.disconnect(); partial.delete() }
     }
 
-    private fun connection(url: String) = (URL(url).openConnection() as HttpURLConnection).apply {
+    private fun connection(url: String) = openConnection(url).apply {
         connectTimeout = 15000; readTimeout = 15000
         setRequestProperty("User-Agent", "FGallery/$installedVersion")
         setRequestProperty("Accept", "application/vnd.github+json")

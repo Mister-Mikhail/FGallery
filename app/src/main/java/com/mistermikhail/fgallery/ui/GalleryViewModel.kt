@@ -73,6 +73,7 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
         derive(GalleryUiState(allItems = it.items, physicalBinUris = it.bin, hasPermission = it.permission))
     } ?: GalleryUiState())
     val uiState: StateFlow<GalleryUiState> = _uiState.asStateFlow()
+    private var snapshotRestored = false
 
     init {
         viewModelScope.launch {
@@ -210,10 +211,14 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
 
     fun refresh() {
         refreshJob?.cancel()
+        val restoreSnapshot = !snapshotRestored
+        snapshotRestored = true
         refreshJob = viewModelScope.launch(Dispatchers.IO) {
-            if (_uiState.value.allItems.isEmpty()) {
+            if (restoreSnapshot && _uiState.value.allItems.isEmpty()) {
                 LibrarySnapshot.load(getApplication(), _uiState.value.hasPermission)?.let { saved ->
-                    _uiState.update { derive(it.copy(allItems = saved.items, physicalBinUris = saved.bin)) }
+                    withContext(Dispatchers.Main) {
+                        _uiState.update { derive(it.copy(allItems = saved.items, physicalBinUris = saved.bin)) }
+                    }
                 }
             }
             _uiState.update { it.copy(isLoading = it.allItems.isEmpty()) }
@@ -332,6 +337,7 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
                 refreshJob?.cancel()
                 val removed = items.mapTo(hashSetOf()) { it.uriKey }
                 _uiState.update { derive(it.copy(allItems = it.allItems.filterNot { item -> item.uriKey in removed })) }
+                LibrarySnapshot.removeItems(removed)
             }
         } finally { refresh() }
     }
