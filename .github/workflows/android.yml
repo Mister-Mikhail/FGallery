@@ -1,0 +1,133 @@
+name: Android CI
+
+on:
+  push:
+    branches:
+      - feature/quickpic-masonry-mvp
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: android-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+      - name: Install shared test signing key
+        run: |
+          mkdir -p "$HOME/.android"
+          base64 --decode .github/debug-signing/debug.keystore.b64 > "$HOME/.android/debug.keystore"
+      - name: Test and build debug APK
+        run: gradle :app:testDebugUnitTest :app:assembleDebug
+      - name: Verify the development signing certificate
+        run: |
+          fgallery_apksigner=""
+          for fgallery_candidate in "$ANDROID_HOME"/build-tools/*/apksigner; do
+            if [[ -x "$fgallery_candidate" ]]; then fgallery_apksigner="$fgallery_candidate"; fi
+          done
+          test -n "$fgallery_apksigner"
+          for abi in arm64-v8a universal; do
+            fgallery_report=$("$fgallery_apksigner" verify --print-certs "app/build/outputs/apk/debug/app-$abi-debug.apk")
+            printf '%s\n' "$fgallery_report"
+            fgallery_certificate=$(printf '%s\n' "$fgallery_report" | sed -nE 's/^.*certificate SHA-256 digest: ([0-9a-f]{64})$/\1/p')
+            test "$fgallery_certificate" = "ce2293752c0a4a8c844caff57fa3bc28ee9206e927ad311dbcf3a5e71c803eb2"
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: FGallery-debug
+          path: app/build/outputs/apk/debug/app-arm64-v8a-debug.apk
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: FGallery-universal
+          path: app/build/outputs/apk/debug/app-universal-debug.apk
+
+  device-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+      - name: Install shared test signing key
+        run: |
+          mkdir -p "$HOME/.android"
+          base64 --decode .github/debug-signing/debug.keystore.b64 > "$HOME/.android/debug.keystore"
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          script: bash .github/scripts/device-tests.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Android-device-test-results
+          path: app/build/reports/androidTests/connected/
+
+  publish-test-update:
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/feature/quickpic-masonry-mvp' || startsWith(github.ref, 'refs/tags/v'))
+    needs: [build, device-tests]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: FGallery-*
+          path: artifacts
+      - name: Publish verified debug update
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_REF: ${{ github.ref }}
+          BUILD_SHA: ${{ github.sha }}
+        run: |
+          declared_version=$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts)
+          version_tag="v$declared_version"
+          if [[ "$BUILD_REF" == refs/tags/* ]]; then test "$BUILD_REF" = "refs/tags/$version_tag"; fi
+          cp artifacts/FGallery-debug/app-arm64-v8a-debug.apk "FGallery-$declared_version-arm64-v8a.apk"
+          cp artifacts/FGallery-universal/app-universal-debug.apk "FGallery-$declared_version-universal.apk"
+          if gh release view "$version_tag" >/dev/null 2>&1; then
+            released_sha=$(gh api "repos/$GITHUB_REPOSITORY/commits/$version_tag" --jq '.sha')
+            if [[ "$released_sha" != "$BUILD_SHA" ]]; then
+              echo "Version $declared_version is already released from $released_sha; increase versionName and versionCode."
+              exit 1
+            fi
+            for abi in arm64-v8a universal; do
+              asset="FGallery-$declared_version-$abi.apk"
+              if ! gh release view "$version_tag" --json assets --jq '.assets[].name' | grep -Fxq "$asset"; then
+                gh release upload "$version_tag" "$asset"
+              fi
+            done
+          else
+            gh release create "$version_tag" "FGallery-$declared_version-arm64-v8a.apk" "FGallery-$declared_version-universal.apk" --target "$BUILD_SHA" --title "FGallery $declared_version (debug)" --notes-file .github/debug-signing/release-notes.md --latest
+          fi
+          if [[ "$declared_version" == "0.2.7" ]] && gh release view v0.2.6 >/dev/null 2>&1; then
+            gh release edit v0.2.6 --prerelease --notes-file .github/debug-signing/legacy-notes.md
+          fi

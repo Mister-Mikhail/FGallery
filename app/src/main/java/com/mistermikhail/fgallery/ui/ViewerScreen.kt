@@ -1,0 +1,695 @@
+package com.mistermikhail.fgallery.ui
+
+import android.view.GestureDetector
+import android.view.LayoutInflater
+import android.view.MotionEvent
+import android.view.ViewGroup
+import android.widget.FrameLayout
+import androidx.media3.exoplayer.video.spherical.ZoomableSphericalView
+import androidx.media3.ui.PlayerControlView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.Crop
+import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.DriveFileMove
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Menu
+import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.semantics.SemanticsPropertyKey
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.common.MediaItem as PlayerMediaItem
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.ui.PlayerView
+import coil3.compose.AsyncImage
+import com.mistermikhail.fgallery.R
+import com.mistermikhail.fgallery.data.MediaItem
+import com.mistermikhail.fgallery.data.MediaKind
+import com.mistermikhail.fgallery.data.ThumbnailCache
+import kotlinx.coroutines.delay
+import me.saket.telephoto.zoomable.DoubleClickToZoomListener
+import me.saket.telephoto.zoomable.ZoomSpec
+import me.saket.telephoto.zoomable.rememberZoomableImageState
+import me.saket.telephoto.zoomable.rememberZoomableState
+import me.saket.telephoto.zoomable.coil3.ZoomableAsyncImage
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun ViewerScreen(
+    items: List<MediaItem>,
+    initialItem: MediaItem,
+    onBack: () -> Unit,
+    active: Boolean = true,
+    onTrash: (MediaItem) -> Unit,
+    quickExifEnabled: Boolean,
+    cleanupMode: Boolean,
+    onShare: (MediaItem) -> Unit,
+    onCrop: (MediaItem) -> Unit,
+    onRename: (MediaItem, String) -> Unit,
+    onMove: (MediaItem) -> Unit,
+    deletingItemUri: String? = null,
+    recycleBinMode: Boolean = false,
+) {
+    val initialPage = items.indexOfFirst { it.uriKey == initialItem.uriKey }.coerceAtLeast(0)
+    val pagerState = rememberPagerState(
+        initialPage = initialPage,
+        pageCount = { items.size },
+    )
+
+    var chromeVisible by remember { mutableStateOf(false) }
+    var chromeEpoch by remember { mutableIntStateOf(0) }
+    var showDetails by remember { mutableStateOf(false) }
+    var renameTarget by remember { mutableStateOf<MediaItem?>(null) }
+    var renameText by remember { mutableStateOf("") }
+    var videoMenuExpanded by remember { mutableStateOf(false) }
+
+    LaunchedEffect(initialItem.uriKey) {
+        val target = items.indexOfFirst { it.uriKey == initialItem.uriKey }
+        if (target >= 0 && target != pagerState.currentPage) pagerState.scrollToPage(target)
+    }
+
+    LaunchedEffect(items.size) {
+        if (items.isNotEmpty() && pagerState.currentPage > items.lastIndex) {
+            pagerState.scrollToPage(items.lastIndex)
+        }
+    }
+
+    val currentItem = items.getOrNull(pagerState.currentPage)
+    val currentIsVideo = currentItem?.kind == MediaKind.VIDEO
+    val deletingCurrent = currentItem?.uriKey == deletingItemUri && deletingItemUri != null
+    val mediaAlpha by animateFloatAsState(if (deletingCurrent) .45f else 1f, tween(160), label = "trash-fade")
+
+    LaunchedEffect(currentItem?.uriKey, currentIsVideo) {
+        showDetails = false
+        videoMenuExpanded = false
+        if (currentIsVideo) {
+            chromeVisible = true
+            chromeEpoch += 1
+        }
+    }
+
+    // One clock owns both PlayerView controls and the Compose file chrome.
+    LaunchedEffect(chromeVisible, currentIsVideo, videoMenuExpanded, chromeEpoch) {
+        if (chromeVisible && currentIsVideo && !videoMenuExpanded) {
+            delay(1_500L)
+            chromeVisible = false
+        }
+    }
+
+    fun toggleChrome() {
+        if (currentIsVideo) {
+            if (chromeVisible) {
+                chromeVisible = false
+            } else {
+                chromeVisible = true
+                chromeEpoch += 1
+            }
+        } else {
+            chromeVisible = !chromeVisible
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(if (cleanupMode && !recycleBinMode) Color(0xFF38100A) else Color.Black)
+            .semantics { this[ViewerCurrentUri] = currentItem?.uriKey.orEmpty() }
+            .testTag("viewer-root"),
+    ) {
+        HorizontalPager(
+            state = pagerState,
+            key = { items[it].uriKey },
+            modifier = Modifier.fillMaxSize().graphicsLayer { alpha = mediaAlpha },
+        ) { page ->
+            val item = items.getOrNull(page) ?: return@HorizontalPager
+            val activePage = active && page == pagerState.currentPage
+
+            if (item.kind == MediaKind.VIDEO) {
+                VideoPlayer(
+                    item = item,
+                    active = activePage,
+                    controlsVisible = activePage && chromeVisible,
+                    onSingleTap = ::toggleChrome,
+                    onDoubleTap = {
+                        if (cleanupMode && !recycleBinMode) onTrash(item)
+                    },
+                )
+            } else if (item.kind == MediaKind.PDF) {
+                PdfViewer(item, ::toggleChrome)
+            } else if (item.kind == MediaKind.SVG) {
+                SvgViewer(item, ::toggleChrome)
+            } else {
+                TiledZoomableImage(
+                    item = item,
+                    onSingleTap = ::toggleChrome,
+                    cleanupMode = cleanupMode && !recycleBinMode,
+                    onTrash = { onTrash(item) },
+                    active = activePage,
+                )
+            }
+        }
+
+        AnimatedVisibility(
+            visible = chromeVisible,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier.align(Alignment.TopCenter),
+        ) {
+            if (currentIsVideo) {
+                // Video mode: no wide top toolbar. Keep only back + compact actions menu.
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .statusBarsPadding()
+                        .padding(horizontal = 4.dp),
+                ) {
+                    IconButton(
+                        onClick = onBack,
+                        modifier = Modifier.align(Alignment.CenterStart),
+                    ) {
+                        Icon(
+                            Icons.Outlined.ArrowBack,
+                            contentDescription = "Назад",
+                            tint = Color.White,
+                        )
+                    }
+
+                    Box(
+                        modifier = Modifier.align(Alignment.CenterEnd),
+                    ) {
+                        IconButton(onClick = { videoMenuExpanded = true }) {
+                            Icon(
+                                Icons.Outlined.Menu,
+                                contentDescription = "Действия с файлом",
+                                tint = Color.White,
+                            )
+                        }
+
+                        if (currentItem != null) {
+                            DropdownMenu(
+                                expanded = videoMenuExpanded,
+                                onDismissRequest = { videoMenuExpanded = false },
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Отправить") },
+                                    onClick = {
+                                        videoMenuExpanded = false
+                                        onShare(currentItem)
+                                    },
+                                )
+                                if (!recycleBinMode) DropdownMenuItem(
+                                    text = { Text("Кадрировать видео") },
+                                    onClick = { videoMenuExpanded = false; onCrop(currentItem) },
+                                )
+                                if (!recycleBinMode) DropdownMenuItem(
+                                    text = { Text("Переименовать") },
+                                    onClick = {
+                                        videoMenuExpanded = false
+                                        renameTarget = currentItem
+                                        renameText = currentItem.name
+                                    },
+                                )
+                                if (!recycleBinMode) DropdownMenuItem(
+                                    text = { Text("Переместить") },
+                                    onClick = {
+                                        videoMenuExpanded = false
+                                        onMove(currentItem)
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Сведения") },
+                                    onClick = {
+                                        videoMenuExpanded = false
+                                        showDetails = true
+                                    },
+                                )
+                                if (!recycleBinMode) DropdownMenuItem(
+                                    text = { Text("В корзину") },
+                                    onClick = {
+                                        videoMenuExpanded = false
+                                        onTrash(currentItem)
+                                    },
+                                )
+                            }
+                        }
+                    }
+                }
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color.Black.copy(alpha = 0.55f))
+                        .statusBarsPadding(),
+                ) {
+                    IconButton(
+                        onClick = onBack,
+                        modifier = Modifier
+                            .align(Alignment.CenterStart)
+                            .padding(start = 4.dp),
+                    ) {
+                        Icon(
+                            Icons.Outlined.ArrowBack,
+                            contentDescription = "Назад",
+                            tint = Color.White,
+                        )
+                    }
+
+                    if (currentItem != null) {
+                        Row(
+                            modifier = Modifier
+                                .align(Alignment.CenterEnd)
+                                .padding(end = 4.dp),
+                        ) {
+                            IconButton(onClick = { onShare(currentItem) }) {
+                                Icon(
+                                    Icons.Outlined.Share,
+                                    contentDescription = "Отправить",
+                                    tint = Color.White,
+                                )
+                            }
+                            if (!recycleBinMode && currentItem.kind != MediaKind.PDF && currentItem.kind != MediaKind.SVG) IconButton(onClick = { onCrop(currentItem) }) {
+                                Icon(
+                                    Icons.Outlined.Crop,
+                                    contentDescription = "Кадрировать",
+                                    tint = Color.White,
+                                )
+                            }
+                            if (!recycleBinMode) IconButton(
+                                onClick = {
+                                    renameTarget = currentItem
+                                    renameText = currentItem.name
+                                },
+                            ) {
+                                Icon(
+                                    Icons.Outlined.Edit,
+                                    contentDescription = "Переименовать",
+                                    tint = Color.White,
+                                )
+                            }
+                            if (!recycleBinMode) IconButton(
+                                onClick = { onMove(currentItem) },
+                            ) {
+                                Icon(
+                                    Icons.Outlined.DriveFileMove,
+                                    contentDescription = "Переместить",
+                                    tint = Color.White,
+                                )
+                            }
+                            IconButton(onClick = { showDetails = true }) {
+                                Icon(
+                                    Icons.Outlined.Info,
+                                    contentDescription = "Полные сведения / EXIF",
+                                    tint = Color.White,
+                                )
+                            }
+                            if (!recycleBinMode) IconButton(onClick = { onTrash(currentItem) }) {
+                                Icon(
+                                    Icons.Outlined.DeleteOutline,
+                                    contentDescription = "В корзину",
+                                    tint = Color.White,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (
+            chromeVisible &&
+            quickExifEnabled &&
+            currentItem != null
+        ) {
+            QuickExifOverlay(
+                item = currentItem,
+                modifier = if (currentIsVideo) Modifier.align(Alignment.TopCenter).padding(top = 64.dp)
+                    else Modifier.align(Alignment.BottomCenter),
+            )
+        }
+        if (deletingCurrent) CircularProgressIndicator(
+            modifier = Modifier.align(Alignment.Center).testTag("viewer-trash-progress"),
+            color = Color.White,
+        )
+    }
+
+    if (showDetails && currentItem != null) {
+        MediaDetailsSheet(
+            item = currentItem,
+            onDismiss = { showDetails = false },
+        )
+    }
+
+    renameTarget?.let { item ->
+        AlertDialog(
+            onDismissRequest = { renameTarget = null },
+            title = { Text("Переименовать файл") },
+            text = {
+                OutlinedTextField(
+                    value = renameText,
+                    onValueChange = { renameText = it },
+                    singleLine = true,
+                    label = { Text("Новое имя") },
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val value = renameText.trim()
+                        if (value.isNotBlank()) {
+                            onRename(item, value)
+                            renameTarget = null
+                        }
+                    },
+                ) {
+                    Text("Переименовать")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { renameTarget = null }) {
+                    Text("Отмена")
+                }
+            },
+        )
+    }
+
+
+}
+
+@Composable
+private fun VideoPlayer(
+    item: MediaItem,
+    active: Boolean,
+    controlsVisible: Boolean,
+    onSingleTap: () -> Unit,
+    onDoubleTap: () -> Unit,
+) {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val latestActive by rememberUpdatedState(active)
+    val latestSingleTap by rememberUpdatedState(onSingleTap)
+    val latestDoubleTap by rememberUpdatedState(onDoubleTap)
+    var sphericalView by remember(item.uri) { mutableStateOf<ZoomableSphericalView?>(null) }
+    val detected360 by androidx.compose.runtime.produceState<Boolean?>(null, item.uriKey, item.dateModifiedMillis) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            com.mistermikhail.fgallery.data.VideoProjection.isSpherical(context, item)
+        }
+    }
+    var format360 by remember(item.uriKey) { mutableStateOf(false) }
+    var firstFrameRendered by remember(item.uriKey) { mutableStateOf(false) }
+    val spherical = detected360 == true || format360
+    val latestDetection by rememberUpdatedState(detected360)
+
+    val player = remember(item.uri) {
+        ExoPlayer.Builder(context).build().apply {
+            setMediaItem(PlayerMediaItem.fromUri(item.uri))
+            prepare()
+            playWhenReady = false
+            volume = 0f
+        }
+    }
+
+    DisposableEffect(player) {
+        val listener = object : Player.Listener {
+            override fun onRenderedFirstFrame() { firstFrameRendered = true }
+            override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
+                format360 = tracks.groups.any { group ->
+                    group.type == androidx.media3.common.C.TRACK_TYPE_VIDEO &&
+                        (0 until group.length).any { group.isTrackSelected(it) && group.getTrackFormat(it).projectionData != null }
+                }
+            }
+        }
+        player.addListener(listener)
+        onDispose { player.removeListener(listener) }
+    }
+
+    LaunchedEffect(active, detected360, spherical) {
+        if (active && detected360 != null && lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+            sphericalView?.onResume()
+            player.volume = 1f
+            player.play()
+        } else {
+            sphericalView?.onPause()
+            player.pause()
+            player.volume = 0f
+        }
+    }
+
+    val gestureDetector = remember(item.id) {
+        GestureDetector(
+            context,
+            object : GestureDetector.SimpleOnGestureListener() {
+                override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+                    latestSingleTap()
+                    return true
+                }
+
+                override fun onDoubleTap(e: MotionEvent): Boolean {
+                    latestDoubleTap()
+                    return true
+                }
+            },
+        )
+    }
+
+    DisposableEffect(player, lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_PAUSE -> { player.pause(); sphericalView?.onPause() }
+                Lifecycle.Event.ON_RESUME -> if (latestActive && latestDetection != null) { player.volume = 1f; player.play(); sphericalView?.onResume() }
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            sphericalView?.onPause()
+            player.release()
+        }
+    }
+
+    val videoModifier = Modifier.fillMaxSize().navigationBarsPadding().semantics {
+        this[ViewerVideoReady] = firstFrameRendered
+        this[ViewerCurrentUri] = player.currentMediaItem?.localConfiguration?.uri?.toString().orEmpty()
+    }.testTag("viewer-video")
+
+    if (spherical) {
+        AndroidView(
+            factory = { ctx ->
+                FrameLayout(ctx).apply {
+                    val surface = ZoomableSphericalView(ctx)
+                    sphericalView = surface
+                    surface.setUseSensorRotation(active)
+                    surface.setTapCallbacks({ latestSingleTap() }, { latestDoubleTap() })
+                    player.setVideoFrameMetadataListener(surface.videoFrameMetadataListener)
+                    player.setCameraMotionListener(surface.cameraMotionListener)
+                    surface.addVideoSurfaceListener(object : ZoomableSphericalView.VideoSurfaceListener {
+                        override fun onVideoSurfaceCreated(videoSurface: android.view.Surface) { player.setVideoSurface(videoSurface) }
+                        override fun onVideoSurfaceDestroyed(videoSurface: android.view.Surface) { player.clearVideoSurface(videoSurface) }
+                    })
+                    addView(surface, FrameLayout.LayoutParams(-1, -1))
+                    val controls = PlayerControlView(ctx).apply { this.player = player; showTimeoutMs = 0 }
+                    addView(controls, FrameLayout.LayoutParams(-1, -2, android.view.Gravity.BOTTOM))
+                    if (active && lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) surface.onResume() else surface.onPause()
+                }
+            },
+            update = { frame ->
+                val surface = frame.getChildAt(0) as ZoomableSphericalView
+                surface.setUseSensorRotation(active)
+                val controls = frame.getChildAt(1) as PlayerControlView
+                if (controlsVisible) controls.show() else controls.hide()
+            },
+            modifier = videoModifier,
+        )
+    } else {
+        AndroidView(
+            factory = { ctx ->
+                PlayerView(ctx).apply {
+                    this.player = player
+                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                    controllerShowTimeoutMs = 0
+                    controllerAutoShow = false
+                    controllerHideOnTouch = false
+                    setOnTouchListener { _, event -> gestureDetector.onTouchEvent(event); true }
+                }
+            },
+            update = { view ->
+                if (view.player !== player) view.player = player
+                if (controlsVisible) view.showController() else view.hideController()
+            },
+            modifier = videoModifier,
+        )
+    }
+
+}
+
+internal val ViewerZoomRange = SemanticsPropertyKey<Pair<Float, Float>>("ViewerZoomRange")
+internal val ViewerImageReady = SemanticsPropertyKey<Boolean>("ViewerImageReady")
+internal val ViewerCurrentUri = SemanticsPropertyKey<String>("ViewerCurrentUri")
+internal val ViewerVideoReady = SemanticsPropertyKey<Boolean>("ViewerVideoReady")
+
+@Composable
+internal fun TiledZoomableImage(
+    item: MediaItem,
+    onSingleTap: () -> Unit,
+    cleanupMode: Boolean,
+    onTrash: () -> Unit,
+    active: Boolean = true,
+) {
+    val context = LocalContext.current
+    var imageFailed by remember(item.uri) { mutableStateOf(false) }
+    var fullSource by remember(item.uri) { mutableStateOf(com.mistermikhail.fgallery.data.FullResolutionFiles.cached(context, item)) }
+    var fullDecoded by remember(item.uri) { mutableStateOf(false) }
+    var fullError by remember(item.uri) { mutableStateOf<String?>(null) }
+    val needsFullSource = item.kind == MediaKind.RAW || com.mistermikhail.fgallery.data.TiffImages.isTiff(item.name, item.mimeType)
+    var cachedPreview by remember(item.uri, item.dateModifiedMillis, item.sizeBytes) {
+        mutableStateOf(ThumbnailCache.cached(context, item))
+    }
+    LaunchedEffect(item.uri, active) {
+        if (needsFullSource && active && fullSource == null) {
+            try {
+                if (cachedPreview == null) cachedPreview = ThumbnailCache.ensure(context, item)
+                if (cachedPreview == null && item.kind == MediaKind.RAW) {
+                    cachedPreview = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        ThumbnailCache.rawPreview(context, item)?.let { bitmap ->
+                            try {
+                                val file = ThumbnailCache.fileFor(context, item)
+                                file.parentFile?.mkdirs()
+                                val temp = java.io.File.createTempFile("raw_fast_", ".png", file.parentFile)
+                                try {
+                                    check(com.mistermikhail.fgallery.data.TiffNative.writeBitmapPng(bitmap, temp.path))
+                                    check(temp.renameTo(file)); file
+                                } finally { temp.delete() }
+                            } finally { bitmap.recycle() }
+                        }
+                    }
+                }
+                fullSource = com.mistermikhail.fgallery.data.FullResolutionFiles.prepare(context, item)
+                imageFailed = false
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (e: Exception) { fullError = e.localizedMessage ?: "Не удалось прочитать исходные данные" }
+        }
+    }
+    var maximum by remember(item.uri) { mutableFloatStateOf(8f) }
+
+    val zoomableState = rememberZoomableState(
+        zoomSpec = ZoomSpec(maxZoomFactor = maximum),
+    )
+    val imageState = rememberZoomableImageState(zoomableState)
+    LaunchedEffect(zoomableState) {
+        snapshotFlow { zoomableState.contentTransformation.scaleMetadata.initialScale }.collect { fit ->
+            val scale = maxOf(fit.scaleX, fit.scaleY)
+            if (scale.isFinite() && scale > 0f) maximum = maxOf(8f, scale * 8f)
+        }
+    }
+
+
+
+
+    val doubleClick = remember(item.id, cleanupMode) {
+        DoubleClickToZoomListener { _, centroid ->
+            val state = zoomableState
+            if (cleanupMode) {
+                onTrash()
+                return@DoubleClickToZoomListener
+            }
+
+            if ((needsFullSource && !fullDecoded) || !imageState.isImageDisplayed || !state.contentTransformation.isSpecified || state.isAnimationRunning) return@DoubleClickToZoomListener
+            val transformation = state.contentTransformation
+            val fit = maxOf(transformation.scaleMetadata.initialScale.scaleX, transformation.scaleMetadata.initialScale.scaleY)
+            val current = maxOf(transformation.scale.scaleX, transformation.scale.scaleY)
+            val target = nextDoubleTapZoom(current, fit, maxOf(8f, fit * 8f), smallImage = fit * 2f >= 1f)
+            if (target <= fit * 1.001f) state.resetZoom(animationSpec = tween(260))
+            else state.zoomTo(zoomFactor = target, centroid = centroid, animationSpec = tween(260))
+        }
+    }
+
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (cachedPreview != null && !imageState.isImageDisplayed) {
+            AsyncImage(
+                model = cachedPreview,
+                contentDescription = item.name,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+
+        ZoomableAsyncImage(
+            model = coil3.request.ImageRequest.Builder(context).data(fullSource ?: if (needsFullSource) cachedPreview else if (imageFailed && cachedPreview != null) cachedPreview else item.uri)
+                .memoryCacheKey("${item.uri}/${item.dateModifiedMillis}/${if (fullSource != null) "full" else if (imageFailed || needsFullSource) "fallback" else "source"}")
+                .listener(onError = { _, _ -> imageFailed = true }, onSuccess = { request, _ -> if (fullSource != null && request.data == fullSource) fullDecoded = true })
+                .build(),
+            contentDescription = item.name,
+            state = imageState,
+            contentScale = ContentScale.Fit,
+            onClick = { onSingleTap() },
+            onDoubleClick = doubleClick,
+            alpha = 1f,
+            modifier = Modifier.fillMaxSize().semantics {
+                stateDescription = "Zoom ${(zoomableState.contentTransformation.scaleMetadata.userZoom * 100).toInt()}%"
+                val initial = zoomableState.contentTransformation.scaleMetadata.initialScale
+                val fit = maxOf(initial.scaleX, initial.scaleY)
+                this[ViewerZoomRange] = fit to maxOf(8f, fit * 8f)
+                this[ViewerImageReady] = imageState.isImageDisplayed && (!needsFullSource || fullDecoded)
+            }.testTag("viewer-image"),
+        )
+        if (imageFailed && cachedPreview == null) Text("Не удалось открыть изображение. Формат может не поддерживаться декодером устройства.", color = Color.White, modifier = Modifier.padding(24.dp))
+        if (needsFullSource && !fullDecoded) {
+            if (fullError == null && active) CircularProgressIndicator(Modifier.align(Alignment.BottomCenter).padding(24.dp))
+            fullError?.let { Text("Не удалось загрузить полный размер: $it", color = Color.White, modifier = Modifier.align(Alignment.BottomCenter).padding(24.dp)) }
+        }
+    }
+}
