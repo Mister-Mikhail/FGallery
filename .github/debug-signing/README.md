@@ -1,8 +1,8 @@
 # Shared development signature
 
-`debug.keystore.b64` is an intentionally public **test-only** Android debug key, alias `androiddebugkey`, store/key password `android`. CI decodes it into the standard Android debug keystore location in both jobs. Starting with 0.2.6, successive CI debug APKs share this certificate and can update one another without clearing app data.
+`debug.keystore.b64` is an intentionally public **test-only** Android debug key, alias `androiddebugkey`, store/key password `android`. Gradle decodes it into the app build directory and explicitly assigns that path to signingConfigs.debug, in both local and CI builds. CI verifies the actual packaged arm64 and universal certificate SHA-256 before publishing. Starting with 0.2.7, successive CI debug APKs share this certificate and can update one another without clearing app data.
 
-Previous CI APKs had per-run generated certificates. The initial move to this key can require uninstalling the previous APK; Android cannot update an app with an unrelated certificate.
+Previous CI APKs, including 0.2.6, had per-run generated certificates; the initial CI user-directory setup did not control the keystore selected by Gradle. The initial move to this key can require uninstalling the previous APK; Android cannot update an app with an unrelated certificate.
 
 Do not use this public key for production. Production needs a separately managed private signing key and migration plan.
 

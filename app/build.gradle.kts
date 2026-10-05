@@ -13,9 +13,26 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         minSdk = 29
         targetSdk = 35
-        versionCode = 8
-        versionName = "0.2.6"
+        versionCode = 9
+        versionName = "0.2.7"
         externalNativeBuild { cmake { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64") } }
+    }
+
+    // Use the public development key explicitly; Gradle's default user directory
+    // differs between environments and may silently create another debug key.
+    val testKeyBytes = java.util.Base64.getMimeDecoder().decode(
+        rootProject.file(".github/debug-signing/debug.keystore.b64").readText()
+    )
+    val testKey = layout.buildDirectory.file("signing/fgallery-debug.keystore").get().asFile
+    if (!testKey.exists() || !testKey.readBytes().contentEquals(testKeyBytes)) {
+        testKey.parentFile.mkdirs()
+        testKey.writeBytes(testKeyBytes)
+    }
+    signingConfigs.getByName("debug") {
+        storeFile = testKey
+        storePassword = "android"
+        keyAlias = "androiddebugkey"
+        keyPassword = "android"
     }
 
     splits {

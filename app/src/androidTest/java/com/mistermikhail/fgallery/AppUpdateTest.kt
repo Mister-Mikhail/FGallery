@@ -60,7 +60,8 @@ class AppUpdateTest {
         val installed = previousInstalledVersion()
         // Model the same signed package installed at the previous version.
         val updates = AppUpdates(context, { response { apk.inputStream() } }, { installed })
-        val candidate = AvailableUpdate("0.2.6", "https://github.com/Mister-Mikhail/FGallery/releases/download/v0.2.6/FGallery.apk", apk.length(), hash)
+        val currentVersion = AppUpdates(context).installedVersion
+        val candidate = AvailableUpdate(currentVersion, "https://github.com/Mister-Mikhail/FGallery/releases/download/v$currentVersion/FGallery.apk", apk.length(), hash)
         val output = updates.download(candidate) { _, _ -> }
         assertEquals(apk.length(), output.length()); output.delete()
         try { updates.download(candidate.copy(size = apk.length() + 1)) { _, _ -> }; fail("Truncated download must fail") }
@@ -78,7 +79,7 @@ class AppUpdateTest {
         installed.signingInfo = null
         val updates = AppUpdates(context, { response { apk.inputStream() } }, { installed })
         try {
-            updates.download(AvailableUpdate("0.2.6", "https://github.com/", apk.length(), null)) { _, _ -> }
+            updates.download(AvailableUpdate(AppUpdates(context).installedVersion, "https://github.com/", apk.length(), null)) { _, _ -> }
             fail("Unrelated/missing signer must fail")
         } catch (error: IllegalStateException) { assertTrue(error.message.orEmpty().contains("Подпись")) }
         assertFalse(File(context.cacheDir, "updates/update.part").exists())

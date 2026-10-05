@@ -1,0 +1,1 @@
+Superseded debug build. 0.2.6 was signed with a per-run Android debug key because the CI keystore path did not match Gradle’s chosen location. Use 0.2.7 or later for the shared test signature and future in-place debug updates. Installing 0.2.7 over this APK requires uninstalling 0.2.6 first.

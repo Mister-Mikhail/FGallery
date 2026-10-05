@@ -156,3 +156,7 @@ The user requests opening files already moved into the recycle bin. A normal tap
 
 ### Debug update delivery pipeline — 2026-10-05
 For the user's test-build update/delivery requirement, the active-branch push workflow now publishes a public debug release only after both build and Android device tests pass. The release tag points to that exact source SHA, with direct arm64/universal APK assets. PR runs do not publish. A released version cannot be replaced from another commit; the next shipped change must increase versionName/versionCode. This replaces the earlier tag-only/branch-artifact plan and makes the in-app release checker usable for the ongoing debug test cycle.
+
+
+### Shared-signature correction for final delivery — 2026-10-05
+The shared development certificate starts with 0.2.7/versionCode9. Final extraction of the published 0.2.6 artifact showed that the CI default keystore path did not control Gradle’s selected key. Explicit Gradle signing configuration and a packaged-certificate CI check replace reliance on that default. All prior random-key debug builds need an initial reinstall; future 0.2.7+ debug updates share the intended key. Functional viewer/bin/update requirements are unchanged.

@@ -1,1 +1,1 @@
-FGallery test build. Installs over versions signed with the shared FGallery debug key (0.2.6 onward). Device acceptance testing is still required; this public test signature is not a production signing key.
+FGallery test build. Installs over versions signed with the shared FGallery debug key (0.2.7 onward). Device acceptance testing is still required; this public test signature is not a production signing key.
