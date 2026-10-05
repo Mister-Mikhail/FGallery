@@ -35,17 +35,24 @@ jobs:
         run: gradle :app:testDebugUnitTest :app:assembleDebug
       - name: Verify the development signing certificate
         run: |
-          fgallery_apksigner=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)
+          fgallery_apksigner=""
+          for fgallery_candidate in "$ANDROID_HOME"/build-tools/*/apksigner; do
+            if [[ -x "$fgallery_candidate" ]]; then fgallery_apksigner="$fgallery_candidate"; fi
+          done
           test -n "$fgallery_apksigner"
           for abi in arm64-v8a universal; do
-            fgallery_certificate=$("$fgallery_apksigner" verify --print-certs "app/build/outputs/apk/debug/app-$abi-debug.apk" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
+            fgallery_report=$("$fgallery_apksigner" verify --print-certs "app/build/outputs/apk/debug/app-$abi-debug.apk")
+            printf '%s\n' "$fgallery_report"
+            fgallery_certificate=$(printf '%s\n' "$fgallery_report" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
             test "$fgallery_certificate" = "ce2293752c0a4a8c844caff57fa3bc28ee9206e927ad311dbcf3a5e71c803eb2"
           done
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: FGallery-debug
           path: app/build/outputs/apk/debug/app-arm64-v8a-debug.apk
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: FGallery-universal
           path: app/build/outputs/apk/debug/app-universal-debug.apk

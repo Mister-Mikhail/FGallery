@@ -36,6 +36,9 @@ android {
         keyAlias = "androiddebugkey"
         keyPassword = "android"
     }
+    buildTypes.getByName("debug") {
+        signingConfig = signingConfigs.getByName("debug")
+    }
 
     splits {
         abi {
