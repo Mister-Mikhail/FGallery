@@ -1,3 +1,5 @@
+import java.util.Base64
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -20,7 +22,7 @@ android {
 
     // Use the public development key explicitly; Gradle's default user directory
     // differs between environments and may silently create another debug key.
-    val testKeyBytes = java.util.Base64.getMimeDecoder().decode(
+    val testKeyBytes = Base64.getMimeDecoder().decode(
         rootProject.file(".github/debug-signing/debug.keystore.b64").readText()
     )
     val testKey = layout.buildDirectory.file("signing/fgallery-debug.keystore").get().asFile
