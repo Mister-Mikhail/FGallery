@@ -35,7 +35,7 @@ jobs:
         run: gradle :app:testDebugUnitTest :app:assembleDebug
       - name: Verify the development signing certificate
         run: |
-          fgallery_apksigner=$(rg --files "$ANDROID_HOME/build-tools" -g apksigner | sort -V | tail -n 1)
+          fgallery_apksigner=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)
           test -n "$fgallery_apksigner"
           for abi in arm64-v8a universal; do
             fgallery_certificate=$("$fgallery_apksigner" verify --print-certs "app/build/outputs/apk/debug/app-$abi-debug.apk" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
