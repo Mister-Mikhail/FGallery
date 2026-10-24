@@ -177,12 +177,12 @@ fun MoveDestinationScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.fillMaxSize(),
                 ) {
-                    items(filtered, key = { it.cover.relativePath }) { album ->
+                    items(filtered, key = { it.cover.folderTarget.ifBlank { "${it.cover.storageId}/${it.cover.relativePath}" } }) { album ->
                         Column(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(8.dp))
                                 .combinedClickable(
-                                    onClick = { onMoveHere(album) },
+                                    onClick = { onSelectAlbum(album) },
                                 ),
                         ) {
                             AsyncImage(
