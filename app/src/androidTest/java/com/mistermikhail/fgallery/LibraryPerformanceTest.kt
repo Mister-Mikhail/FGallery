@@ -39,6 +39,23 @@ class LibraryPerformanceTest {
         bitmap.recycle(); decoded.recycle(); target.delete()
     }
 
+    @Test fun animatedGifFramesAreDecodedAsDrawableNotFrozenPng() {
+        val gif = java.util.Base64.getDecoder().decode(
+            "R0lGODlhAgACAIEAAP8AAAAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQACgAAACwAAAAAAgACAAAIBgABCAQQEAAh+QQACgAAACwAAAAAAgACAIEAAP8AAAAAAAAAAAAIBgABCAQQEAA7"
+        )
+        val file = File(context.cacheDir, "animated-test.gif")
+        try {
+            file.writeBytes(gif)
+            val drawable = android.graphics.ImageDecoder.decodeDrawable(
+                android.graphics.ImageDecoder.createSource(file)
+            )
+            assertTrue("Animated GIF should remain an animated drawable",
+                drawable is android.graphics.drawable.AnimatedImageDrawable)
+            assertEquals(2, drawable.intrinsicWidth)
+            (drawable as android.graphics.drawable.AnimatedImageDrawable).apply { start(); stop() }
+        } finally { file.delete() }
+    }
+
     @Test fun thumbnailReopensFromDiskWithoutSourceAndInvalidatesWhenSourceChanges() = runBlocking {
         val source = File(context.cacheDir, "thumbnail-cache.jpg")
         val bitmap = Bitmap.createBitmap(4000, 3000, Bitmap.Config.ARGB_8888)
