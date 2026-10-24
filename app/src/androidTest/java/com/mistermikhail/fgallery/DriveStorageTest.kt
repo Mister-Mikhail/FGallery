@@ -69,6 +69,43 @@ class DriveStorageTest {
             assertTrue(File(StorageAccess.directory(context, destination.path, "empty")).isDirectory)
         } finally { base.deleteRecursively() }
     }
+    @Test fun massMoveOf2501FilesKeepsContentsAndDoesNotOverwriteCollision() = runBlocking {
+        val base = File(context.cacheDir, "mass-move-${UUID.randomUUID()}").apply { mkdirs() }
+        val sourceFolder = File(base, "from").apply { mkdirs() }
+        val destinationFolder = File(base, "to").apply { mkdirs() }
+        val root = StorageRoot("mass-test", "Test removable drive", base.path, base)
+        try {
+            val sources = (1..2501).map { index ->
+                val f = File(sourceFolder, "file-${index}.jpg")
+                f.writeBytes(byteArrayOf((index % 251).toByte(), (index / 251).toByte()))
+                DriveLibrary.item(Uri.fromFile(f), f.name, "image/jpeg", f.length(), 0, root, sourceFolder.path)!!
+            }
+            for (item in sources) {
+                StorageAccess.move(context, item, destinationFolder.path)
+            }
+            assertTrue(sourceFolder.listFiles().isNullOrEmpty())
+            assertEquals(2501, destinationFolder.listFiles()!!.size)
+            for (index in 1..2501) {
+                assertArrayEquals(
+                    byteArrayOf((index % 251).toByte(), (index / 251).toByte()),
+                    File(destinationFolder, "file-${index}.jpg").readBytes(),
+                )
+            }
+            val collision = File(sourceFolder, "file-1.jpg").apply { writeText("original") }
+            try {
+                val item = DriveLibrary.item(Uri.fromFile(collision), collision.name, "image/jpeg",
+                    collision.length(), 0, root, sourceFolder.path)!!
+                StorageAccess.move(context, item, destinationFolder.path)
+                fail("A duplicate destination must never overwrite either file")
+            } catch (_: IllegalStateException) {
+                assertEquals("original", collision.readText())
+                assertEquals(2L, File(destinationFolder, "file-1.jpg").length())
+            }
+        } finally {
+            base.deleteRecursively()
+        }
+    }
+
     @Test fun documentOnlyDriveSupportsMoveBinAndRestore() = runBlocking {
         val component = android.content.ComponentName(context, TestDriveProvider::class.java)
         context.packageManager.setComponentEnabledSetting(component, android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED, android.content.pm.PackageManager.DONT_KILL_APP)
