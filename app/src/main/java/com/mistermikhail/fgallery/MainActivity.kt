@@ -291,7 +291,28 @@ class MainActivity : ComponentActivity() {
                     notify("Готово")
                 } else {
                     viewModel.refresh()
-                    notify("Не удалось завершить операцию: ${failure.localizedMessage}. Выбор сохранён.")
+                    val security = if (failure is PartialMoveException) failure.cause as? SecurityException else failure as? SecurityException
+                    if (security == null) {
+                        notify("Не удалось завершить операцию: ${failure.localizedMessage}. Выбор сохранён.")
+                    } else {
+                        // A grant can cover only the first 2000 MediaStore URIs.
+                        // Prompt for the next remaining group without moving completed files again.
+                        val remainingOperation = if (failure is PartialMoveException && operation is PendingWriteOperation.Move)
+                            operation.copy(items = failure.remaining) else operation
+                        runCatching {
+                            val mediaUris = operationUris(remainingOperation)
+                                .filter { it.scheme == "content" && it.authority == MediaStore.AUTHORITY }.take(2000)
+                            val sender = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && mediaUris.isNotEmpty())
+                                MediaStore.createWriteRequest(contentResolver, mediaUris).intentSender
+                            else (security as? RecoverableSecurityException)?.userAction?.actionIntent?.intentSender
+                            check(sender != null) { "Нет доступа к оставшимся файлам" }
+                            pendingWrite = remainingOperation
+                            writeLauncher.launch(IntentSenderRequest.Builder(sender).build())
+                        }.onFailure {
+                            pendingWrite = null
+                            notify("Перемещена только часть файлов; остальные выбраны. ${it.localizedMessage}")
+                        }
+                    }
                 }
             }
         }
