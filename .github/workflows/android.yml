@@ -4,11 +4,13 @@ on:
   push:
     branches:
       - feature/quickpic-masonry-mvp
+      - feature/fgallery-0.2.8-fixes
     tags:
       - 'v*'
   pull_request:
     branches:
       - main
+      - feature/quickpic-masonry-mvp
   workflow_dispatch:
 
 concurrency:
