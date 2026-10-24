@@ -273,7 +273,9 @@ class MainActivity : ComponentActivity() {
                 selectedIds = failure.remaining.mapTo(mutableSetOf()) { it.id }
             }
         }
-        val writeLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
+        // The callback may launch another permission batch after 2000 files.
+        lateinit var writeLauncher: androidx.activity.result.ActivityResultLauncher<IntentSenderRequest>
+        writeLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
             val operation = pendingWrite
             pendingWrite = null
             if (operation == null) return@rememberLauncherForActivityResult
