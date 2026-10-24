@@ -17,7 +17,8 @@ import android.provider.MediaStore
 import android.provider.DocumentsContract
 import android.provider.Settings
 import android.os.Environment
-import com.mistermikhail.fgallery.data.StorageFolders
+import com.mistermikhail.fgallery.data.StorageFolder
+import com.mistermikhail.fgallery.data.MediaStoreWriteBatchs
 import androidx.compose.runtime.produceState
 import androidx.compose.material3.OutlinedTextField
 import androidx.activity.ComponentActivity
@@ -303,7 +304,7 @@ class MainActivity : ComponentActivity() {
                             operation.copy(items = failure.remaining) else operation
                         runCatching {
                             val mediaUris = operationUris(remainingOperation)
-                                .filter { it.scheme == "content" && it.authority == MediaStore.AUTHORITY }.take(2000)
+                                .filter { it.scheme == "content" && it.authority == MediaStore.AUTHORITY }.let(MediaStoreWriteBatch::next)
                             val sender = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && mediaUris.isNotEmpty())
                                 MediaStore.createWriteRequest(contentResolver, mediaUris).intentSender
                             else (security as? RecoverableSecurityException)?.userAction?.actionIntent?.intentSender
@@ -351,7 +352,7 @@ class MainActivity : ComponentActivity() {
                     runCatching {
                         val mediaUris = operationUris(retry)
                             .filter { it.scheme == "content" && it.authority == MediaStore.AUTHORITY }
-                            .take(2000)
+                            .let(MediaStoreWriteBatch::next)
                         val sender = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && mediaUris.isNotEmpty()) {
                             MediaStore.createWriteRequest(contentResolver, mediaUris).intentSender
                         } else (security as? RecoverableSecurityException)?.userAction?.actionIntent?.intentSender
