@@ -254,7 +254,7 @@ fun GalleryScreen(
                         title = {
                             Column {
                                 Text(
-                                    text = state.selectedAlbum ?: "FGallery",
+                                    text = state.albums.firstOrNull { it.key == state.selectedAlbum }?.name ?: "FGallery",
                                     fontWeight = FontWeight.SemiBold,
                                     fontSize = if (inAlbum) 14.sp else 22.sp,
                                     maxLines = 1,
@@ -577,12 +577,12 @@ private fun AlbumsGrid(
         horizontalArrangement = Arrangement.spacedBy(if (cleanupMode) 5.dp else 0.dp),
         verticalArrangement = Arrangement.spacedBy(if (cleanupMode) 5.dp else 0.dp),
     ) {
-        gridItems(albums, key = { it.name }) { album ->
+        gridItems(albums, key = { it.key }) { album ->
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(6.dp))
-                    .combinedClickable(onClick = { onOpenAlbum(album.name) }),
+                    .clip(RoundedCornerShape(if (cleanupMode) 6.dp else 0.dp))
+                    .combinedClickable(onClick = { onOpenAlbum(album.key) }),
             ) {
                 MediaPreview(
                     item = album.cover,
@@ -796,7 +796,7 @@ private fun MediaTile(
     onToggleSelection: (MediaItem) -> Unit,
     livePreview: Boolean,
 ) {
-    val shape = RoundedCornerShape(4.dp)
+    val shape = RoundedCornerShape(0.dp)
 
     Box(
         modifier = modifier
