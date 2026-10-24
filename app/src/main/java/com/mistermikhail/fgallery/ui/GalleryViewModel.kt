@@ -30,6 +30,8 @@ enum class SortMode {
     NAME_DESC,
     SIZE_DESC,
     SIZE_ASC,
+    TYPE_ASC,
+    TYPE_DESC,
 }
 
 data class AlbumSummary(
@@ -124,6 +126,8 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
             SortMode.NAME_DESC -> items.sortedByDescending { it.name.lowercase() }
             SortMode.SIZE_DESC -> items.sortedByDescending { it.sizeBytes }
             SortMode.SIZE_ASC -> items.sortedBy { it.sizeBytes }
+            SortMode.TYPE_ASC -> items.sortedWith(compareBy<MediaItem> { it.kind.name }.thenBy { it.name.lowercase() })
+            SortMode.TYPE_DESC -> items.sortedWith(compareByDescending<MediaItem> { it.kind.name }.thenBy { it.name.lowercase() })
         }
 
     /**
@@ -192,6 +196,8 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
             SortMode.NAME_DESC -> unsortedAlbums.sortedByDescending { it.name.lowercase() }
             SortMode.SIZE_DESC -> unsortedAlbums.sortedByDescending { it.totalSizeBytes }
             SortMode.SIZE_ASC -> unsortedAlbums.sortedBy { it.totalSizeBytes }
+            SortMode.TYPE_ASC -> unsortedAlbums.sortedBy { it.cover.kind.name }
+            SortMode.TYPE_DESC -> unsortedAlbums.sortedByDescending { it.cover.kind.name }
         }
 
         return state.copy(
