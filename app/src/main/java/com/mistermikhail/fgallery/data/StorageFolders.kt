@@ -8,8 +8,6 @@ import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import java.io.File
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
 
 object StorageFolders {
     fun hasFileAccess(): Boolean = Build.VERSION.SDK_INT >= 30 && Environment.isExternalStorageManager()
@@ -52,9 +50,8 @@ object StorageFolders {
         val before = source.length()
         check(source.renameTo(destination)) { "Не удалось переместить ${source.name}" }
         check(destination.exists() && destination.length() == before && !source.exists()) { "Перемещение не подтверждено" }
-        // Wait for MediaStore to reflect the filesystem before reloading the gallery.
-        val scanner = CountDownLatch(2)
-        MediaScannerConnection.scanFile(context, arrayOf(source.path, destination.path), null) { _, _ -> scanner.countDown() }
-        scanner.await(20, TimeUnit.SECONDS)
+        // An asynchronous scan avoids blocking once per file (up to 20 s each)
+        // during large 1000+ item moves. Both old and new paths are reconciled.
+        MediaScannerConnection.scanFile(context, arrayOf(source.path, destination.path), null, null)
     }
 }
