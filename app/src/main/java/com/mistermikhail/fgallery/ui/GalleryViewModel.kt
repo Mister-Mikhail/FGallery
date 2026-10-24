@@ -40,6 +40,7 @@ data class AlbumSummary(
     val count: Int,
     val newestDateMillis: Long,
     val totalSizeBytes: Long,
+    val key: String = name,
 )
 
 data class GalleryUiState(
@@ -115,6 +116,9 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    // Stable album identity must include drive and exact folder, never just a leaf name.
+    private fun albumKey(item: MediaItem): String = "${item.storageId}:${item.folderTarget.ifBlank { item.relativePath.ifBlank { item.album } }}"
+
     private fun sortItems(
         items: List<MediaItem>,
         mode: SortMode,
@@ -151,7 +155,7 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
             available.asSequence()
                 .filter {
                     state.selectedAlbum == null ||
-                        it.album == state.selectedAlbum
+                        albumKey(it) == state.selectedAlbum
                 }
                 .filter {
                     state.query.isBlank() ||
@@ -168,8 +172,9 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
         )
 
         val unsortedAlbums = available
-            .groupBy { it.album }
-            .mapNotNull { (name, items) ->
+            .groupBy(::albumKey)
+            .mapNotNull { (key, items) ->
+                val name = items.first().album
                 if (
                     state.query.isNotBlank() &&
                     !name.contains(state.query, ignoreCase = true)
@@ -182,6 +187,7 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
 
                 AlbumSummary(
                     name = name,
+                    key = key,
                     cover = cover,
                     count = items.size,
                     newestDateMillis = items.maxOfOrNull { it.dateTakenMillis } ?: 0L,
@@ -311,7 +317,7 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
     private fun prewarmAlbum(name: String) {
         val snapshot = _uiState.value
         val items = snapshot.allItems.filter {
-            it.album == name && it.uriKey !in (snapshot.recycleBinUris + snapshot.physicalBinUris)
+            albumKey(it) == name && it.uriKey !in (snapshot.recycleBinUris + snapshot.physicalBinUris)
         }
 
         albumWarmJob?.cancel()
