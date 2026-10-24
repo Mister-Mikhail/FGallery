@@ -278,14 +278,21 @@ class MainActivity : ComponentActivity() {
             pendingWrite = null
             if (operation == null) return@rememberLauncherForActivityResult
             if (result.resultCode != Activity.RESULT_OK) {
+                viewModel.refresh()
                 notify("Операция отменена. Выбор файлов сохранён.")
             } else uiScope.launch {
                 operationBusy = true
                 val failure = performWrite(operation)
                 retainFailedMove(failure)
                 operationBusy = false
-                if (failure == null) { if (operation is PendingWriteOperation.Replace) selectedItem = null; finishOperation(); notify("Готово") }
-                else { viewModel.refresh(); notify("Не удалось завершить операцию: ${failure.localizedMessage}. Выбор сохранён.") }
+                if (failure == null) {
+                    if (operation is PendingWriteOperation.Replace) selectedItem = null
+                    finishOperation()
+                    notify("Готово")
+                } else {
+                    viewModel.refresh()
+                    notify("Не удалось завершить операцию: ${failure.localizedMessage}. Выбор сохранён.")
+                }
             }
         }
 
@@ -314,16 +321,24 @@ class MainActivity : ComponentActivity() {
                 if (failure == null) { finishOperation(); notify("Готово"); return@launch }
                 val security = if (failure is PartialMoveException) failure.cause as? SecurityException else failure as? SecurityException
                 if (security != null) {
+                    // Never repeat files that already moved successfully before a partial failure.
+                    // Android limits each MediaStore permission request to 2000 items.
+                    val retry = if (failure is PartialMoveException && operation is PendingWriteOperation.Move)
+                        operation.copy(items = failure.remaining) else operation
                     runCatching {
-                        val sender = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                            MediaStore.createWriteRequest(contentResolver, operationUris(operation)).intentSender
+                        val mediaUris = operationUris(retry)
+                            .filter { it.scheme == "content" && it.authority == MediaStore.AUTHORITY }
+                            .take(2000)
+                        val sender = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && mediaUris.isNotEmpty()) {
+                            MediaStore.createWriteRequest(contentResolver, mediaUris).intentSender
                         } else (security as? RecoverableSecurityException)?.userAction?.actionIntent?.intentSender
-                        check(sender != null) { "Android не предоставил разрешение" }
-                        pendingWrite = operation
+                        check(sender != null) { "Для этих файлов требуется доступ к папке через Android" }
+                        pendingWrite = retry
                         writeLauncher.launch(IntentSenderRequest.Builder(sender).build())
                     }.onFailure {
                         pendingWrite = null
-                        notify("Android не разрешил операцию: ${it.localizedMessage}. Выберите папку через проводник.")
+                        viewModel.refresh()
+                        notify("Android не разрешил операцию: ${it.localizedMessage}. Выбор сохранён.")
                     }
                 } else {
                     viewModel.refresh()
