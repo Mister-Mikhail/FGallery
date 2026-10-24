@@ -926,7 +926,10 @@ private fun AnimatedGifPreview(item: MediaItem, modifier: Modifier = Modifier) {
     val drawable by produceState<android.graphics.drawable.Drawable?>(null, item.uri) {
         value = withContext(Dispatchers.IO) {
             runCatching {
-                ImageDecoder.decodeDrawable(ImageDecoder.createSource(context.contentResolver, item.uri))
+                val source = if (item.uri.scheme == "file")
+                    ImageDecoder.createSource(java.io.File(requireNotNull(item.uri.path)))
+                else ImageDecoder.createSource(context.contentResolver, item.uri)
+                ImageDecoder.decodeDrawable(source)
             }.getOrNull()
         }
     }
