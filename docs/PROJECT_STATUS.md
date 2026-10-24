@@ -42,3 +42,17 @@
 
 ## Следующий конкретный шаг
 **Проверить исходники 0.2.7/PR #2 на сценариях перемещения и сохранения кадрирования, воспроизвести падения/ошибки и собрать выпуск 0.2.8 с регрессионными тестами; затем проверить установку поверх 0.2.7 и USB/SD/GIF на реальном устройстве.** Не подменять настоящие исправления ещё одним косметическим APK.
+
+
+## 0.2.8 implementation / verification — 2026-10-25
+
+- **Live repository visibility: public**, permission `admin/push=true`. No private→public toggle required; public GitHub Actions minute availability still subject to actual workflow execution.
+- New code branch `feature/fgallery-0.2.8-fixes`, draft PR #4: https://github.com/Mister-Mikhail/FGallery/pull/4 . Base is active app branch `feature/quickpic-masonry-mvp`; PR is **not merged**. VersionName 0.2.8, versionCode10, shared debug certificate retained.
+- First code changes published to PR #4 (status **code in GitHub; device unverified**):
+  - FG-01: `MainActivity` retries only failed move items after partial completion; consent requests select at most 2000 MediaStore URIs, and additional batches are requested when needed. Denial retains selection and refreshes results. Direct-file bulk move no longer blocks up to 20 seconds waiting for MediaScanner per file. `MoveDestinationScreen` now selects a folder before committing, and its keys distinguish exact volume/target.
+  - FG-05: `GalleryViewModel` groups by physical folder/volume, preventing same-name directories across drives from merging into one album; album navigation uses stable keys.
+  - FG-03: animated GIF tile overlay uses Android ImageDecoder/AnimatedImageDrawable with lifecycle cleanup.
+  - FG-08: five requested sort categories (newest, oldest, name +/- , size +/- , type +/-), compact action buttons and settings, zero-gap normal album/mosaic/uniform grid, smaller folder title while preserving root FGallery size, USB/SD icon, removal of three redundant main-menu commands without disabling PDF/SVG or removable storage.
+- New **JVM tests**: 2501-item MediaStore consent batching and cancellation state. New **Android instrumented test**: move 2501 tiny actual files on a simulated storage root, verify all bytes and collision preservation. These tests are test code, not yet acceptance evidence.
+- Active validation: GitHub Actions PR run `40144802626` for head `82d6e1687aa5afe77fc35168616fc3d1f39de08c` was `pending` at first check. Do not mark CI passed until checked. Local build cannot be run in this session (no Android SDK or network in container); use remote GitHub Actions.
+- This is **not a delivered APK** yet. Do not distribute the older 0.2.7 release as 0.2.8, do not claim user-device acceptance. Follow up on CI; fix compilation/tests; publish code through active branch only after verified checks to allow GitHub release pipeline to provide exact source SHA and direct APK.
