@@ -56,3 +56,8 @@
 - New **JVM tests**: 2501-item MediaStore consent batching and cancellation state. New **Android instrumented test**: move 2501 tiny actual files on a simulated storage root, verify all bytes and collision preservation. These tests are test code, not yet acceptance evidence.
 - Active validation: GitHub Actions PR run `40144802626` for head `82d6e1687aa5afe77fc35168616fc3d1f39de08c` was `pending` at first check. Do not mark CI passed until checked. Local build cannot be run in this session (no Android SDK or network in container); use remote GitHub Actions.
 - This is **not a delivered APK** yet. Do not distribute the older 0.2.7 release as 0.2.8, do not claim user-device acceptance. Follow up on CI; fix compilation/tests; publish code through active branch only after verified checks to allow GitHub release pipeline to provide exact source SHA and direct APK.
+
+### CI implementation follow-up (2026-10-25)
+- First 0.2.8 run `40144888882` at SHA `11ce1418138088d1ce4fc75e9f7f8d1f0b5027c2` **failed Kotlin compilation**: malformed import `MediaStoreWriteBatchs`, duplicate `StorageFolder` import, missing `StorageFolders`. **No APK generated**. This is a confirmed CI build blocker, not a user-visible functional result.
+- Published correction commit `6e3e730d17c2322f14981d421853fbffef868250` restores the correct imports. New CI runs: push `40145295085` and PR `40145299051`, pending/in progress when last checked.
+- Keep FG-04 **open** until exact-corrected-SHA CI build/device tests pass, artifact signature matches existing 0.2.7 shared test key, and actual 0.2.8 APK is released; actual S23 acceptance remains separate.
