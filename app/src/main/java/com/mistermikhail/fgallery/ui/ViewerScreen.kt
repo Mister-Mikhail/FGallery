@@ -115,6 +115,8 @@ fun ViewerScreen(
     var showDetails by remember { mutableStateOf(false) }
     var renameTarget by remember { mutableStateOf<MediaItem?>(null) }
     var videoMenuExpanded by remember { mutableStateOf(false) }
+    var videoPlaying by remember { mutableStateOf(false) }
+    val context = LocalContext.current
 
     LaunchedEffect(initialItem.uriKey) {
         val target = items.indexOfFirst { it.uriKey == initialItem.uriKey }
@@ -130,7 +132,7 @@ fun ViewerScreen(
     val currentItem = items.getOrNull(pagerState.currentPage)
     val currentIsVideo = currentItem?.kind == MediaKind.VIDEO
     val deletingCurrent = currentItem?.uriKey == deletingItemUri && deletingItemUri != null
-    val mediaAlpha by animateFloatAsState(if (deletingCurrent) .45f else 1f, tween(160), label = "trash-fade")
+    val mediaAlpha by animateFloatAsState(if (deletingCurrent) .45f else 1f, tween(60), label = "trash-fade")
 
     LaunchedEffect(currentItem?.uriKey, currentIsVideo) {
         showDetails = false
@@ -142,15 +144,16 @@ fun ViewerScreen(
     }
 
     // One clock owns both PlayerView controls and the Compose file chrome.
-    LaunchedEffect(chromeVisible, currentIsVideo, videoMenuExpanded, chromeEpoch) {
-        if (chromeVisible && currentIsVideo && !videoMenuExpanded) {
-            delay(1_500L)
-            chromeVisible = false
+    LaunchedEffect(chromeVisible, currentIsVideo, videoMenuExpanded, chromeEpoch, videoPlaying) {
+        if (chromeVisible && currentIsVideo && videoPlaying && !videoMenuExpanded) {
+            delay(3_000L)
+            if (videoPlaying) chromeVisible = false
         }
     }
 
     fun toggleChrome() {
         if (currentIsVideo) {
+            if (!videoPlaying) { chromeVisible = true; chromeEpoch++; return }
             if (chromeVisible) {
                 chromeVisible = false
             } else {
@@ -182,6 +185,10 @@ fun ViewerScreen(
                     item = item,
                     active = activePage,
                     controlsVisible = activePage && chromeVisible,
+                    onPlayingChanged = { playing ->
+                        videoPlaying = playing
+                        if (!playing && activePage) { chromeVisible = true; chromeEpoch++ }
+                    },
                     onSingleTap = ::toggleChrome,
                     onDoubleTap = {
                         if (cleanupMode && !recycleBinMode) onTrash(item)
@@ -200,6 +207,27 @@ fun ViewerScreen(
                     active = activePage,
                 )
             }
+        }
+
+        if (editedPreviewUri != null && currentItem?.uriKey == initialItem.uriKey) {
+            AsyncImage(
+                model = editedPreviewUri,
+                contentDescription = "Результат кадрирования",
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Fit,
+            )
+        }
+
+        // The video name is the only inline metadata; full EXIF stays in "Сведения".
+        if (chromeVisible && currentIsVideo && currentItem != null) {
+            Text(
+                text = currentItem.name,
+                color = Color.White,
+                maxLines = 1,
+                modifier = Modifier.align(Alignment.BottomEnd).navigationBarsPadding()
+                    .padding(end = 20.dp, bottom = if (context.resources.configuration.orientation ==
+                        android.content.res.Configuration.ORIENTATION_LANDSCAPE) 7.dp else 23.dp),
+            )
         }
 
         AnimatedVisibility(
@@ -376,6 +404,7 @@ fun ViewerScreen(
         if (
             chromeVisible &&
             quickExifEnabled &&
+            !currentIsVideo &&
             currentItem != null
         ) {
             QuickExifOverlay(
@@ -415,6 +444,7 @@ private fun VideoPlayer(
     item: MediaItem,
     active: Boolean,
     controlsVisible: Boolean,
+    onPlayingChanged: (Boolean) -> Unit,
     onSingleTap: () -> Unit,
     onDoubleTap: () -> Unit,
 ) {
@@ -423,6 +453,7 @@ private fun VideoPlayer(
     val latestActive by rememberUpdatedState(active)
     val latestSingleTap by rememberUpdatedState(onSingleTap)
     val latestDoubleTap by rememberUpdatedState(onDoubleTap)
+    val latestPlayingChanged by rememberUpdatedState(onPlayingChanged)
     var sphericalView by remember(item.uri) { mutableStateOf<ZoomableSphericalView?>(null) }
     val detected360 by androidx.compose.runtime.produceState<Boolean?>(null, item.uriKey, item.dateModifiedMillis) {
         value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
@@ -446,6 +477,7 @@ private fun VideoPlayer(
     DisposableEffect(player) {
         val listener = object : Player.Listener {
             override fun onRenderedFirstFrame() { firstFrameRendered = true }
+            override fun onIsPlayingChanged(isPlaying: Boolean) { latestPlayingChanged(isPlaying) }
             override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
                 format360 = tracks.groups.any { group ->
                     group.type == androidx.media3.common.C.TRACK_TYPE_VIDEO &&
@@ -523,7 +555,9 @@ private fun VideoPlayer(
                     })
                     addView(surface, FrameLayout.LayoutParams(-1, -1))
                     val controls = PlayerControlView(ctx).apply { this.player = player; showTimeoutMs = 0 }
-                    addView(controls, FrameLayout.LayoutParams(-1, -2, android.view.Gravity.BOTTOM))
+                    addView(controls, FrameLayout.LayoutParams(-1, -2, android.view.Gravity.BOTTOM).apply {
+                        bottomMargin = if (ctx.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE) 0 else 12
+                    })
                     if (active && lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) surface.onResume() else surface.onPause()
                 }
             },
