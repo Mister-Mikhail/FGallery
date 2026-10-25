@@ -66,3 +66,17 @@
 - Commit `6e3e730d17c2322f14981d421853fbffef868250`: `build` passed (unit tests, APK, signing checks). PR Android 16 instrumented run `40145299051` produced **36 tests, 35 pass, 1 failure**. Both new tests (actual move of 2501 simulated files; animated 2-frame GIF decode) **passed**. Failed old test `TiffImageTest.tiffThumbnailAndViewerSupportTheSameZoomCycle`, at second double-tap assertion line 63.
 - Direct inspection in `ViewerScreen.kt` found `state.isAnimationRunning` in double-tap guard, which silently drops a second gesture while the 260ms zoom transition runs. The 0.2.8 branch now remembers prior tap target and continues cycle without dropping the tap. Test now advances Compose animation clock and waits for each expected zoom stop.
 - Correction pushed in `ddc2cc890b05bbf7e63eb3855f998b16cd441a4a`; new PR run `40145975230` was **in progress** at checkpoint. Never call 0.2.8 verified/publishable before all checks pass.
+
+### FGallery 0.2.8 test APK delivered — 2026-10-25
+
+**Status:** implemented in GitHub + **CI passed**, **not yet tested/accepted by user**. Not merged into the active app branch or `main`. No public GitHub Release v0.2.8 has been created yet; the tested APK was attached directly in the ChatGPT conversation.
+
+- VersionName `0.2.8`, versionCode `10`, package `com.mistermikhail.fgallery`, ABI `arm64-v8a`.
+- PR #4 (draft) https://github.com/Mister-Mikhail/FGallery/pull/4 and exact head SHA `ddc2cc890b05bbf7e63eb3855f998b16cd441a4a`.
+- GitHub CI https://github.com/Mister-Mikhail/FGallery/actions/runs/40145975230 , completed **success**. Gradle JVM test/build and both arm64/universal signing checks passed. **36/36 Android 16 emulator instrumented tests passed** (includes actual simulated-file move 2501 items and animated GIF decode).
+- ARM64 workflow artifact `FGallery-debug` id `12580472470`, extracted `app-arm64-v8a-debug.apk` and delivered as `FGallery-0.2.8-arm64-v8a.apk` in ChatGPT; size `81,501,072` bytes; APK SHA-256 `57884cee1306ba7828e80de43cf20c7277fec0536471e514e2fd5ea14064fae6`.
+- APK signing certificate SHA-256 verified by CI on arm64/universal: `ce2293752c0a4a8c844caff57fa3bc28ee9206e927ad311dbcf3a5e71c803eb2`, matching 0.2.7 development key. Manual installation should update 0.2.7 in place, but the phone install is **not tested**.
+- Compared to previous failed CI `40145299051`, the TIFF double-tap during animation is now handled without discarding the second tap; test synchronization explicitly waits for its zoom targets.
+- The release checker will **not** offer 0.2.8 until a GitHub Release is eventually published; the chat APK is a direct test distribution.
+
+**Next step:** Samsung Galaxy S23 / Android 16 tests for move grant/deny/cancel and selection, 1 and many (including large batches), physical USB/SD mounts and bins, GIF/video preview during scrolling, photo and video crop copy/replace and source preservation, TIFF/IIQ/P65+ 60MP/350MB decoding and zoom, SVG/PDF/360, installation over 0.2.7. Record each direct result here and in `docs/OPEN_BUGS.md`, then coordinate publication/PR integration if approved.
