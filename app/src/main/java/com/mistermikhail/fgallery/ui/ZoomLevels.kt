@@ -5,7 +5,7 @@ internal fun nextDoubleTapZoom(current: Float, fit: Float, maximum: Float, small
     val base = fit.takeIf { it.isFinite() && it > 0f } ?: 1f
     val max = maximum.takeIf { it.isFinite() && it >= base } ?: base * 8f
     val first = (base * 2f).coerceAtMost(max)
-    val second = base + (max - base) * .90f
+    val second = base + (max - base) * .85f
     val relative = current / base
     return when {
         !relative.isFinite() || relative <= 1.02f -> first
