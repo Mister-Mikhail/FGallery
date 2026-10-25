@@ -15,6 +15,16 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.unit.dp
 import com.mistermikhail.fgallery.data.MediaItem
 
+internal fun cursorBeforeExtension(filename: String): Int =
+    filename.lastIndexOf('.').takeIf { it > 0 } ?: filename.length
+
+/** All selected files keep their original extension, including mixed JPEG/RAW/video batches. */
+internal fun sequentialBatchNames(base: String, originalNames: List<String>): List<String> =
+    originalNames.mapIndexed { i, original ->
+        val extension = original.substringAfterLast('.', "").takeIf { original.lastIndexOf('.') > 0 }.orEmpty()
+        "${base}_${i + 1}" + if (extension.isNotEmpty()) ".$extension" else ""
+    }
+
 /** One rename form for the full viewer and the selected-items toolbar. */
 @Composable
 internal fun RenameDialog(
@@ -25,7 +35,7 @@ internal fun RenameDialog(
     if (items.isEmpty()) return
     val batch = items.size > 1
     val initial = if (batch) "" else items.first().name
-    val cursor = if (batch) 0 else initial.lastIndexOf('.').takeIf { it > 0 } ?: initial.length
+    val cursor = if (batch) 0 else cursorBeforeExtension(initial)
     var field by remember(items.map { it.uriKey }) {
         mutableStateOf(TextFieldValue(initial, selection = TextRange(cursor)))
     }
@@ -44,11 +54,7 @@ internal fun RenameDialog(
             val name = if ('.' !in entered && ext.isNotEmpty()) "$entered.$ext" else entered
             return listOf(original to name)
         }
-        return items.mapIndexed { index, item ->
-            val ext = item.name.substringAfterLast('.', "").takeIf { item.name.lastIndexOf('.') > 0 }.orEmpty()
-            val stem = entered.substringBeforeLast('.', entered)
-            item to ("${stem}_${index + 1}" + if (ext.isNotEmpty()) ".$ext" else "")
-        }
+        return items.zip(sequentialBatchNames(entered, items.map { it.name }))
     }
     AlertDialog(
         onDismissRequest = onDismiss,
