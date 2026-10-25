@@ -17,31 +17,48 @@ class EditedMediaStore(private val context: Context) {
         return file.canWrite() && (StorageFolders.hasFileAccess() || privateFile)
     }
 
+    private fun copyName(source: MediaItem, extension: String, parent: String): String =
+        CropCopyNames.next(source.name, extension) { candidate ->
+            if (parent.startsWith("content://")) StorageAccess.find(context, parent, candidate) != null
+            else File(parent, candidate).exists()
+        }
+
+    private fun copyNameInMediaStore(source: MediaItem, extension: String): String =
+        CropCopyNames.next(source.name, extension) { candidate ->
+            val collection = MediaStore.Files.getContentUri(source.storageId)
+            resolver.query(collection, arrayOf(MediaStore.MediaColumns._ID),
+                "${MediaStore.MediaColumns.DISPLAY_NAME} = ? AND ${MediaStore.MediaColumns.RELATIVE_PATH} = ?",
+                arrayOf(candidate, source.relativePath), null)?.use { it.moveToFirst() } ?: false
+        }
+
     fun saveCopy(source: MediaItem, edited: Uri, mime: String, extension: String): Uri {
         val originalParent = DriveRecycleBin(context).originalParent(source)
         if (canWriteDirect(source) && originalParent?.startsWith("content://") != true) return saveCopyFile(source, edited, extension, originalParent)
         if (originalParent != null) {
             val parent = StorageAccess.ensureDirectory(context, originalParent)
-            val destination = StorageAccess.create(context, parent, "${source.name.substringBeforeLast('.')}_crop_${java.util.UUID.randomUUID().toString().take(8)}.$extension", mime)
-            try { copy(edited, destination); return destination }
+            val destination = StorageAccess.create(context, parent, copyName(source, extension, parent), mime)
+            try { copy(edited, destination); CropExif.transfer(context, source, destination, mime); return destination }
             catch (e: Exception) { runCatching { StorageAccess.delete(context, destination) }; throw e }
         }
         if (android.provider.DocumentsContract.isDocumentUri(context, source.uri) || source.folderTarget.startsWith("content://")) {
             val parent = StorageAccess.parent(context, source)
-            val destination = StorageAccess.create(context, parent, "${source.name.substringBeforeLast('.')}_crop_${java.util.UUID.randomUUID().toString().take(8)}.$extension", mime)
-            try { copy(edited, destination); return destination }
+            val destination = StorageAccess.create(context, parent, copyName(source, extension, parent), mime)
+            try { copy(edited, destination); CropExif.transfer(context, source, destination, mime); return destination }
             catch (e: Exception) { runCatching { StorageAccess.delete(context, destination) }; throw e }
         }
         val collection = if (mime.startsWith("video/")) MediaStore.Video.Media.getContentUri(source.storageId) else MediaStore.Images.Media.getContentUri(source.storageId)
         val values = ContentValues().apply {
-            put(MediaStore.MediaColumns.DISPLAY_NAME, "${source.name.substringBeforeLast('.')}_crop_${System.currentTimeMillis()}.$extension")
+            put(MediaStore.MediaColumns.DISPLAY_NAME, copyNameInMediaStore(source, extension))
             put(MediaStore.MediaColumns.MIME_TYPE, mime)
             put(MediaStore.MediaColumns.RELATIVE_PATH, source.relativePath.ifBlank { if (mime.startsWith("video/")) "Movies/FGallery/" else "Pictures/FGallery/" })
+            if (source.dateTakenMillis > 0 && mime.startsWith("image/"))
+                put(MediaStore.Images.Media.DATE_TAKEN, source.dateTakenMillis)
             put(MediaStore.MediaColumns.IS_PENDING, 1)
         }
         val destination = resolver.insert(collection, values) ?: error("Не удалось создать файл")
         try {
             copy(edited, destination)
+            CropExif.transfer(context, source, destination, mime)
             check(resolver.update(destination, ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }, null, null) == 1)
             return destination
         } catch (e: Exception) {
@@ -66,6 +83,7 @@ class EditedMediaStore(private val context: Context) {
             } ?: error("Не удалось создать резервную копию")
             originalTouched = true
             copy(edited, source.uri)
+            CropExif.transfer(context, source.copy(uri = Uri.fromFile(backup)), source.uri, mime)
             if (android.provider.DocumentsContract.isDocumentUri(context, source.uri)) {
                 val same = source.name.substringAfterLast('.', "").lowercase().let { it == extension || (extension == "jpg" && it == "jpeg") }
                 if (!same) check(android.provider.DocumentsContract.renameDocument(resolver, source.uri, "${source.name.substringBeforeLast('.')}.$extension") != null)
@@ -96,6 +114,7 @@ class EditedMediaStore(private val context: Context) {
         var committed = false
         try {
             copy(edited, Uri.fromFile(staged))
+            CropExif.transfer(context, source, Uri.fromFile(staged), if (extension in listOf("jpg", "jpeg")) "image/jpeg" else "image/png")
             check(original.renameTo(backup)) { "Не удалось сохранить резервную копию оригинала" }
             movedOriginal = true
             check(staged.renameTo(destination)) { "Не удалось записать результат" }
@@ -118,16 +137,15 @@ class EditedMediaStore(private val context: Context) {
         val path = StorageAccess.file(context, source)?.path
         val original = File(path ?: error("Не найден исходный файл")).canonicalFile
         val parent = originalParent?.let { File(StorageAccess.ensureDirectory(context, it)) } ?: original.parentFile ?: error("Не найдена папка")
-        val destination = File(parent, "${original.nameWithoutExtension}_crop_${java.util.UUID.randomUUID().toString().take(8)}.$extension")
+        val destination = File(parent, copyName(source, extension, parent.path))
         val staged = File.createTempFile(".fgallery_copy_", ".$extension", parent)
         try {
             copy(edited, Uri.fromFile(staged))
+            CropExif.transfer(context, source, Uri.fromFile(staged), if (extension in listOf("jpg", "jpeg")) "image/jpeg" else if (extension == "png") "image/png" else "application/octet-stream")
             check(!destination.exists() && staged.renameTo(destination)) { "Не удалось сохранить копию" }
-            val scanned = java.util.concurrent.CountDownLatch(1)
-            var mediaUri: Uri? = null
-            android.media.MediaScannerConnection.scanFile(context, arrayOf(destination.path), null) { _, uri -> mediaUri = uri; scanned.countDown() }
-            scanned.await(20, java.util.concurrent.TimeUnit.SECONDS)
-            return mediaUri ?: Uri.fromFile(destination)
+            if (source.dateModifiedMillis > 0) destination.setLastModified(source.dateModifiedMillis)
+            android.media.MediaScannerConnection.scanFile(context, arrayOf(destination.path), null, null)
+            return Uri.fromFile(destination)
         } finally { staged.delete() }
     }
 
