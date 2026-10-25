@@ -330,6 +330,7 @@ class MainActivity : ComponentActivity() {
                         else -> failure as? SecurityException
                     }
                     if (security == null) {
+                        cropPreview = null
                         notify("Не удалось завершить операцию: ${failure.localizedMessage}. Выбор сохранён.")
                     } else {
                         // A grant can cover only the first 2000 MediaStore URIs.
@@ -350,6 +351,7 @@ class MainActivity : ComponentActivity() {
                             writeLauncher.launch(IntentSenderRequest.Builder(sender).build())
                         }.onFailure {
                             pendingWrite = null
+                            cropPreview = null
                             notify("Перемещена только часть файлов; остальные выбраны. ${it.localizedMessage}")
                         }
                     }
@@ -414,10 +416,12 @@ class MainActivity : ComponentActivity() {
                         writeLauncher.launch(IntentSenderRequest.Builder(sender).build())
                     }.onFailure {
                         pendingWrite = null
+                        cropPreview = null
                         viewModel.refresh()
                         notify("Android не разрешил операцию: ${it.localizedMessage}. Выбор сохранён.")
                     }
                 } else {
+                    cropPreview = null
                     viewModel.refresh()
                     notify("Не удалось завершить операцию: ${failure.localizedMessage}. Выбор сохранён; проверьте папки при частичном перемещении.")
                 }
