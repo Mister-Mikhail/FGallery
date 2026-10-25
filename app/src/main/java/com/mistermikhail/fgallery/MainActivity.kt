@@ -17,8 +17,8 @@ import android.provider.MediaStore
 import android.provider.DocumentsContract
 import android.provider.Settings
 import android.os.Environment
-import com.mistermikhail.fgallery.data.StorageFolder
-import com.mistermikhail.fgallery.data.MediaStoreWriteBatchs
+import com.mistermikhail.fgallery.data.StorageFolders
+import com.mistermikhail.fgallery.data.MediaStoreWriteBatch
 import androidx.compose.runtime.produceState
 import androidx.compose.material3.OutlinedTextField
 import androidx.activity.ComponentActivity
