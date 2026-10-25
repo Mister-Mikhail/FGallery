@@ -56,13 +56,15 @@ class TiffImageTest {
         fun percent() = node.fetchSemanticsNode().config[SemanticsProperties.StateDescription].removePrefix("Zoom ").removeSuffix("%").toInt()
         assertEquals(maxOf(8f, fit * 8f), max, .001f)
         node.performTouchInput { doubleClick(center) }
-        rule.waitForIdle()
-        assertTrue(kotlin.math.abs(200 - percent()) <= 1)
+        rule.mainClock.advanceTimeBy(350)
+        rule.waitUntil(5000) { kotlin.math.abs(200 - percent()) <= 1 }
         node.performTouchInput { doubleClick(center) }
-        rule.waitForIdle()
-        assertTrue(kotlin.math.abs(((fit + (max - fit) * .9f) / fit * 100).toInt() - percent()) <= 1)
+        rule.mainClock.advanceTimeBy(350)
+        val second = ((fit + (max - fit) * .9f) / fit * 100).toInt()
+        rule.waitUntil(5000) { kotlin.math.abs(second - percent()) <= 1 }
         node.performTouchInput { doubleClick(center) }
-        rule.waitForIdle()
+        rule.mainClock.advanceTimeBy(350)
+        rule.waitUntil(5000) { percent() == 100 }
         node.assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Zoom 100%"))
     }
 }
