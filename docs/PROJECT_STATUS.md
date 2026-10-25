@@ -98,3 +98,15 @@
 | FG-19 | P0 | Media opened **inside recycle bin** has visible Restore action without returning to grid; restore one item, do not alter others. | USER REQUEST, OPEN |
 
 Rules: do not turn 0.2.8 CI into user acceptance; treat this S23 report as newest truth. New version planned **0.2.9/code11**, reuse 0.2.7+ debug key; keep code separate in an unmerged PR against existing 0.2.8 source. During batch rename collisions or MediaStore prompts, preserve originals and re-selection; no overwrites. If EXIF cannot be transferred safely, do not silently claim it was preserved.
+
+### 0.2.9 in GitHub / awaiting CI (2026-10-25)
+- Code branch `feature/fgallery-0.2.9-s23-qa`, draft PR #5 https://github.com/Mister-Mikhail/FGallery/pull/5 , based on 0.2.8 head `ddc2cc890b05bbf7e63eb3855f998b16cd441a4a`, **not merged**.
+- Initial head `58f5eb1aa053603a4f4fb74689c328a66c1d111f`, version `0.2.9`/code `11`, test certificate unchanged. CI runs push `40152445434`, PR `40152461435` — active at first verification. Full compilation and Android acceptance results not yet available.
+- FG-10/11: shared RenameDialog in gallery/viewer; pre-extension cursor, warning on extension modification, multi-rename `base_1.ext` etc with per-file extension, preflight duplicates and on-disk collision prevention, partial failure selection retained.
+- FG-12: selection by repeated long press adds the inclusive range in current sort order; JVM range regression.
+- FG-13/14: rename copies `_1`, `_2`; copy EXIF camera/time/GPS/exposure to JPEG from original RAW where readable and verify critical fields before committing; fail explicitly instead of silently stripping, keep originals; put optimistic new item next to source, preserve date and original folder, reveal JPEG from RAW filter; cropped preview shown over viewer while replacement runs, staged backups retained.
+- FG-15/16: double-tap 85% of configured range; video controller auto-hides after 3s while playing, stays visible during pause, video inline metadata filename only, progress/time positions tweaked per orientation.
+- FG-17/18/19: cleanup double tap for PDF/SVG now bins rather than zoom, broom shortcut, immediate deletion fade; native FileObserver for quick opened-folder changes; in-bin viewer Restore button for image and menu for video.
+- New tests: `RenameSelectionTest`, `CropCopyNamesTest`, `MediaRenameRegressionTest`, `CropExifPreservationTest` (EXIF fixture synthetic JPEG carrying RAW extension; physical source samples need acceptance).
+- Caution: full manufacturer-specific MakerNotes or proprietary RAW metadata may not map to writable JPEG EXIF; explicit metadata retention check is implemented for common transferable tags. Do not claim complete MakerNotes preservation.
+- **Next:** inspect final exact-SHA build & emulator logs, signing and artifact, deliver arm64 APK, update status to CI passed, then wait for user S23 test and external-disk test. No merge without approval.
