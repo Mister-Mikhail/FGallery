@@ -30,6 +30,19 @@ internal object CropExif {
 
     fun transfer(context: Context, original: MediaItem, edited: Uri, targetMime: String) {
         if (targetMime != "image/jpeg") return
+        // Fake/unsupported contents can advertise image/jpeg while containing arbitrary
+        // bytes. Do not attempt to rewrite an invalid JPEG using ExifInterface.
+        val jpeg = context.contentResolver.openInputStream(edited)?.use { input ->
+            val header = ByteArray(3)
+            input.read(header) == header.size &&
+                (header[0].toInt() and 255) == 0xff &&
+                (header[1].toInt() and 255) == 0xd8 &&
+                (header[2].toInt() and 255) == 0xff
+        } == true
+        if (!jpeg) {
+            if (original.kind == MediaKind.RAW) throw IOException("Результат кадрирования не является JPEG")
+            return
+        }
         val source = context.contentResolver.openInputStream(original.uri)?.use { ExifInterface(it) }
             ?: throw IOException("Не удалось прочитать EXIF исходника")
         val attributes = tags.mapNotNull { tag -> source.getAttribute(tag)?.let { tag to it } }
