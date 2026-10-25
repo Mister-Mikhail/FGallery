@@ -124,8 +124,8 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
         mode: SortMode,
     ): List<MediaItem> =
         when (mode) {
-            SortMode.DATE_DESC -> items.sortedByDescending { it.dateTakenMillis }
-            SortMode.DATE_ASC -> items.sortedBy { it.dateTakenMillis }
+            SortMode.DATE_DESC -> items.sortedWith(compareByDescending<MediaItem> { it.dateTakenMillis }.thenBy { it.name.lowercase() })
+            SortMode.DATE_ASC -> items.sortedWith(compareBy<MediaItem> { it.dateTakenMillis }.thenBy { it.name.lowercase() })
             SortMode.NAME_ASC -> items.sortedBy { it.name.lowercase() }
             SortMode.NAME_DESC -> items.sortedByDescending { it.name.lowercase() }
             SortMode.SIZE_DESC -> items.sortedByDescending { it.sizeBytes }
@@ -211,6 +211,29 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
             recycleBinItems = recycle,
             albums = albums,
         )
+    }
+
+    /** Insert a successful edited copy immediately, rather than waiting for Android's media scanner. */
+    fun onSavedCopy(source: MediaItem, uri: android.net.Uri, mime: String) {
+        val filename = if (uri.scheme == "file") java.io.File(uri.path.orEmpty()).name else
+            getApplication<Application>().contentResolver.query(uri,
+                arrayOf(android.provider.MediaStore.MediaColumns.DISPLAY_NAME), null, null, null)
+                ?.use { if (it.moveToFirst()) it.getString(0) else null }
+                ?: source.name
+        val copy = source.copy(
+            id = com.mistermikhail.fgallery.data.StorageAccess.stableId(uri.toString()),
+            uri = uri,
+            name = filename,
+            mimeType = mime,
+            kind = if (mime.startsWith("video/")) MediaKind.VIDEO else MediaKind.IMAGE,
+            dateModifiedMillis = System.currentTimeMillis(),
+            sourcePath = if (uri.scheme == "file") uri.path.orEmpty() else "",
+        )
+        _uiState.update { current -> derive(current.copy(allItems = current.allItems.filterNot { it.uriKey == copy.uriKey } + copy)) }
+        viewModelScope.launch {
+            delay(900L) // Allow MediaStore.scanFile to include the copy before reconciling the catalogue.
+            refresh()
+        }
     }
 
     fun onPermissionChanged(granted: Boolean) {
