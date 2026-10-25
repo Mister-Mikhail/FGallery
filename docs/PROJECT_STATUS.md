@@ -110,3 +110,10 @@ Rules: do not turn 0.2.8 CI into user acceptance; treat this S23 report as newes
 - New tests: `RenameSelectionTest`, `CropCopyNamesTest`, `MediaRenameRegressionTest`, `CropExifPreservationTest` (EXIF fixture synthetic JPEG carrying RAW extension; physical source samples need acceptance).
 - Caution: full manufacturer-specific MakerNotes or proprietary RAW metadata may not map to writable JPEG EXIF; explicit metadata retention check is implemented for common transferable tags. Do not claim complete MakerNotes preservation.
 - **Next:** inspect final exact-SHA build & emulator logs, signing and artifact, deliver arm64 APK, update status to CI passed, then wait for user S23 test and external-disk test. No merge without approval.
+
+### 0.2.9 CI regression loop (2026-10-25)
+- Earlier head `1e04af491dd887d7f55ed2c751b830e6312e70d8`, push run `40152727404`: **build and signer succeeded** (shared signing cert), but Android 16 tests **35/38 passed**, 3 failed. Do not deliver this APK as verified. Failures:
+  1. `DocumentGestureTest.doubleTapCycleAndOffCenterPinch` expected old 90% range (730% total) after 85% requirement; actual 695%, now assertion changed.
+  2. `DriveStorageTest.eachDriveKeepsItsOwnBinAndReconnectPreservesRestoreLocation` uses bytes not constituting a real JPEG despite JPEG MIME; ExifInterface cannot write arbitrary bytes. New `CropExif` validates JPEG header, skips metadata for invalid non-RAW fixture, *rejects* invalid RAW-to-JPEG results rather than silently discarding EXIF.
+  3. `CropExifPreservationTest.rawToJpegCropKeepsPortableExifAndUsesIncrementingCopyNames`: source/copy comparison of exposure time needs a valid EXIF rational fixture. Corrected source value to 0.005 and added original exposure existence/equality assertion.
+- Code correction head `d3f8122fa0568e0b2c540175c85396ec4a01099c`, new push run `40153404324`, PR run `40153406274`, pending at handoff. Retest all 38 instrumented cases before distribution; all direct Samsung outcomes still OPEN.
