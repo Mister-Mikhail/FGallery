@@ -128,15 +128,15 @@ fun GalleryScreen(
     onCleanupModeChanged: (Boolean) -> Unit,
     selectedIds: Set<Long>,
     onToggleSelection: (MediaItem) -> Unit,
+    onLongPressSelection: (MediaItem) -> Unit,
     onClearSelection: () -> Unit,
     onTrashSelected: (List<MediaItem>) -> Unit,
-    onRenameSelected: (MediaItem, String) -> Unit,
+    onRenameSelected: (List<Pair<MediaItem, String>>) -> Unit,
     onMoveSelected: (List<MediaItem>) -> Unit,
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
     var sortMenuExpanded by remember { mutableStateOf(false) }
-    var renameTarget by remember { mutableStateOf<MediaItem?>(null) }
-    var renameText by remember { mutableStateOf("") }
+    var renameItems by remember { mutableStateOf<List<MediaItem>>(emptyList()) }
 
     val albumsGridState = rememberLazyGridState()
     val mosaicListState = rememberLazyListState()
@@ -226,15 +226,8 @@ fun GalleryScreen(
                                 Icon(Icons.Outlined.DriveFileMove, contentDescription = "Переместить")
                             }
 
-                            if (selectedItems.size == 1) {
-                                IconButton(
-                                    onClick = {
-                                        renameTarget = selectedItems.first()
-                                        renameText = selectedItems.first().name
-                                    },
-                                ) {
-                                    Icon(Icons.Outlined.Edit, contentDescription = "Переименовать")
-                                }
+                            IconButton(onClick = { renameItems = selectedItems }) {
+                                Icon(Icons.Outlined.Edit, contentDescription = "Переименовать выбранные")
                             }
 
                             IconButton(onClick = { onTrashSelected(selectedItems) }) {
@@ -277,6 +270,9 @@ fun GalleryScreen(
                         actions = {
                             IconButton(onClick = onToggleSearch, modifier = Modifier.size(40.dp)) {
                                 Icon(Icons.Outlined.Search, contentDescription = "Поиск")
+                            }
+                            if (cleanupMode) IconButton(onClick = { onCleanupModeChanged(false) }, modifier = Modifier.size(40.dp)) {
+                                Text("🧹", color = Color(0xFFFF5A36))
                             }
 
                             Box {
@@ -444,6 +440,7 @@ fun GalleryScreen(
                 cleanupMode = cleanupMode,
                 selectedIds = selectedIds,
                 onToggleSelection = onToggleSelection,
+                onLongPressSelection = onLongPressSelection,
                 activeLiveVideoId = effectiveLiveVideoId,
             )
 
@@ -457,43 +454,17 @@ fun GalleryScreen(
                 cleanupMode = cleanupMode,
                 selectedIds = selectedIds,
                 onToggleSelection = onToggleSelection,
+                onLongPressSelection = onLongPressSelection,
                 activeLiveVideoId = effectiveLiveVideoId,
             )
         }
     }
 
-    renameTarget?.let { item ->
-        AlertDialog(
-            onDismissRequest = { renameTarget = null },
-            title = { Text("Переименовать файл") },
-            text = {
-                OutlinedTextField(
-                    value = renameText,
-                    onValueChange = { renameText = it },
-                    singleLine = true,
-                    label = { Text("Новое имя") },
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        val value = renameText.trim()
-                        if (value.isNotBlank()) {
-                            onRenameSelected(item, value)
-                            renameTarget = null
-                        }
-                    },
-                ) {
-                    Text("Переименовать")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { renameTarget = null }) {
-                    Text("Отмена")
-                }
-            },
-        )
-    }
+    if (renameItems.isNotEmpty()) RenameDialog(
+        items = renameItems,
+        onDismiss = { renameItems = emptyList() },
+        onConfirm = { plan -> renameItems = emptyList(); onRenameSelected(plan) },
+    )
 
     if (state.settingsVisible) {
         SettingsSheet(
@@ -666,6 +637,7 @@ private fun MosaicGrid(
     cleanupMode: Boolean,
     selectedIds: Set<Long>,
     onToggleSelection: (MediaItem) -> Unit,
+    onLongPressSelection: (MediaItem) -> Unit,
     activeLiveVideoId: Long?,
 ) {
     val gap = if (cleanupMode) 5.dp else 0.dp
@@ -737,6 +709,7 @@ private fun MosaicGrid(
                         selected = item.id in selectedIds,
                         selectionMode = selectedIds.isNotEmpty(),
                         onToggleSelection = onToggleSelection,
+                onLongPressSelection = onLongPressSelection,
                         livePreview = item.id == activeLiveVideoId,
                     )
                 }
@@ -755,6 +728,7 @@ private fun UniformGrid(
     cleanupMode: Boolean,
     selectedIds: Set<Long>,
     onToggleSelection: (MediaItem) -> Unit,
+    onLongPressSelection: (MediaItem) -> Unit,
     activeLiveVideoId: Long?,
 ) {
     val gap = if (cleanupMode) 5.dp else 0.dp
@@ -779,6 +753,7 @@ private fun UniformGrid(
                 selected = item.id in selectedIds,
                 selectionMode = selectedIds.isNotEmpty(),
                 onToggleSelection = onToggleSelection,
+                onLongPressSelection = onLongPressSelection,
                 livePreview = item.id == activeLiveVideoId,
             )
         }
@@ -794,6 +769,7 @@ private fun MediaTile(
     selected: Boolean,
     selectionMode: Boolean,
     onToggleSelection: (MediaItem) -> Unit,
+    onLongPressSelection: (MediaItem) -> Unit,
     livePreview: Boolean,
 ) {
     val shape = RoundedCornerShape(0.dp)
@@ -820,7 +796,7 @@ private fun MediaTile(
                         onOpenMedia(item)
                     }
                 },
-                onLongClick = { onToggleSelection(item) },
+                onLongClick = { onLongPressSelection(item) },
             ),
     ) {
         MediaPreview(
