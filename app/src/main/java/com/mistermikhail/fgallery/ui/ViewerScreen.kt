@@ -566,6 +566,12 @@ private fun VideoPlayer(
                 surface.setUseSensorRotation(active)
                 val controls = frame.getChildAt(1) as PlayerControlView
                 if (controlsVisible) controls.show() else controls.hide()
+                val scale = frame.resources.displayMetrics.density
+                controls.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_progress)?.translationY =
+                    if (frame.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE) 9f * scale else 0f
+                val timeShift = if (frame.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT) -10f * scale else 0f
+                controls.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_position)?.translationY = timeShift
+                controls.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_duration)?.translationY = timeShift
             },
             modifier = videoModifier,
         )
@@ -584,6 +590,12 @@ private fun VideoPlayer(
             update = { view ->
                 if (view.player !== player) view.player = player
                 if (controlsVisible) view.showController() else view.hideController()
+                val scale = view.resources.displayMetrics.density
+                view.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_progress)?.translationY =
+                    if (view.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE) 9f * scale else 0f
+                val timeShift = if (view.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT) -10f * scale else 0f
+                view.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_position)?.translationY = timeShift
+                view.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_duration)?.translationY = timeShift
             },
             modifier = videoModifier,
         )
