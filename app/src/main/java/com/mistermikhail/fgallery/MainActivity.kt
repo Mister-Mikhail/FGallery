@@ -761,7 +761,7 @@ class MainActivity : ComponentActivity() {
 
         DisposableEffect(Unit) {
             var refreshSignal: kotlinx.coroutines.Job? = null
-            fun changed() { refreshSignal?.cancel(); refreshSignal = uiScope.launch { kotlinx.coroutines.delay(300); folderRevision++; viewModel.refresh() } }
+            fun changed() { refreshSignal?.cancel(); refreshSignal = uiScope.launch { kotlinx.coroutines.delay(120); folderRevision++; viewModel.refresh() } }
             val receiver = object : android.content.BroadcastReceiver() {
                 override fun onReceive(context: android.content.Context?, intent: Intent?) { changed() }
             }
@@ -811,6 +811,30 @@ class MainActivity : ComponentActivity() {
             }) { Text("Удалить") } },
             dismissButton = { TextButton(onClick = { directDeleteItems = emptyList() }) { Text("Отмена") } },
         )
+
+        // MediaStore notifications from other gallery apps may arrive late. Also watch the
+        // opened physical directory directly; this only runs while that album is visible.
+        val watchedFolder = state.albums.firstOrNull { it.key == state.selectedAlbum }?.cover?.folderTarget
+        DisposableEffect(state.selectedAlbum, watchedFolder) {
+            var refreshSignal: kotlinx.coroutines.Job? = null
+            val watcher = if (watchedFolder?.startsWith("/") == true) {
+                object : android.os.FileObserver(
+                    watchedFolder,
+                    android.os.FileObserver.CREATE or android.os.FileObserver.DELETE or
+                        android.os.FileObserver.MOVED_FROM or android.os.FileObserver.MOVED_TO or
+                        android.os.FileObserver.CLOSE_WRITE,
+                ) {
+                    override fun onEvent(event: Int, path: String?) {
+                        refreshSignal?.cancel()
+                        refreshSignal = uiScope.launch {
+                            kotlinx.coroutines.delay(180)
+                            viewModel.refresh()
+                        }
+                    }
+                }.also { it.startWatching() }
+            } else null
+            onDispose { refreshSignal?.cancel(); watcher?.stopWatching() }
+        }
 
         val current = selectedItem
 
