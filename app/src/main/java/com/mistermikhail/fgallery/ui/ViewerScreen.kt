@@ -36,6 +36,7 @@ import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.outlined.RestoreFromTrash
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -92,6 +93,8 @@ fun ViewerScreen(
     onBack: () -> Unit,
     active: Boolean = true,
     onTrash: (MediaItem) -> Unit,
+    onRestore: (MediaItem) -> Unit = {},
+    editedPreviewUri: android.net.Uri? = null,
     quickExifEnabled: Boolean,
     cleanupMode: Boolean,
     onShare: (MediaItem) -> Unit,
@@ -111,7 +114,6 @@ fun ViewerScreen(
     var chromeEpoch by remember { mutableIntStateOf(0) }
     var showDetails by remember { mutableStateOf(false) }
     var renameTarget by remember { mutableStateOf<MediaItem?>(null) }
-    var renameText by remember { mutableStateOf("") }
     var videoMenuExpanded by remember { mutableStateOf(false) }
 
     LaunchedEffect(initialItem.uriKey) {
@@ -186,9 +188,9 @@ fun ViewerScreen(
                     },
                 )
             } else if (item.kind == MediaKind.PDF) {
-                PdfViewer(item, ::toggleChrome)
+                PdfViewer(item, ::toggleChrome, onDoubleTap = if (cleanupMode && !recycleBinMode) ({ onTrash(item) }) else null)
             } else if (item.kind == MediaKind.SVG) {
-                SvgViewer(item, ::toggleChrome)
+                SvgViewer(item, ::toggleChrome, onDoubleTap = if (cleanupMode && !recycleBinMode) ({ onTrash(item) }) else null)
             } else {
                 TiledZoomableImage(
                     item = item,
@@ -257,8 +259,7 @@ fun ViewerScreen(
                                     onClick = {
                                         videoMenuExpanded = false
                                         renameTarget = currentItem
-                                        renameText = currentItem.name
-                                    },
+                                                                            },
                                 )
                                 if (!recycleBinMode) DropdownMenuItem(
                                     text = { Text("Переместить") },
@@ -273,6 +274,10 @@ fun ViewerScreen(
                                         videoMenuExpanded = false
                                         showDetails = true
                                     },
+                                )
+                                if (recycleBinMode) DropdownMenuItem(
+                                    text = { Text("Восстановить") },
+                                    onClick = { videoMenuExpanded = false; onRestore(currentItem) },
                                 )
                                 if (!recycleBinMode) DropdownMenuItem(
                                     text = { Text("В корзину") },
@@ -328,8 +333,7 @@ fun ViewerScreen(
                             if (!recycleBinMode) IconButton(
                                 onClick = {
                                     renameTarget = currentItem
-                                    renameText = currentItem.name
-                                },
+                                                                    },
                             ) {
                                 Icon(
                                     Icons.Outlined.Edit,
@@ -352,6 +356,9 @@ fun ViewerScreen(
                                     contentDescription = "Полные сведения / EXIF",
                                     tint = Color.White,
                                 )
+                            }
+                            if (recycleBinMode) IconButton(onClick = { onRestore(currentItem) }) {
+                                Icon(Icons.Outlined.RestoreFromTrash, contentDescription = "Восстановить", tint = Color.White)
                             }
                             if (!recycleBinMode) IconButton(onClick = { onTrash(currentItem) }) {
                                 Icon(
@@ -391,38 +398,15 @@ fun ViewerScreen(
     }
 
     renameTarget?.let { item ->
-        AlertDialog(
-            onDismissRequest = { renameTarget = null },
-            title = { Text("Переименовать файл") },
-            text = {
-                OutlinedTextField(
-                    value = renameText,
-                    onValueChange = { renameText = it },
-                    singleLine = true,
-                    label = { Text("Новое имя") },
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        val value = renameText.trim()
-                        if (value.isNotBlank()) {
-                            onRename(item, value)
-                            renameTarget = null
-                        }
-                    },
-                ) {
-                    Text("Переименовать")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { renameTarget = null }) {
-                    Text("Отмена")
-                }
+        RenameDialog(
+            items = listOf(item),
+            onDismiss = { renameTarget = null },
+            onConfirm = { plan ->
+                renameTarget = null
+                plan.forEach { (source, name) -> onRename(source, name) }
             },
         )
     }
-
 
 }
 
