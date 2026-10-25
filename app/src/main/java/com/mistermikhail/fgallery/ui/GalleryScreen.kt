@@ -40,6 +40,8 @@ import androidx.compose.material.icons.outlined.GridOn
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Sort
+import androidx.compose.material.icons.outlined.Usb
+import androidx.compose.material.icons.outlined.SdStorage
 import androidx.compose.material.icons.outlined.ViewQuilt
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
@@ -77,12 +79,19 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.media3.common.MediaItem as PlayerMediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import coil3.compose.AsyncImage
+import android.graphics.ImageDecoder
+import android.graphics.drawable.AnimatedImageDrawable
+import android.widget.ImageView
 import coil3.request.ImageRequest
 import coil3.video.videoFrameMillis
 import com.mistermikhail.fgallery.data.MediaItem
@@ -245,8 +254,11 @@ fun GalleryScreen(
                         title = {
                             Column {
                                 Text(
-                                    text = state.selectedAlbum ?: "FGallery",
+                                    text = state.albums.firstOrNull { it.key == state.selectedAlbum }?.name ?: "FGallery",
                                     fontWeight = FontWeight.SemiBold,
+                                    fontSize = if (inAlbum) 14.sp else 22.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
                                 )
                                 Text(
                                     text = if (inAlbum) {
@@ -263,65 +275,50 @@ fun GalleryScreen(
                             containerColor = MaterialTheme.colorScheme.background,
                         ),
                         actions = {
-                            IconButton(onClick = onToggleSearch) {
+                            IconButton(onClick = onToggleSearch, modifier = Modifier.size(40.dp)) {
                                 Icon(Icons.Outlined.Search, contentDescription = "Поиск")
                             }
 
                             Box {
-                                IconButton(onClick = { sortMenuExpanded = true }) {
+                                IconButton(onClick = { sortMenuExpanded = true }, modifier = Modifier.size(40.dp)) {
                                     Icon(Icons.Outlined.Sort, contentDescription = "Сортировка")
                                 }
                                 DropdownMenu(
                                     expanded = sortMenuExpanded,
                                     onDismissRequest = { sortMenuExpanded = false },
                                 ) {
-                                    SortMenuItem(
-                                        text = "Сначала новые",
-                                        selected = state.sortMode == SortMode.DATE_DESC,
-                                    ) {
-                                        sortMenuExpanded = false
-                                        onSortChanged(SortMode.DATE_DESC)
+                                    SortMenuItem("Сначала новые", state.sortMode == SortMode.DATE_DESC) {
+                                        sortMenuExpanded = false; onSortChanged(SortMode.DATE_DESC)
+                                    }
+                                    SortMenuItem("Сначала старые", state.sortMode == SortMode.DATE_ASC) {
+                                        sortMenuExpanded = false; onSortChanged(SortMode.DATE_ASC)
                                     }
                                     SortMenuItem(
-                                        text = "Сначала старые",
-                                        selected = state.sortMode == SortMode.DATE_ASC,
+                                        if (state.sortMode == SortMode.NAME_ASC) "Имя ↓ А–Я" else "Имя ↑ Я–А",
+                                        state.sortMode in listOf(SortMode.NAME_ASC, SortMode.NAME_DESC),
                                     ) {
                                         sortMenuExpanded = false
-                                        onSortChanged(SortMode.DATE_ASC)
+                                        onSortChanged(if (state.sortMode == SortMode.NAME_ASC) SortMode.NAME_DESC else SortMode.NAME_ASC)
                                     }
                                     SortMenuItem(
-                                        text = "Имя А–Я",
-                                        selected = state.sortMode == SortMode.NAME_ASC,
+                                        if (state.sortMode == SortMode.SIZE_ASC) "Размер ↑ · маленькие" else "Размер ↓ · крупные",
+                                        state.sortMode in listOf(SortMode.SIZE_ASC, SortMode.SIZE_DESC),
                                     ) {
                                         sortMenuExpanded = false
-                                        onSortChanged(SortMode.NAME_ASC)
+                                        onSortChanged(if (state.sortMode == SortMode.SIZE_ASC) SortMode.SIZE_DESC else SortMode.SIZE_ASC)
                                     }
                                     SortMenuItem(
-                                        text = "Имя Я–А",
-                                        selected = state.sortMode == SortMode.NAME_DESC,
+                                        if (state.sortMode == SortMode.TYPE_ASC) "Тип ↑" else "Тип ↓",
+                                        state.sortMode in listOf(SortMode.TYPE_ASC, SortMode.TYPE_DESC),
                                     ) {
                                         sortMenuExpanded = false
-                                        onSortChanged(SortMode.NAME_DESC)
-                                    }
-                                    SortMenuItem(
-                                        text = "Сначала крупные",
-                                        selected = state.sortMode == SortMode.SIZE_DESC,
-                                    ) {
-                                        sortMenuExpanded = false
-                                        onSortChanged(SortMode.SIZE_DESC)
-                                    }
-                                    SortMenuItem(
-                                        text = "Сначала мелкие",
-                                        selected = state.sortMode == SortMode.SIZE_ASC,
-                                    ) {
-                                        sortMenuExpanded = false
-                                        onSortChanged(SortMode.SIZE_ASC)
+                                        onSortChanged(if (state.sortMode == SortMode.TYPE_ASC) SortMode.TYPE_DESC else SortMode.TYPE_ASC)
                                     }
                                 }
                             }
 
                             if (inAlbum) {
-                                IconButton(onClick = onToggleGridMode) {
+                                IconButton(onClick = onToggleGridMode, modifier = Modifier.size(40.dp)) {
                                     Icon(
                                         if (state.gridMode == GridMode.MOSAIC) {
                                             Icons.Outlined.GridOn
@@ -334,7 +331,7 @@ fun GalleryScreen(
                             }
 
                             Box {
-                                IconButton(onClick = { menuExpanded = true }) {
+                                IconButton(onClick = { menuExpanded = true }, modifier = Modifier.size(40.dp)) {
                                     Icon(Icons.Outlined.MoreVert, contentDescription = "Меню")
                                 }
                                 DropdownMenu(
@@ -346,18 +343,6 @@ fun GalleryScreen(
                                         action()
                                     }
 
-                                    DropdownMenuItem(
-                                        text = { Text("Доступ ко всем файлам…") },
-                                        onClick = { apply(onManageFileAccess) },
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text("Подключить папку / накопитель…") },
-                                        onClick = { apply(onAddStorage) },
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text("Добавить PDF / SVG…") },
-                                        onClick = { apply(onImportDocuments) },
-                                    )
                                     DropdownMenuItem(
                                         text = { Text("Все файлы") },
                                         onClick = { apply { onFilterChanged(MediaFilter.ALL) } },
@@ -588,16 +573,16 @@ private fun AlbumsGrid(
         modifier = modifier.background(
             if (cleanupMode) Color(0xFFFF5A36) else MaterialTheme.colorScheme.background
         ),
-        contentPadding = PaddingValues(8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        contentPadding = PaddingValues(if (cleanupMode) 5.dp else 0.dp),
+        horizontalArrangement = Arrangement.spacedBy(if (cleanupMode) 5.dp else 0.dp),
+        verticalArrangement = Arrangement.spacedBy(if (cleanupMode) 5.dp else 0.dp),
     ) {
-        gridItems(albums, key = { it.name }) { album ->
+        gridItems(albums, key = { it.key }) { album ->
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(6.dp))
-                    .combinedClickable(onClick = { onOpenAlbum(album.name) }),
+                    .clip(RoundedCornerShape(if (cleanupMode) 6.dp else 0.dp))
+                    .combinedClickable(onClick = { onOpenAlbum(album.key) }),
             ) {
                 MediaPreview(
                     item = album.cover,
@@ -615,11 +600,16 @@ private fun AlbumsGrid(
                         )
                         .padding(horizontal = 10.dp, vertical = 7.dp),
                 ) {
-                    Text(
-                        album.name,
-                        maxLines = 1,
-                        fontWeight = FontWeight.Medium,
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (album.cover.storageId != "external_primary" && album.cover.storageId.isNotBlank()) {
+                            Icon(
+                                if (album.cover.storageName.contains("USB", true)) Icons.Outlined.Usb else Icons.Outlined.SdStorage,
+                                contentDescription = album.cover.storageName,
+                                modifier = Modifier.size(15.dp),
+                            )
+                        }
+                        Text(album.name, maxLines = 1, fontWeight = FontWeight.Medium, overflow = TextOverflow.Ellipsis)
+                    }
                     Text(
                         "${album.count}",
                         style = MaterialTheme.typography.labelSmall,
@@ -678,7 +668,7 @@ private fun MosaicGrid(
     onToggleSelection: (MediaItem) -> Unit,
     activeLiveVideoId: Long?,
 ) {
-    val gap = if (cleanupMode) 5.dp else 3.dp
+    val gap = if (cleanupMode) 5.dp else 0.dp
     val density = LocalDensity.current
     var gridWidthPx by remember { mutableIntStateOf(0) }
 
@@ -767,7 +757,7 @@ private fun UniformGrid(
     onToggleSelection: (MediaItem) -> Unit,
     activeLiveVideoId: Long?,
 ) {
-    val gap = if (cleanupMode) 5.dp else 3.dp
+    val gap = if (cleanupMode) 5.dp else 0.dp
 
     LazyVerticalGrid(
         columns = GridCells.Adaptive(112.dp),
@@ -806,7 +796,7 @@ private fun MediaTile(
     onToggleSelection: (MediaItem) -> Unit,
     livePreview: Boolean,
 ) {
-    val shape = RoundedCornerShape(4.dp)
+    val shape = RoundedCornerShape(0.dp)
 
     Box(
         modifier = modifier
@@ -916,12 +906,43 @@ private fun MediaPreview(
     Box(modifier.background(MaterialTheme.colorScheme.surfaceVariant)) {
         AsyncImage(request, item.name, contentScale = ContentScale.Crop,
             onError = { previewFailed = true }, modifier = Modifier.fillMaxSize())
+        if (item.kind == MediaKind.IMAGE &&
+            (item.name.endsWith(".gif", ignoreCase = true) || item.mimeType == "image/gif")) {
+            AnimatedGifPreview(item, Modifier.fillMaxSize())
+        }
         if (livePreview && item.kind == MediaKind.VIDEO && !liveFailed) {
             InlineVideoPreview(item, Modifier.fillMaxSize(), onError = { liveFailed = true })
         } else if (previewFailed && cachedModel == null) {
             Text(if (item.kind == MediaKind.VIDEO) "Видео · нет превью" else item.name.substringAfterLast('.').uppercase(),
                 style = MaterialTheme.typography.labelSmall, modifier = Modifier.align(Alignment.Center))
         }
+    }
+}
+
+/** Android's platform decoder handles real animated GIF frames without converting to PNG. */
+@Composable
+private fun AnimatedGifPreview(item: MediaItem, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val drawable by produceState<android.graphics.drawable.Drawable?>(null, item.uri) {
+        value = withContext(Dispatchers.IO) {
+            runCatching {
+                val source = if (item.uri.scheme == "file")
+                    ImageDecoder.createSource(java.io.File(requireNotNull(item.uri.path)))
+                else ImageDecoder.createSource(context.contentResolver, item.uri)
+                ImageDecoder.decodeDrawable(source)
+            }.getOrNull()
+        }
+    }
+    if (drawable != null) {
+        DisposableEffect(drawable) {
+            (drawable as? AnimatedImageDrawable)?.start()
+            onDispose { (drawable as? AnimatedImageDrawable)?.stop() }
+        }
+        AndroidView(
+            factory = { ImageView(it).apply { scaleType = ImageView.ScaleType.CENTER_CROP } },
+            update = { it.setImageDrawable(drawable) },
+            modifier = modifier,
+        )
     }
 }
 

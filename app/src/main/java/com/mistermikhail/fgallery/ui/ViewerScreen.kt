@@ -636,6 +636,7 @@ internal fun TiledZoomableImage(
 
 
 
+    var previousTapTarget by remember(item.uri) { mutableFloatStateOf(0f) }
     val doubleClick = remember(item.id, cleanupMode) {
         DoubleClickToZoomListener { _, centroid ->
             val state = zoomableState
@@ -644,11 +645,16 @@ internal fun TiledZoomableImage(
                 return@DoubleClickToZoomListener
             }
 
-            if ((needsFullSource && !fullDecoded) || !imageState.isImageDisplayed || !state.contentTransformation.isSpecified || state.isAnimationRunning) return@DoubleClickToZoomListener
+            if ((needsFullSource && !fullDecoded) || !imageState.isImageDisplayed || !state.contentTransformation.isSpecified) return@DoubleClickToZoomListener
             val transformation = state.contentTransformation
             val fit = maxOf(transformation.scaleMetadata.initialScale.scaleX, transformation.scaleMetadata.initialScale.scaleY)
-            val current = maxOf(transformation.scale.scaleX, transformation.scale.scaleY)
+            // Second double taps must not be silently discarded while the first zoom
+            // animation completes. Advance from its target, not the intermediate scale.
+            val current = if (state.isAnimationRunning && previousTapTarget > 0f) {
+                previousTapTarget
+            } else maxOf(transformation.scale.scaleX, transformation.scale.scaleY)
             val target = nextDoubleTapZoom(current, fit, maxOf(8f, fit * 8f), smallImage = fit * 2f >= 1f)
+            previousTapTarget = target
             if (target <= fit * 1.001f) state.resetZoom(animationSpec = tween(260))
             else state.zoomTo(zoomFactor = target, centroid = centroid, animationSpec = tween(260))
         }

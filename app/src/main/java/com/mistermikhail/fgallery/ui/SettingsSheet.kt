@@ -42,19 +42,19 @@ fun SettingsSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
-                .padding(start = 20.dp, end = 20.dp, bottom = 28.dp),
+                .padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
         ) {
             Text(
                 text = "Настройки",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(bottom = 18.dp),
+                modifier = Modifier.padding(bottom = 6.dp),
             )
 
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 8.dp),
+                    .padding(vertical = 3.dp),
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -66,7 +66,7 @@ fun SettingsSheet(
                         style = MaterialTheme.typography.bodyLarge,
                     )
                     Text(
-                        text = "Показывать краткие данные снимка поверх открытого фото вместе с элементами управления.",
+                        text = "Показывать вместе с панелью просмотра.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
                         modifier = Modifier.padding(top = 4.dp),
@@ -79,16 +79,10 @@ fun SettingsSheet(
                 )
             }
 
-            SettingSwitch("Подтверждать перемещение", "Дополнительный вопрос перед перемещением. Разрешение Android на чужие файлы может потребоваться отдельно.", confirmMove, onConfirmMoveChanged)
-            SettingSwitch("Подтверждать переименование", "Дополнительный вопрос перед изменением имени файла.", confirmRename, onConfirmRenameChanged)
+            SettingSwitch("Подтверждать перемещение", "Выключено по умолчанию", confirmMove, onConfirmMoveChanged)
+            SettingSwitch("Подтверждать переименование", "", confirmRename, onConfirmRenameChanged)
             TextButton(onClick = onCheckForUpdates) { Text("Проверить обновления") }
 
-            Text(
-                text = "Полные сведения о файле и EXIF всегда доступны через кнопку информации в просмотрщике.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
-                modifier = Modifier.padding(top = 14.dp),
-            )
         }
     }
 }
@@ -102,17 +96,16 @@ private fun SettingSwitch(
     onCheckedChange: (Boolean) -> Unit,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.bodyLarge)
-            Text(
+            if (description.isNotBlank()) Text(
                 description,
-                style = MaterialTheme.typography.bodySmall,
+                style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
-                modifier = Modifier.padding(top = 4.dp),
             )
         }
         Switch(checked = checked, onCheckedChange = onCheckedChange)
