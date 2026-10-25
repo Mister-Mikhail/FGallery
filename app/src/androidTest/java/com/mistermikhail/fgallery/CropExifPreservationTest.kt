@@ -33,7 +33,7 @@ class CropExifPreservationTest {
                 setAttribute(ExifInterface.TAG_MAKE, "Canon")
                 setAttribute(ExifInterface.TAG_MODEL, "EOS 5DS R")
                 setAttribute(ExifInterface.TAG_DATETIME_ORIGINAL, "2026:10:25 12:34:56")
-                setAttribute(ExifInterface.TAG_EXPOSURE_TIME, "1/200")
+                setAttribute(ExifInterface.TAG_EXPOSURE_TIME, "0.005")
                 setAttribute(ExifInterface.TAG_F_NUMBER, "5.6")
                 setAttribute(ExifInterface.TAG_GPS_LATITUDE, "55/1,45/1,0/1")
                 setAttribute(ExifInterface.TAG_GPS_LATITUDE_REF, "N")
@@ -41,6 +41,8 @@ class CropExifPreservationTest {
                 setAttribute(ExifInterface.TAG_GPS_LONGITUDE_REF, "E")
                 saveAttributes()
             }
+            val originalExposure = ExifInterface(source).getAttribute(ExifInterface.TAG_EXPOSURE_TIME)
+            assertNotNull("Fixture must contain shutter-speed metadata", originalExposure)
             val sourceItem = MediaItem(1, Uri.fromFile(source), source.name, "image/x-adobe-dng",
                 MediaKind.RAW, 1L, 80, 60, 0, "tests", "", source.length())
             val first = EditedMediaStore(context).saveCopy(sourceItem, Uri.fromFile(edited), "image/jpeg", "jpg")
@@ -56,7 +58,7 @@ class CropExifPreservationTest {
                 assertEquals("Canon", exif.getAttribute(ExifInterface.TAG_MAKE))
                 assertEquals("EOS 5DS R", exif.getAttribute(ExifInterface.TAG_MODEL))
                 assertEquals("2026:10:25 12:34:56", exif.getAttribute(ExifInterface.TAG_DATETIME_ORIGINAL))
-                assertNotNull(exif.getAttribute(ExifInterface.TAG_EXPOSURE_TIME))
+                assertEquals(originalExposure, exif.getAttribute(ExifInterface.TAG_EXPOSURE_TIME))
                 assertNotNull(exif.getAttribute(ExifInterface.TAG_GPS_LATITUDE))
                 assertEquals(ExifInterface.ORIENTATION_NORMAL, exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, -1))
             }
