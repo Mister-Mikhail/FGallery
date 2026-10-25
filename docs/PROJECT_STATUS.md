@@ -61,3 +61,8 @@
 - First 0.2.8 run `40144888882` at SHA `11ce1418138088d1ce4fc75e9f7f8d1f0b5027c2` **failed Kotlin compilation**: malformed import `MediaStoreWriteBatchs`, duplicate `StorageFolder` import, missing `StorageFolders`. **No APK generated**. This is a confirmed CI build blocker, not a user-visible functional result.
 - Published correction commit `6e3e730d17c2322f14981d421853fbffef868250` restores the correct imports. New CI runs: push `40145295085` and PR `40145299051`, pending/in progress when last checked.
 - Keep FG-04 **open** until exact-corrected-SHA CI build/device tests pass, artifact signature matches existing 0.2.7 shared test key, and actual 0.2.8 APK is released; actual S23 acceptance remains separate.
+
+### 0.2.8 validation / gesture regression follow-up — 2026-10-25
+- Commit `6e3e730d17c2322f14981d421853fbffef868250`: `build` passed (unit tests, APK, signing checks). PR Android 16 instrumented run `40145299051` produced **36 tests, 35 pass, 1 failure**. Both new tests (actual move of 2501 simulated files; animated 2-frame GIF decode) **passed**. Failed old test `TiffImageTest.tiffThumbnailAndViewerSupportTheSameZoomCycle`, at second double-tap assertion line 63.
+- Direct inspection in `ViewerScreen.kt` found `state.isAnimationRunning` in double-tap guard, which silently drops a second gesture while the 260ms zoom transition runs. The 0.2.8 branch now remembers prior tap target and continues cycle without dropping the tap. Test now advances Compose animation clock and waits for each expected zoom stop.
+- Correction pushed in `ddc2cc890b05bbf7e63eb3855f998b16cd441a4a`; new PR run `40145975230` was **in progress** at checkpoint. Never call 0.2.8 verified/publishable before all checks pass.
