@@ -124,6 +124,7 @@ class MainActivity : ComponentActivity() {
         var pendingTreeMove by remember { mutableStateOf<PendingTreeMove?>(null) }
         var pendingCropItem by remember { mutableStateOf<MediaItem?>(null) }
         var pendingCropSave by remember { mutableStateOf<Pair<MediaItem, Uri>?>(null) }
+        var cropPreview by remember { mutableStateOf<Pair<String, Uri>?>(null) }
         var firstLaunchAccess by remember { mutableStateOf(false) }
         var pendingAccessWrite by remember { mutableStateOf<PendingWriteOperation?>(null) }
         var waitingAccessWrite by remember { mutableStateOf<PendingWriteOperation?>(null) }
@@ -305,6 +306,7 @@ class MainActivity : ComponentActivity() {
             pendingWrite = null
             if (operation == null) return@rememberLauncherForActivityResult
             if (result.resultCode != Activity.RESULT_OK) {
+                cropPreview = null
                 viewModel.refresh()
                 notify("Операция отменена. Выбор файлов сохранён.")
             } else uiScope.launch {
@@ -313,10 +315,14 @@ class MainActivity : ComponentActivity() {
                 retainFailedMove(failure)
                 operationBusy = false
                 if (failure == null) {
-                    if (operation is PendingWriteOperation.Replace) selectedItem = null
+                    if (operation is PendingWriteOperation.Replace) {
+                        viewModel.refresh()
+                        uiScope.launch { kotlinx.coroutines.delay(450); cropPreview = null }
+                    }
                     finishOperation()
                     notify("Готово")
                 } else {
+                    cropPreview = null
                     viewModel.refresh()
                     val security = when (failure) {
                         is PartialMoveException -> failure.cause as? SecurityException
@@ -375,7 +381,14 @@ class MainActivity : ComponentActivity() {
                 val failure = performWrite(operation)
                 retainFailedMove(failure)
                 operationBusy = false
-                if (failure == null) { finishOperation(); notify("Готово"); return@launch }
+                if (failure == null) {
+                    finishOperation()
+                    if (operation is PendingWriteOperation.Replace) {
+                        uiScope.launch { kotlinx.coroutines.delay(450); cropPreview = null }
+                    }
+                    notify("Готово")
+                    return@launch
+                }
                 val security = when (failure) {
                         is PartialMoveException -> failure.cause as? SecurityException
                         is PartialRenameException -> failure.cause as? SecurityException
@@ -687,7 +700,11 @@ class MainActivity : ComponentActivity() {
             uiScope.launch {
                 operationBusy = true
                 operationMessage = "Восстановление"
-                try { viewModel.restoreFromRecycleBin(items); selectedIds = emptySet() }
+                try {
+                    viewModel.restoreFromRecycleBin(items)
+                    selectedIds = emptySet()
+                    if (items.any { it.uriKey == selectedItem?.uriKey }) selectedItem = null
+                }
                 catch (e: Exception) { notify("Не удалось восстановить: ${e.localizedMessage}") }
                 finally { operationBusy = false }
             }
@@ -995,6 +1012,8 @@ class MainActivity : ComponentActivity() {
                         onBack = { selectedItem = null },
                         active = videoCropItem == null && !operationBusy,
                         onTrash = { requestTrash(listOf(it), keepViewerOpen = true) },
+                        onRestore = { restoreFromRecycleBin(listOf(it)) },
+                        editedPreviewUri = cropPreview?.takeIf { it.first == animatedItem.uriKey }?.second,
                         quickExifEnabled = state.quickExifEnabled,
                         cleanupMode = cleanupMode,
                         onShare = ::shareMedia,
@@ -1072,7 +1091,7 @@ class MainActivity : ComponentActivity() {
             val canReplace = source.kind == MediaKind.IMAGE && source.mimeType in listOf("image/jpeg", "image/png")
             AlertDialog(
                 onDismissRequest = { pendingCropSave = null },
-                title = { Text("Сохранить кадрирование") },
+                title = { Text(if (source.kind == MediaKind.RAW) "Сохранить RAW как JPG" else "Сохранить кадрирование") },
                 confirmButton = {
                     TextButton(onClick = {
                         pendingCropSave = null
@@ -1081,14 +1100,15 @@ class MainActivity : ComponentActivity() {
                         uiScope.launch {
                             val result = withContext(Dispatchers.IO) { runCatching { EditedMediaStore(this@MainActivity).saveCopy(source, croppedUri, mime, extension) } }
                             operationBusy = false
-                            result.onSuccess { viewModel.refresh(); notify("Копия сохранена") }.onFailure { notify("Не удалось сохранить копию: ${it.localizedMessage}") }
+                            result.onSuccess { saved -> viewModel.onSavedCopy(source, saved, mime); notify("Копия сохранена") }.onFailure { notify("Не удалось сохранить копию: ${it.localizedMessage}") }
                         }
-                    }) { Text("Сохранить копию") }
+                    }) { Text(if (source.kind == MediaKind.RAW) "Сохранить копию как JPG" else "Сохранить копию") }
                 },
                 dismissButton = {
                     androidx.compose.foundation.layout.Row {
                         if (canReplace) TextButton(onClick = {
                             pendingCropSave = null
+                            cropPreview = source.uriKey to croppedUri
                             requestWrite(PendingWriteOperation.Replace(source, croppedUri, mime, extension), skipConfirmation = true)
                         }) { Text("Заменить оригинал") }
                         TextButton(onClick = { pendingCropSave = null }) { Text("Отмена") }
@@ -1106,7 +1126,7 @@ class MainActivity : ComponentActivity() {
                     uiScope.launch {
                         val result = withContext(Dispatchers.IO) { runCatching { EditedMediaStore(this@MainActivity).saveCopy(item, uri, "video/mp4", "mp4") } }
                         operationBusy = false
-                        result.onSuccess { viewModel.refresh(); notify("Видео сохранено") }.onFailure { notify("Не удалось сохранить видео: ${it.localizedMessage}") }
+                        result.onSuccess { saved -> viewModel.onSavedCopy(item, saved, "video/mp4"); notify("Видео сохранено") }.onFailure { notify("Не удалось сохранить видео: ${it.localizedMessage}") }
                     }
                 }
             })
