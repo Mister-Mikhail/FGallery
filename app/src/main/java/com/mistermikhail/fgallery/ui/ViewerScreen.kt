@@ -617,15 +617,15 @@ internal fun TiledZoomableImage(
     active: Boolean = true,
 ) {
     val context = LocalContext.current
-    var imageFailed by remember(item.uri) { mutableStateOf(false) }
-    var fullSource by remember(item.uri) { mutableStateOf(com.mistermikhail.fgallery.data.FullResolutionFiles.cached(context, item)) }
-    var fullDecoded by remember(item.uri) { mutableStateOf(false) }
-    var fullError by remember(item.uri) { mutableStateOf<String?>(null) }
+    var imageFailed by remember(item.uri, item.dateModifiedMillis, item.sizeBytes) { mutableStateOf(false) }
+    var fullSource by remember(item.uri, item.dateModifiedMillis, item.sizeBytes) { mutableStateOf(com.mistermikhail.fgallery.data.FullResolutionFiles.cached(context, item)) }
+    var fullDecoded by remember(item.uri, item.dateModifiedMillis, item.sizeBytes) { mutableStateOf(false) }
+    var fullError by remember(item.uri, item.dateModifiedMillis, item.sizeBytes) { mutableStateOf<String?>(null) }
     val needsFullSource = item.kind == MediaKind.RAW || com.mistermikhail.fgallery.data.TiffImages.isTiff(item.name, item.mimeType)
     var cachedPreview by remember(item.uri, item.dateModifiedMillis, item.sizeBytes) {
         mutableStateOf(ThumbnailCache.cached(context, item))
     }
-    LaunchedEffect(item.uri, active) {
+    LaunchedEffect(item.uri, item.dateModifiedMillis, item.sizeBytes, active) {
         if (needsFullSource && active && fullSource == null) {
             try {
                 if (cachedPreview == null) cachedPreview = ThumbnailCache.ensure(context, item)
