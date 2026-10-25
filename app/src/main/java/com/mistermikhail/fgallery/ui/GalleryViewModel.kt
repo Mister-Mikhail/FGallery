@@ -229,7 +229,12 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
             dateModifiedMillis = System.currentTimeMillis(),
             sourcePath = if (uri.scheme == "file") uri.path.orEmpty() else "",
         )
-        _uiState.update { current -> derive(current.copy(allItems = current.allItems.filterNot { it.uriKey == copy.uriKey } + copy)) }
+        _uiState.update { current ->
+            derive(current.copy(
+                allItems = current.allItems.filterNot { it.uriKey == copy.uriKey } + copy,
+                filter = if (current.filter == MediaFilter.RAW && source.kind == MediaKind.RAW) MediaFilter.ALL else current.filter,
+            ))
+        }
         viewModelScope.launch {
             delay(900L) // Allow MediaStore.scanFile to include the copy before reconciling the catalogue.
             refresh()
