@@ -952,12 +952,9 @@ class MainActivity : ComponentActivity() {
                         selectedIds = if (item.id in selectedIds) selectedIds - item.id else selectedIds + item.id
                     },
                     onLongPressSelection = { item ->
-                        val ordered = state.visibleItems
-                        val from = ordered.indexOfFirst { it.id == selectionAnchor }
-                        val to = ordered.indexOfFirst { it.id == item.id }
-                        selectedIds = if (from >= 0 && to >= 0 && selectedIds.isNotEmpty()) {
-                            selectedIds + ordered.subList(minOf(from, to), maxOf(from, to) + 1).map { it.id }
-                        } else selectedIds + item.id
+                        selectedIds = com.mistermikhail.fgallery.ui.inclusiveSelectionRange(
+                            state.visibleItems.map { it.id }, selectionAnchor, item.id, selectedIds,
+                        )
                         selectionAnchor = item.id
                     },
                     onClearSelection = { selectedIds = emptySet(); selectionAnchor = null },
