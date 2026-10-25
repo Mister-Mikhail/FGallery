@@ -36,6 +36,7 @@ import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.outlined.RestoreFromTrash
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -92,6 +93,8 @@ fun ViewerScreen(
     onBack: () -> Unit,
     active: Boolean = true,
     onTrash: (MediaItem) -> Unit,
+    onRestore: (MediaItem) -> Unit = {},
+    editedPreviewUri: android.net.Uri? = null,
     quickExifEnabled: Boolean,
     cleanupMode: Boolean,
     onShare: (MediaItem) -> Unit,
@@ -111,8 +114,9 @@ fun ViewerScreen(
     var chromeEpoch by remember { mutableIntStateOf(0) }
     var showDetails by remember { mutableStateOf(false) }
     var renameTarget by remember { mutableStateOf<MediaItem?>(null) }
-    var renameText by remember { mutableStateOf("") }
     var videoMenuExpanded by remember { mutableStateOf(false) }
+    var videoPlaying by remember { mutableStateOf(false) }
+    val context = LocalContext.current
 
     LaunchedEffect(initialItem.uriKey) {
         val target = items.indexOfFirst { it.uriKey == initialItem.uriKey }
@@ -128,7 +132,7 @@ fun ViewerScreen(
     val currentItem = items.getOrNull(pagerState.currentPage)
     val currentIsVideo = currentItem?.kind == MediaKind.VIDEO
     val deletingCurrent = currentItem?.uriKey == deletingItemUri && deletingItemUri != null
-    val mediaAlpha by animateFloatAsState(if (deletingCurrent) .45f else 1f, tween(160), label = "trash-fade")
+    val mediaAlpha by animateFloatAsState(if (deletingCurrent) .45f else 1f, tween(60), label = "trash-fade")
 
     LaunchedEffect(currentItem?.uriKey, currentIsVideo) {
         showDetails = false
@@ -140,15 +144,16 @@ fun ViewerScreen(
     }
 
     // One clock owns both PlayerView controls and the Compose file chrome.
-    LaunchedEffect(chromeVisible, currentIsVideo, videoMenuExpanded, chromeEpoch) {
-        if (chromeVisible && currentIsVideo && !videoMenuExpanded) {
-            delay(1_500L)
-            chromeVisible = false
+    LaunchedEffect(chromeVisible, currentIsVideo, videoMenuExpanded, chromeEpoch, videoPlaying) {
+        if (chromeVisible && currentIsVideo && videoPlaying && !videoMenuExpanded) {
+            delay(3_000L)
+            if (videoPlaying) chromeVisible = false
         }
     }
 
     fun toggleChrome() {
         if (currentIsVideo) {
+            if (!videoPlaying) { chromeVisible = true; chromeEpoch++; return }
             if (chromeVisible) {
                 chromeVisible = false
             } else {
@@ -180,15 +185,19 @@ fun ViewerScreen(
                     item = item,
                     active = activePage,
                     controlsVisible = activePage && chromeVisible,
+                    onPlayingChanged = { playing ->
+                        videoPlaying = playing
+                        if (!playing && activePage) { chromeVisible = true; chromeEpoch++ }
+                    },
                     onSingleTap = ::toggleChrome,
                     onDoubleTap = {
                         if (cleanupMode && !recycleBinMode) onTrash(item)
                     },
                 )
             } else if (item.kind == MediaKind.PDF) {
-                PdfViewer(item, ::toggleChrome)
+                PdfViewer(item, ::toggleChrome, onDoubleTap = if (cleanupMode && !recycleBinMode) ({ onTrash(item) }) else null)
             } else if (item.kind == MediaKind.SVG) {
-                SvgViewer(item, ::toggleChrome)
+                SvgViewer(item, ::toggleChrome, onDoubleTap = if (cleanupMode && !recycleBinMode) ({ onTrash(item) }) else null)
             } else {
                 TiledZoomableImage(
                     item = item,
@@ -198,6 +207,27 @@ fun ViewerScreen(
                     active = activePage,
                 )
             }
+        }
+
+        if (editedPreviewUri != null && currentItem?.uriKey == initialItem.uriKey) {
+            AsyncImage(
+                model = editedPreviewUri,
+                contentDescription = "Результат кадрирования",
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Fit,
+            )
+        }
+
+        // The video name is the only inline metadata; full EXIF stays in "Сведения".
+        if (chromeVisible && currentIsVideo && currentItem != null) {
+            Text(
+                text = currentItem.name,
+                color = Color.White,
+                maxLines = 1,
+                modifier = Modifier.align(Alignment.BottomEnd).navigationBarsPadding()
+                    .padding(end = 20.dp, bottom = if (context.resources.configuration.orientation ==
+                        android.content.res.Configuration.ORIENTATION_LANDSCAPE) 7.dp else 23.dp),
+            )
         }
 
         AnimatedVisibility(
@@ -257,8 +287,7 @@ fun ViewerScreen(
                                     onClick = {
                                         videoMenuExpanded = false
                                         renameTarget = currentItem
-                                        renameText = currentItem.name
-                                    },
+                                                                            },
                                 )
                                 if (!recycleBinMode) DropdownMenuItem(
                                     text = { Text("Переместить") },
@@ -273,6 +302,10 @@ fun ViewerScreen(
                                         videoMenuExpanded = false
                                         showDetails = true
                                     },
+                                )
+                                if (recycleBinMode) DropdownMenuItem(
+                                    text = { Text("Восстановить") },
+                                    onClick = { videoMenuExpanded = false; onRestore(currentItem) },
                                 )
                                 if (!recycleBinMode) DropdownMenuItem(
                                     text = { Text("В корзину") },
@@ -328,8 +361,7 @@ fun ViewerScreen(
                             if (!recycleBinMode) IconButton(
                                 onClick = {
                                     renameTarget = currentItem
-                                    renameText = currentItem.name
-                                },
+                                                                    },
                             ) {
                                 Icon(
                                     Icons.Outlined.Edit,
@@ -353,6 +385,9 @@ fun ViewerScreen(
                                     tint = Color.White,
                                 )
                             }
+                            if (recycleBinMode) IconButton(onClick = { onRestore(currentItem) }) {
+                                Icon(Icons.Outlined.RestoreFromTrash, contentDescription = "Восстановить", tint = Color.White)
+                            }
                             if (!recycleBinMode) IconButton(onClick = { onTrash(currentItem) }) {
                                 Icon(
                                     Icons.Outlined.DeleteOutline,
@@ -369,6 +404,7 @@ fun ViewerScreen(
         if (
             chromeVisible &&
             quickExifEnabled &&
+            !currentIsVideo &&
             currentItem != null
         ) {
             QuickExifOverlay(
@@ -391,38 +427,15 @@ fun ViewerScreen(
     }
 
     renameTarget?.let { item ->
-        AlertDialog(
-            onDismissRequest = { renameTarget = null },
-            title = { Text("Переименовать файл") },
-            text = {
-                OutlinedTextField(
-                    value = renameText,
-                    onValueChange = { renameText = it },
-                    singleLine = true,
-                    label = { Text("Новое имя") },
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        val value = renameText.trim()
-                        if (value.isNotBlank()) {
-                            onRename(item, value)
-                            renameTarget = null
-                        }
-                    },
-                ) {
-                    Text("Переименовать")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { renameTarget = null }) {
-                    Text("Отмена")
-                }
+        RenameDialog(
+            items = listOf(item),
+            onDismiss = { renameTarget = null },
+            onConfirm = { plan ->
+                renameTarget = null
+                plan.forEach { (source, name) -> onRename(source, name) }
             },
         )
     }
-
 
 }
 
@@ -431,6 +444,7 @@ private fun VideoPlayer(
     item: MediaItem,
     active: Boolean,
     controlsVisible: Boolean,
+    onPlayingChanged: (Boolean) -> Unit,
     onSingleTap: () -> Unit,
     onDoubleTap: () -> Unit,
 ) {
@@ -439,6 +453,7 @@ private fun VideoPlayer(
     val latestActive by rememberUpdatedState(active)
     val latestSingleTap by rememberUpdatedState(onSingleTap)
     val latestDoubleTap by rememberUpdatedState(onDoubleTap)
+    val latestPlayingChanged by rememberUpdatedState(onPlayingChanged)
     var sphericalView by remember(item.uri) { mutableStateOf<ZoomableSphericalView?>(null) }
     val detected360 by androidx.compose.runtime.produceState<Boolean?>(null, item.uriKey, item.dateModifiedMillis) {
         value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
@@ -462,6 +477,7 @@ private fun VideoPlayer(
     DisposableEffect(player) {
         val listener = object : Player.Listener {
             override fun onRenderedFirstFrame() { firstFrameRendered = true }
+            override fun onIsPlayingChanged(isPlaying: Boolean) { latestPlayingChanged(isPlaying) }
             override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
                 format360 = tracks.groups.any { group ->
                     group.type == androidx.media3.common.C.TRACK_TYPE_VIDEO &&
@@ -539,7 +555,9 @@ private fun VideoPlayer(
                     })
                     addView(surface, FrameLayout.LayoutParams(-1, -1))
                     val controls = PlayerControlView(ctx).apply { this.player = player; showTimeoutMs = 0 }
-                    addView(controls, FrameLayout.LayoutParams(-1, -2, android.view.Gravity.BOTTOM))
+                    addView(controls, FrameLayout.LayoutParams(-1, -2, android.view.Gravity.BOTTOM).apply {
+                        bottomMargin = if (ctx.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE) 0 else 12
+                    })
                     if (active && lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) surface.onResume() else surface.onPause()
                 }
             },
@@ -548,6 +566,12 @@ private fun VideoPlayer(
                 surface.setUseSensorRotation(active)
                 val controls = frame.getChildAt(1) as PlayerControlView
                 if (controlsVisible) controls.show() else controls.hide()
+                val scale = frame.resources.displayMetrics.density
+                controls.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_progress)?.translationY =
+                    if (frame.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE) 9f * scale else 0f
+                val timeShift = if (frame.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT) -10f * scale else 0f
+                controls.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_position)?.translationY = timeShift
+                controls.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_duration)?.translationY = timeShift
             },
             modifier = videoModifier,
         )
@@ -566,6 +590,12 @@ private fun VideoPlayer(
             update = { view ->
                 if (view.player !== player) view.player = player
                 if (controlsVisible) view.showController() else view.hideController()
+                val scale = view.resources.displayMetrics.density
+                view.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_progress)?.translationY =
+                    if (view.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE) 9f * scale else 0f
+                val timeShift = if (view.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT) -10f * scale else 0f
+                view.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_position)?.translationY = timeShift
+                view.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_duration)?.translationY = timeShift
             },
             modifier = videoModifier,
         )
@@ -587,15 +617,15 @@ internal fun TiledZoomableImage(
     active: Boolean = true,
 ) {
     val context = LocalContext.current
-    var imageFailed by remember(item.uri) { mutableStateOf(false) }
-    var fullSource by remember(item.uri) { mutableStateOf(com.mistermikhail.fgallery.data.FullResolutionFiles.cached(context, item)) }
-    var fullDecoded by remember(item.uri) { mutableStateOf(false) }
-    var fullError by remember(item.uri) { mutableStateOf<String?>(null) }
+    var imageFailed by remember(item.uri, item.dateModifiedMillis, item.sizeBytes) { mutableStateOf(false) }
+    var fullSource by remember(item.uri, item.dateModifiedMillis, item.sizeBytes) { mutableStateOf(com.mistermikhail.fgallery.data.FullResolutionFiles.cached(context, item)) }
+    var fullDecoded by remember(item.uri, item.dateModifiedMillis, item.sizeBytes) { mutableStateOf(false) }
+    var fullError by remember(item.uri, item.dateModifiedMillis, item.sizeBytes) { mutableStateOf<String?>(null) }
     val needsFullSource = item.kind == MediaKind.RAW || com.mistermikhail.fgallery.data.TiffImages.isTiff(item.name, item.mimeType)
     var cachedPreview by remember(item.uri, item.dateModifiedMillis, item.sizeBytes) {
         mutableStateOf(ThumbnailCache.cached(context, item))
     }
-    LaunchedEffect(item.uri, active) {
+    LaunchedEffect(item.uri, item.dateModifiedMillis, item.sizeBytes, active) {
         if (needsFullSource && active && fullSource == null) {
             try {
                 if (cachedPreview == null) cachedPreview = ThumbnailCache.ensure(context, item)

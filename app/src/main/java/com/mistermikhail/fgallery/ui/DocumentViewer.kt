@@ -53,7 +53,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.NonCancellable
 
 @Composable
-internal fun PdfViewer(item: MediaItem, onTap: () -> Unit) {
+internal fun PdfViewer(item: MediaItem, onTap: () -> Unit, onDoubleTap: (() -> Unit)? = null) {
     val context = LocalContext.current
     var document by remember(item.uri) { mutableStateOf<PdfSession?>(null) }
     var error by remember(item.uri) { mutableStateOf<String?>(null) }
@@ -92,7 +92,7 @@ internal fun PdfViewer(item: MediaItem, onTap: () -> Unit) {
                         Text("${index + 1} / ${pdf.pageCount}", color = Color.LightGray)
                         val page = bitmap
                         if (page != null) {
-                            ZoomableDocumentPage(Modifier.fillMaxWidth().aspectRatio(page.width.toFloat() / page.height).testTag("pdf-page-$index"), onTap, overlay = { transform, bounds -> PdfRegionOverlay(pdf, index, transform, bounds) }) { modifier ->
+                            ZoomableDocumentPage(Modifier.fillMaxWidth().aspectRatio(page.width.toFloat() / page.height).testTag("pdf-page-$index"), onTap, onDoubleTap = onDoubleTap, overlay = { transform, bounds -> PdfRegionOverlay(pdf, index, transform, bounds) }) { modifier ->
                                 Image(page.asImageBitmap(), "Страница ${index + 1}", contentScale = ContentScale.Fit, modifier = modifier)
                             }
                         } else if (failed) Text("Не удалось загрузить страницу", color = Color.White)
@@ -105,7 +105,7 @@ internal fun PdfViewer(item: MediaItem, onTap: () -> Unit) {
 }
 
 @Composable
-internal fun SvgViewer(item: MediaItem, onTap: () -> Unit) {
+internal fun SvgViewer(item: MediaItem, onTap: () -> Unit, onDoubleTap: (() -> Unit)? = null) {
     val context = LocalContext.current
     var error by remember(item.uri) { mutableStateOf(false) }
     val svg by produceState<SVG?>(null, item.uri) {
@@ -118,7 +118,7 @@ internal fun SvgViewer(item: MediaItem, onTap: () -> Unit) {
             val ratio = image.documentAspectRatio.takeIf { it > 0f && it.isFinite() } ?: 1f
             BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 val imageModifier = if (maxWidth / maxHeight > ratio) Modifier.height(maxHeight).aspectRatio(ratio) else Modifier.width(maxWidth).aspectRatio(ratio)
-                ZoomableDocumentPage(imageModifier.testTag("svg-page"), onTap) { modifier ->
+                ZoomableDocumentPage(imageModifier.testTag("svg-page"), onTap, onDoubleTap = onDoubleTap) { modifier ->
                     Canvas(modifier.background(Color(0xFF303030))) {
                         drawIntoCanvas { canvas ->
                             runCatching { image.renderToCanvas(canvas.nativeCanvas, RectF(0f, 0f, size.width, size.height)) }.onFailure { error = true }
@@ -133,6 +133,7 @@ internal fun SvgViewer(item: MediaItem, onTap: () -> Unit) {
 
 @Composable
 internal fun ZoomableDocumentPage(modifier: Modifier, onTap: () -> Unit,
+    onDoubleTap: (() -> Unit)? = null,
     overlay: @Composable (DocumentTransform, androidx.compose.ui.unit.IntSize) -> Unit = { _, _ -> },
     content: @Composable (Modifier) -> Unit) {
     var transform by remember { mutableStateOf(DocumentTransform()) }
@@ -142,6 +143,7 @@ internal fun ZoomableDocumentPage(modifier: Modifier, onTap: () -> Unit,
     val scrollDispatcher = remember { NestedScrollDispatcher() }
     val connection = remember { object : NestedScrollConnection {} }
     val latestTap by rememberUpdatedState(onTap)
+    val latestDoubleTap by rememberUpdatedState(onDoubleTap)
     Box(modifier
         .clipToBounds()
         .onSizeChanged { bounds = it }
@@ -149,6 +151,7 @@ internal fun ZoomableDocumentPage(modifier: Modifier, onTap: () -> Unit,
         .semantics { stateDescription = "Zoom ${(transform.scale * 100).toInt()}%" }
         .pointerInput(Unit) {
             detectTapGestures(onTap = { latestTap() }, onDoubleTap = { focus ->
+                if (latestDoubleTap != null) { latestDoubleTap?.invoke(); return@detectTapGestures }
                 animation?.cancel()
                 if (!focus.x.isFinite() || !focus.y.isFinite() || bounds.width <= 0 || bounds.height <= 0) return@detectTapGestures
                 val target = nextDoubleTapZoom(transform.scale, 1f, 8f)

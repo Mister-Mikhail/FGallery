@@ -19,6 +19,7 @@ import android.provider.Settings
 import android.os.Environment
 import com.mistermikhail.fgallery.data.StorageFolders
 import com.mistermikhail.fgallery.data.MediaStoreWriteBatch
+import com.mistermikhail.fgallery.data.MediaRename
 import androidx.compose.runtime.produceState
 import androidx.compose.material3.OutlinedTextField
 import androidx.activity.ComponentActivity
@@ -79,6 +80,7 @@ private data class PendingTreeMove(
 )
 
 private class PartialMoveException(val remaining: List<MediaItem>, cause: Exception) : Exception(cause.localizedMessage, cause)
+private class PartialRenameException(val remaining: List<Pair<MediaItem, String>>, cause: Exception) : Exception(cause.localizedMessage, cause)
 
 private sealed interface PendingWriteOperation {
     data class Rename(
@@ -87,6 +89,7 @@ private sealed interface PendingWriteOperation {
     ) : PendingWriteOperation
 
     data class Replace(val item: MediaItem, val editedUri: Uri, val mime: String, val extension: String) : PendingWriteOperation
+    data class RenameBatch(val plan: List<Pair<MediaItem, String>>) : PendingWriteOperation
 
     data class Move(
         val items: List<MediaItem>,
@@ -111,6 +114,7 @@ class MainActivity : ComponentActivity() {
         var selectedItem by remember { mutableStateOf<MediaItem?>(null) }
         var cleanupMode by remember { mutableStateOf(false) }
         var selectedIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
+        var selectionAnchor by remember { mutableStateOf<Long?>(null) }
         var pendingWrite by remember { mutableStateOf<PendingWriteOperation?>(null) }
         var pendingWriteConfirmation by remember { mutableStateOf<PendingWriteOperation?>(null) }
         var pendingPermanentDeleteUris by remember { mutableStateOf<Set<String>>(emptySet()) }
@@ -120,6 +124,7 @@ class MainActivity : ComponentActivity() {
         var pendingTreeMove by remember { mutableStateOf<PendingTreeMove?>(null) }
         var pendingCropItem by remember { mutableStateOf<MediaItem?>(null) }
         var pendingCropSave by remember { mutableStateOf<Pair<MediaItem, Uri>?>(null) }
+        var cropPreview by remember { mutableStateOf<Pair<String, Uri>?>(null) }
         var firstLaunchAccess by remember { mutableStateOf(false) }
         var pendingAccessWrite by remember { mutableStateOf<PendingWriteOperation?>(null) }
         var waitingAccessWrite by remember { mutableStateOf<PendingWriteOperation?>(null) }
@@ -223,11 +228,27 @@ class MainActivity : ComponentActivity() {
                 is PendingWriteOperation.Replace -> EditedMediaStore(this@MainActivity).replace(operation.item, operation.editedUri, operation.mime, operation.extension)
                 is PendingWriteOperation.Rename -> {
                     val requested = operation.newName.trim()
-                    require(requested.isNotBlank() && '/' !in requested && '\\' !in requested) { "Недопустимое имя файла" }
                     val extension = operation.item.name.substringAfterLast('.', "")
                     val finalName = if ('.' !in requested && extension.isNotBlank()) "$requested.$extension" else requested
-                    val values = ContentValues().apply { put(MediaStore.MediaColumns.DISPLAY_NAME, finalName) }
-                    check(contentResolver.update(operation.item.uri, values, null, null) == 1) { "Переименование не выполнено" }
+                    MediaRename.rename(this@MainActivity, operation.item, finalName)
+                }
+                is PendingWriteOperation.RenameBatch -> {
+                    // Preflight before changing any source: no two destinations may collide.
+                    val planned = operation.plan.map { (item, name) ->
+                        "${item.storageId}/${item.folderTarget.ifBlank { item.relativePath }}/${name.lowercase()}"
+                    }
+                    require(planned.distinct().size == planned.size) { "Повторяются имена файлов в одной папке" }
+                    val remaining = mutableListOf<Pair<MediaItem, String>>()
+                    var firstFailure: Exception? = null
+                    for (pair in operation.plan) {
+                        try {
+                            MediaRename.rename(this@MainActivity, pair.first, pair.second)
+                        } catch (e: Exception) {
+                            remaining += pair
+                            if (firstFailure == null) firstFailure = e
+                        }
+                    }
+                    firstFailure?.let { throw PartialRenameException(remaining, it) }
                 }
                 is PendingWriteOperation.Move -> {
                     val rawPath = operation.relativePath.trim()
@@ -260,6 +281,7 @@ class MainActivity : ComponentActivity() {
 
         fun operationUris(operation: PendingWriteOperation): List<Uri> = when (operation) {
             is PendingWriteOperation.Rename -> listOf(operation.item.uri)
+            is PendingWriteOperation.RenameBatch -> operation.plan.map { it.first.uri }
             is PendingWriteOperation.Move -> operation.items.map { it.uri }
             is PendingWriteOperation.Replace -> listOf(operation.item.uri)
         }
@@ -273,6 +295,9 @@ class MainActivity : ComponentActivity() {
                 pendingMoveItems = failure.remaining
                 selectedIds = failure.remaining.mapTo(mutableSetOf()) { it.id }
             }
+            if (failure is PartialRenameException) {
+                selectedIds = failure.remaining.mapTo(mutableSetOf()) { it.first.id }
+            }
         }
         // The callback may launch another permission batch after 2000 files.
         lateinit var writeLauncher: androidx.activity.result.ActivityResultLauncher<IntentSenderRequest>
@@ -281,6 +306,7 @@ class MainActivity : ComponentActivity() {
             pendingWrite = null
             if (operation == null) return@rememberLauncherForActivityResult
             if (result.resultCode != Activity.RESULT_OK) {
+                cropPreview = null
                 viewModel.refresh()
                 notify("Операция отменена. Выбор файлов сохранён.")
             } else uiScope.launch {
@@ -289,19 +315,31 @@ class MainActivity : ComponentActivity() {
                 retainFailedMove(failure)
                 operationBusy = false
                 if (failure == null) {
-                    if (operation is PendingWriteOperation.Replace) selectedItem = null
+                    if (operation is PendingWriteOperation.Replace) {
+                        viewModel.refresh()
+                        uiScope.launch { kotlinx.coroutines.delay(450); cropPreview = null }
+                    }
                     finishOperation()
                     notify("Готово")
                 } else {
+                    cropPreview = null
                     viewModel.refresh()
-                    val security = if (failure is PartialMoveException) failure.cause as? SecurityException else failure as? SecurityException
+                    val security = when (failure) {
+                        is PartialMoveException -> failure.cause as? SecurityException
+                        is PartialRenameException -> failure.cause as? SecurityException
+                        else -> failure as? SecurityException
+                    }
                     if (security == null) {
+                        cropPreview = null
                         notify("Не удалось завершить операцию: ${failure.localizedMessage}. Выбор сохранён.")
                     } else {
                         // A grant can cover only the first 2000 MediaStore URIs.
                         // Prompt for the next remaining group without moving completed files again.
-                        val remainingOperation = if (failure is PartialMoveException && operation is PendingWriteOperation.Move)
-                            operation.copy(items = failure.remaining) else operation
+                        val remainingOperation = when {
+                            failure is PartialMoveException && operation is PendingWriteOperation.Move -> operation.copy(items = failure.remaining)
+                            failure is PartialRenameException && operation is PendingWriteOperation.RenameBatch -> operation.copy(plan = failure.remaining)
+                            else -> operation
+                        }
                         runCatching {
                             val mediaUris = operationUris(remainingOperation)
                                 .filter { it.scheme == "content" && it.authority == MediaStore.AUTHORITY }.let(MediaStoreWriteBatch::next)
@@ -313,6 +351,7 @@ class MainActivity : ComponentActivity() {
                             writeLauncher.launch(IntentSenderRequest.Builder(sender).build())
                         }.onFailure {
                             pendingWrite = null
+                            cropPreview = null
                             notify("Перемещена только часть файлов; остальные выбраны. ${it.localizedMessage}")
                         }
                     }
@@ -325,6 +364,7 @@ class MainActivity : ComponentActivity() {
             val needsConfirmation = when (operation) {
                 is PendingWriteOperation.Move -> state.confirmMove
                 is PendingWriteOperation.Rename -> state.confirmRename
+                is PendingWriteOperation.RenameBatch -> state.confirmRename
                 is PendingWriteOperation.Replace -> false // Explicit overwrite dialog already accepted.
             }
             if (!skipConfirmation && needsConfirmation) { pendingWriteConfirmation = operation; return }
@@ -335,6 +375,7 @@ class MainActivity : ComponentActivity() {
             operationMessage = when (operation) {
                 is PendingWriteOperation.Move -> "Перемещение в ${operation.relativePath}"
                 is PendingWriteOperation.Rename -> "Переименование"
+                is PendingWriteOperation.RenameBatch -> "Переименование ${operation.plan.size} файлов"
                 is PendingWriteOperation.Replace -> "Сохранение с резервной копией оригинала"
             }
             operationBusy = true
@@ -342,13 +383,27 @@ class MainActivity : ComponentActivity() {
                 val failure = performWrite(operation)
                 retainFailedMove(failure)
                 operationBusy = false
-                if (failure == null) { finishOperation(); notify("Готово"); return@launch }
-                val security = if (failure is PartialMoveException) failure.cause as? SecurityException else failure as? SecurityException
+                if (failure == null) {
+                    finishOperation()
+                    if (operation is PendingWriteOperation.Replace) {
+                        uiScope.launch { kotlinx.coroutines.delay(450); cropPreview = null }
+                    }
+                    notify("Готово")
+                    return@launch
+                }
+                val security = when (failure) {
+                        is PartialMoveException -> failure.cause as? SecurityException
+                        is PartialRenameException -> failure.cause as? SecurityException
+                        else -> failure as? SecurityException
+                    }
                 if (security != null) {
                     // Never repeat files that already moved successfully before a partial failure.
                     // Android limits each MediaStore permission request to 2000 items.
-                    val retry = if (failure is PartialMoveException && operation is PendingWriteOperation.Move)
-                        operation.copy(items = failure.remaining) else operation
+                    val retry = when {
+                        failure is PartialMoveException && operation is PendingWriteOperation.Move -> operation.copy(items = failure.remaining)
+                        failure is PartialRenameException && operation is PendingWriteOperation.RenameBatch -> operation.copy(plan = failure.remaining)
+                        else -> operation
+                    }
                     runCatching {
                         val mediaUris = operationUris(retry)
                             .filter { it.scheme == "content" && it.authority == MediaStore.AUTHORITY }
@@ -361,10 +416,12 @@ class MainActivity : ComponentActivity() {
                         writeLauncher.launch(IntentSenderRequest.Builder(sender).build())
                     }.onFailure {
                         pendingWrite = null
+                        cropPreview = null
                         viewModel.refresh()
                         notify("Android не разрешил операцию: ${it.localizedMessage}. Выбор сохранён.")
                     }
                 } else {
+                    cropPreview = null
                     viewModel.refresh()
                     notify("Не удалось завершить операцию: ${failure.localizedMessage}. Выбор сохранён; проверьте папки при частичном перемещении.")
                 }
@@ -647,7 +704,11 @@ class MainActivity : ComponentActivity() {
             uiScope.launch {
                 operationBusy = true
                 operationMessage = "Восстановление"
-                try { viewModel.restoreFromRecycleBin(items); selectedIds = emptySet() }
+                try {
+                    viewModel.restoreFromRecycleBin(items)
+                    selectedIds = emptySet()
+                    if (items.any { it.uriKey == selectedItem?.uriKey }) selectedItem = null
+                }
                 catch (e: Exception) { notify("Не удалось восстановить: ${e.localizedMessage}") }
                 finally { operationBusy = false }
             }
@@ -704,7 +765,7 @@ class MainActivity : ComponentActivity() {
 
         DisposableEffect(Unit) {
             var refreshSignal: kotlinx.coroutines.Job? = null
-            fun changed() { refreshSignal?.cancel(); refreshSignal = uiScope.launch { kotlinx.coroutines.delay(300); folderRevision++; viewModel.refresh() } }
+            fun changed() { refreshSignal?.cancel(); refreshSignal = uiScope.launch { kotlinx.coroutines.delay(120); folderRevision++; viewModel.refresh() } }
             val receiver = object : android.content.BroadcastReceiver() {
                 override fun onReceive(context: android.content.Context?, intent: Intent?) { changed() }
             }
@@ -754,6 +815,30 @@ class MainActivity : ComponentActivity() {
             }) { Text("Удалить") } },
             dismissButton = { TextButton(onClick = { directDeleteItems = emptyList() }) { Text("Отмена") } },
         )
+
+        // MediaStore notifications from other gallery apps may arrive late. Also watch the
+        // opened physical directory directly; this only runs while that album is visible.
+        val watchedFolder = state.albums.firstOrNull { it.key == state.selectedAlbum }?.cover?.folderTarget
+        DisposableEffect(state.selectedAlbum, watchedFolder) {
+            var refreshSignal: kotlinx.coroutines.Job? = null
+            val watcher = if (watchedFolder?.startsWith("/") == true) {
+                object : android.os.FileObserver(
+                    watchedFolder,
+                    android.os.FileObserver.CREATE or android.os.FileObserver.DELETE or
+                        android.os.FileObserver.MOVED_FROM or android.os.FileObserver.MOVED_TO or
+                        android.os.FileObserver.CLOSE_WRITE,
+                ) {
+                    override fun onEvent(event: Int, path: String?) {
+                        refreshSignal?.cancel()
+                        refreshSignal = uiScope.launch {
+                            kotlinx.coroutines.delay(180)
+                            viewModel.refresh()
+                        }
+                    }
+                }.also { it.startWatching() }
+            } else null
+            onDispose { refreshSignal?.cancel(); watcher?.stopWatching() }
+        }
 
         val current = selectedItem
 
@@ -892,21 +977,28 @@ class MainActivity : ComponentActivity() {
                     onCleanupModeChanged = { cleanupMode = it },
                     selectedIds = selectedIds,
                     onToggleSelection = { item ->
-                        selectedIds =
-                            if (item.id in selectedIds) selectedIds - item.id
-                            else selectedIds + item.id
+                        selectedIds = if (item.id in selectedIds) selectedIds - item.id else selectedIds + item.id
                     },
-                    onClearSelection = {
-                        selectedIds = emptySet()
-                    },
-                    onTrashSelected = { items -> requestTrash(items, keepViewerOpen = false) },
-                    onRenameSelected = { item, name ->
-                        requestWrite(
-                            PendingWriteOperation.Rename(
-                                item = item,
-                                newName = name,
-                            )
+                    onLongPressSelection = { item ->
+                        selectedIds = com.mistermikhail.fgallery.ui.inclusiveSelectionRange(
+                            state.visibleItems.map { it.id }, selectionAnchor, item.id, selectedIds,
                         )
+                        selectionAnchor = item.id
+                    },
+                    onClearSelection = { selectedIds = emptySet(); selectionAnchor = null },
+                    onTrashSelected = { items -> requestTrash(items, keepViewerOpen = false) },
+                    onRenameSelected = { plan ->
+                        val existing = state.allItems.filterNot { media -> plan.any { it.first.uriKey == media.uriKey } }
+                        val collisions = plan.any { (source, name) ->
+                            existing.any { other ->
+                                other.storageId == source.storageId &&
+                                other.folderTarget.ifBlank { other.relativePath } == source.folderTarget.ifBlank { source.relativePath } &&
+                                other.name.equals(name, true)
+                            }
+                        }
+                        if (collisions) notify("В папке уже есть файл с таким именем. Переименование отменено.")
+                        else if (plan.size == 1) requestWrite(PendingWriteOperation.Rename(plan.first().first, plan.first().second))
+                        else requestWrite(PendingWriteOperation.RenameBatch(plan))
                     },
                     onMoveSelected = ::beginMove,
                 )
@@ -945,6 +1037,8 @@ class MainActivity : ComponentActivity() {
                         onBack = { selectedItem = null },
                         active = videoCropItem == null && !operationBusy,
                         onTrash = { requestTrash(listOf(it), keepViewerOpen = true) },
+                        onRestore = { restoreFromRecycleBin(listOf(it)) },
+                        editedPreviewUri = cropPreview?.takeIf { it.first == animatedItem.uriKey }?.second,
                         quickExifEnabled = state.quickExifEnabled,
                         cleanupMode = cleanupMode,
                         onShare = ::shareMedia,
@@ -1001,8 +1095,8 @@ class MainActivity : ComponentActivity() {
             val isMove = operation is PendingWriteOperation.Move
             AlertDialog(
                 onDismissRequest = { pendingWriteConfirmation = null },
-                title = { Text(if (isMove) "Переместить файл?" else "Переименовать файл?") },
-                text = { Text(if (operation is PendingWriteOperation.Move) "Перемещение ${operation.items.size} файлов в ${operation.relativePath}" else "Имя файла будет изменено.") },
+                title = { Text(if (isMove) "Переместить файл?" else "Переименовать файлы?") },
+                text = { Text(if (operation is PendingWriteOperation.Move) "Перемещение ${operation.items.size} файлов в ${operation.relativePath}" else "Имя файлов будет изменено.") },
                 confirmButton = {
                     TextButton(onClick = {
                         pendingWriteConfirmation = null
@@ -1022,7 +1116,7 @@ class MainActivity : ComponentActivity() {
             val canReplace = source.kind == MediaKind.IMAGE && source.mimeType in listOf("image/jpeg", "image/png")
             AlertDialog(
                 onDismissRequest = { pendingCropSave = null },
-                title = { Text("Сохранить кадрирование") },
+                title = { Text(if (source.kind == MediaKind.RAW) "Сохранить RAW как JPG" else "Сохранить кадрирование") },
                 confirmButton = {
                     TextButton(onClick = {
                         pendingCropSave = null
@@ -1031,14 +1125,15 @@ class MainActivity : ComponentActivity() {
                         uiScope.launch {
                             val result = withContext(Dispatchers.IO) { runCatching { EditedMediaStore(this@MainActivity).saveCopy(source, croppedUri, mime, extension) } }
                             operationBusy = false
-                            result.onSuccess { viewModel.refresh(); notify("Копия сохранена") }.onFailure { notify("Не удалось сохранить копию: ${it.localizedMessage}") }
+                            result.onSuccess { saved -> viewModel.onSavedCopy(source, saved, mime); notify("Копия сохранена") }.onFailure { notify("Не удалось сохранить копию: ${it.localizedMessage}") }
                         }
-                    }) { Text("Сохранить копию") }
+                    }) { Text(if (source.kind == MediaKind.RAW) "Сохранить копию как JPG" else "Сохранить копию") }
                 },
                 dismissButton = {
                     androidx.compose.foundation.layout.Row {
                         if (canReplace) TextButton(onClick = {
                             pendingCropSave = null
+                            cropPreview = source.uriKey to croppedUri
                             requestWrite(PendingWriteOperation.Replace(source, croppedUri, mime, extension), skipConfirmation = true)
                         }) { Text("Заменить оригинал") }
                         TextButton(onClick = { pendingCropSave = null }) { Text("Отмена") }
@@ -1056,7 +1151,7 @@ class MainActivity : ComponentActivity() {
                     uiScope.launch {
                         val result = withContext(Dispatchers.IO) { runCatching { EditedMediaStore(this@MainActivity).saveCopy(item, uri, "video/mp4", "mp4") } }
                         operationBusy = false
-                        result.onSuccess { viewModel.refresh(); notify("Видео сохранено") }.onFailure { notify("Не удалось сохранить видео: ${it.localizedMessage}") }
+                        result.onSuccess { saved -> viewModel.onSavedCopy(item, saved, "video/mp4"); notify("Видео сохранено") }.onFailure { notify("Не удалось сохранить видео: ${it.localizedMessage}") }
                     }
                 }
             })

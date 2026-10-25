@@ -15,7 +15,7 @@ class ZoomLevelsTest {
             val maximum = maxOf(8f, fit * 8f)
             val first = nextDoubleTapZoom(fit, fit, maximum)
             val second = nextDoubleTapZoom(first, fit, maximum)
-            assertEquals(.90f, (second - fit) / (maximum - fit), .0001f)
+            assertEquals(.85f, (second - fit) / (maximum - fit), .0001f)
             assertEquals(fit, nextDoubleTapZoom(second, fit, maximum), .0001f)
         }
     }
