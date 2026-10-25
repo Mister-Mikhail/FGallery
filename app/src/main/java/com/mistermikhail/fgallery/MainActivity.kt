@@ -114,6 +114,7 @@ class MainActivity : ComponentActivity() {
         var selectedItem by remember { mutableStateOf<MediaItem?>(null) }
         var cleanupMode by remember { mutableStateOf(false) }
         var selectedIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
+        var selectionAnchor by remember { mutableStateOf<Long?>(null) }
         var pendingWrite by remember { mutableStateOf<PendingWriteOperation?>(null) }
         var pendingWriteConfirmation by remember { mutableStateOf<PendingWriteOperation?>(null) }
         var pendingPermanentDeleteUris by remember { mutableStateOf<Set<String>>(emptySet()) }
@@ -931,21 +932,31 @@ class MainActivity : ComponentActivity() {
                     onCleanupModeChanged = { cleanupMode = it },
                     selectedIds = selectedIds,
                     onToggleSelection = { item ->
-                        selectedIds =
-                            if (item.id in selectedIds) selectedIds - item.id
-                            else selectedIds + item.id
+                        selectedIds = if (item.id in selectedIds) selectedIds - item.id else selectedIds + item.id
                     },
-                    onClearSelection = {
-                        selectedIds = emptySet()
+                    onLongPressSelection = { item ->
+                        val ordered = state.visibleItems
+                        val from = ordered.indexOfFirst { it.id == selectionAnchor }
+                        val to = ordered.indexOfFirst { it.id == item.id }
+                        selectedIds = if (from >= 0 && to >= 0 && selectedIds.isNotEmpty()) {
+                            selectedIds + ordered.subList(minOf(from, to), maxOf(from, to) + 1).map { it.id }
+                        } else selectedIds + item.id
+                        selectionAnchor = item.id
                     },
+                    onClearSelection = { selectedIds = emptySet(); selectionAnchor = null },
                     onTrashSelected = { items -> requestTrash(items, keepViewerOpen = false) },
-                    onRenameSelected = { item, name ->
-                        requestWrite(
-                            PendingWriteOperation.Rename(
-                                item = item,
-                                newName = name,
-                            )
-                        )
+                    onRenameSelected = { plan ->
+                        val existing = state.allItems.filterNot { media -> plan.any { it.first.uriKey == media.uriKey } }
+                        val collisions = plan.any { (source, name) ->
+                            existing.any { other ->
+                                other.storageId == source.storageId &&
+                                other.folderTarget.ifBlank { other.relativePath } == source.folderTarget.ifBlank { source.relativePath } &&
+                                other.name.equals(name, true)
+                            }
+                        }
+                        if (collisions) notify("В папке уже есть файл с таким именем. Переименование отменено.")
+                        else if (plan.size == 1) requestWrite(PendingWriteOperation.Rename(plan.first().first, plan.first().second))
+                        else requestWrite(PendingWriteOperation.RenameBatch(plan))
                     },
                     onMoveSelected = ::beginMove,
                 )
