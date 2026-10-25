@@ -80,3 +80,21 @@
 - The release checker will **not** offer 0.2.8 until a GitHub Release is eventually published; the chat APK is a direct test distribution.
 
 **Next step:** Samsung Galaxy S23 / Android 16 tests for move grant/deny/cancel and selection, 1 and many (including large batches), physical USB/SD mounts and bins, GIF/video preview during scrolling, photo and video crop copy/replace and source preservation, TIFF/IIQ/P65+ 60MP/350MB decoding and zoom, SVG/PDF/360, installation over 0.2.7. Record each direct result here and in `docs/OPEN_BUGS.md`, then coordinate publication/PR integration if approved.
+
+## QA — Samsung Galaxy S23 / Android 16, 0.2.8 (direct user report 2026-10-25)
+**High priority / user verified**: RAW DNG/NEF/CR2 cropping **works**, but post-crop save loses EXIF, generates random `_crop_xxxxxxxx` copy names, and delayed gallery placement/refresh; external USB/SD storage is **NOT TESTED**. New issues below are OPEN until next user validation; emulators cannot close them.
+
+| ID | Priority | Required behavior / acceptance | Current status |
+|---|---|---|---|
+| FG-10 | P0 | Long filename rename dialog starts scrolled to the end with cursor **before extension**; on extension change warn "Файл может некорректно отображаться" and require separate confirmation; no content overwrite or unintentional change. | USER REQUEST, OPEN |
+| FG-11 | P0 | Batch rename all selected items with common input stem + `_1`, `_2`, etc. **Each retains its own original extension**; stable gallery order, protect duplicates, no partial accidental overwrite; include files on SAF/volumes. | USER REQUEST, OPEN |
+| FG-12 | P1 | Long-press an item to anchor selection, then long-press distant item to select inclusive range of media between endpoints in current displayed sort order, including across scrolled pages; taps still toggle. | USER REQUEST, OPEN |
+| FG-13 | P0 | RAW crop save must preserve EXIF **including camera, exposure, date, GPS, orientation semantics and custom metadata when representable**; choose JPEG copy for RAW, originals immutable; naming `_1`, `_2` deterministically; new file visibly adjacent to original without manual gallery refresh. | USER REPORT, OPEN |
+| FG-14 | P1 | After confirm replace crop, viewer should immediately show cropped preview while disk replacement completes; on failure show original and error without data loss. | USER REQUEST, OPEN |
+| FG-15 | P1 | Still/document double tap: fit → 2x fit → **85% toward maximum** → fit, pinch retains ability to reach 100% maximum. | USER REQUEST, OPEN |
+| FG-16 | P0 | Video UI auto-hide **3.0 s** on playback, **never** hide while paused; only filename under scrubber to right of time, no upper EXIF; landscape scrubber lower, portrait time labels above bottom edge. | USER REPORT, OPEN |
+| FG-17 | P0 | Cleanup double-tap PDF sends to physical bin without zoom; orange broom icon beside search exits cleanup; remove visible delay after double tap where safe. | USER REPORT, OPEN |
+| FG-18 | P1 | External deletion/changes in another app reflected quickly in open folder without manual refresh, preserving scroll position. | USER REPORT, OPEN |
+| FG-19 | P0 | Media opened **inside recycle bin** has visible Restore action without returning to grid; restore one item, do not alter others. | USER REQUEST, OPEN |
+
+Rules: do not turn 0.2.8 CI into user acceptance; treat this S23 report as newest truth. New version planned **0.2.9/code11**, reuse 0.2.7+ debug key; keep code separate in an unmerged PR against existing 0.2.8 source. During batch rename collisions or MediaStore prompts, preserve originals and re-selection; no overwrites. If EXIF cannot be transferred safely, do not silently claim it was preserved.
