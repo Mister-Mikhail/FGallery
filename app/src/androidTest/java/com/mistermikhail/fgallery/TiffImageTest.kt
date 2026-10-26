@@ -60,7 +60,7 @@ class TiffImageTest {
         rule.waitUntil(5000) { kotlin.math.abs(200 - percent()) <= 1 }
         node.performTouchInput { doubleClick(center) }
         rule.mainClock.advanceTimeBy(350)
-        val second = ((fit + (max - fit) * .85f) / fit * 100).toInt()
+        val second = ((com.mistermikhail.fgallery.ui.secondDoubleTapZoom(fit, max) / fit * 100)).toInt()
         rule.waitUntil(5000) { kotlin.math.abs(second - percent()) <= 1 }
         node.performTouchInput { doubleClick(center) }
         rule.mainClock.advanceTimeBy(350)
