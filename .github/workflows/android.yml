@@ -6,6 +6,7 @@ on:
       - feature/quickpic-masonry-mvp
       - feature/fgallery-0.2.8-fixes
       - feature/fgallery-0.2.9-s23-qa
+      - feature/fgallery-0.3.0-stage1
     tags:
       - 'v*'
   pull_request:
@@ -13,6 +14,7 @@ on:
       - main
       - feature/quickpic-masonry-mvp
       - feature/fgallery-0.2.8-fixes
+      - feature/fgallery-0.2.9-s23-qa
   workflow_dispatch:
 
 concurrency:
