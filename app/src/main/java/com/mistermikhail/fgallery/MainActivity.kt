@@ -50,6 +50,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -113,6 +114,10 @@ class MainActivity : ComponentActivity() {
         val state by viewModel.uiState.collectAsState()
         var selectedItem by remember { mutableStateOf<MediaItem?>(null) }
         var cleanupMode by remember { mutableStateOf(false) }
+        val zoomTestPrefs = remember { getSharedPreferences("fgallery_zoom_test", MODE_PRIVATE) }
+        var zoomSecondPower by remember {
+            mutableFloatStateOf(zoomTestPrefs.getFloat("second_tap_power", .85f).coerceIn(.80f, .90f))
+        }
         var selectedIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
         var selectionAnchor by remember { mutableStateOf<Long?>(null) }
         var pendingWrite by remember { mutableStateOf<PendingWriteOperation?>(null) }
@@ -965,6 +970,11 @@ class MainActivity : ComponentActivity() {
                     onHideSettings = viewModel::hideSettings,
                     onQuickExifChanged = viewModel::setQuickExifEnabled,
                     onCheckForUpdates = { updateChecks++ },
+                    zoomSecondPower = zoomSecondPower,
+                    onZoomSecondPowerChanged = { chosen ->
+                        zoomSecondPower = chosen
+                        zoomTestPrefs.edit().putFloat("second_tap_power", chosen).apply()
+                    },
                     onConfirmMoveChanged = viewModel::setConfirmMove,
                     onConfirmRenameChanged = viewModel::setConfirmRename,
                     livePreviewEnabled = current == null && pendingMoveItems.isEmpty(),
@@ -1039,6 +1049,7 @@ class MainActivity : ComponentActivity() {
                         onTrash = { requestTrash(listOf(it), keepViewerOpen = true) },
                         onRestore = { restoreFromRecycleBin(listOf(it)) },
                         editedPreviewUri = cropPreview?.takeIf { it.first == animatedItem.uriKey }?.second,
+                        zoomSecondPower = zoomSecondPower,
                         quickExifEnabled = state.quickExifEnabled,
                         cleanupMode = cleanupMode,
                         onShare = ::shareMedia,
