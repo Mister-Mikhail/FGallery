@@ -11,6 +11,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Switch
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -26,6 +27,8 @@ fun SettingsSheet(
     quickExifEnabled: Boolean,
     onQuickExifChanged: (Boolean) -> Unit,
     onCheckForUpdates: () -> Unit,
+    zoomSecondPower: Float,
+    onZoomSecondPowerChanged: (Float) -> Unit,
     confirmMove: Boolean,
     confirmRename: Boolean,
     onConfirmMoveChanged: (Boolean) -> Unit,
@@ -81,6 +84,26 @@ fun SettingsSheet(
 
             SettingSwitch("Подтверждать перемещение", "Выключено по умолчанию", confirmMove, onConfirmMoveChanged)
             SettingSwitch("Подтверждать переименование", "", confirmRename, onConfirmRenameChanged)
+            Text(
+                text = "Тест · второй двойной тап",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(top = 12.dp),
+            )
+            Text(
+                text = "Доля пути в удвоениях масштаба. Индикатор во время просмотра.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = .72f),
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                for (percentage in listOf(80, 85, 90)) {
+                    FilterChip(
+                        selected = kotlin.math.abs(zoomSecondPower - percentage / 100f) < .005f,
+                        onClick = { onZoomSecondPowerChanged(percentage / 100f) },
+                        label = { Text("$percentage%") },
+                    )
+                }
+            }
             TextButton(onClick = onCheckForUpdates) { Text("Проверить обновления") }
 
         }
