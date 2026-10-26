@@ -46,6 +46,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -103,6 +105,7 @@ fun ViewerScreen(
     onMove: (MediaItem) -> Unit,
     deletingItemUri: String? = null,
     recycleBinMode: Boolean = false,
+    zoomSecondPower: Float = .85f,
 ) {
     val initialPage = items.indexOfFirst { it.uriKey == initialItem.uriKey }.coerceAtLeast(0)
     val pagerState = rememberPagerState(
@@ -195,9 +198,9 @@ fun ViewerScreen(
                     },
                 )
             } else if (item.kind == MediaKind.PDF) {
-                PdfViewer(item, ::toggleChrome, onDoubleTap = if (cleanupMode && !recycleBinMode) ({ onTrash(item) }) else null)
+                PdfViewer(item, ::toggleChrome, onDoubleTap = if (cleanupMode && !recycleBinMode) ({ onTrash(item) }) else null, zoomSecondPower = zoomSecondPower)
             } else if (item.kind == MediaKind.SVG) {
-                SvgViewer(item, ::toggleChrome, onDoubleTap = if (cleanupMode && !recycleBinMode) ({ onTrash(item) }) else null)
+                SvgViewer(item, ::toggleChrome, onDoubleTap = if (cleanupMode && !recycleBinMode) ({ onTrash(item) }) else null, zoomSecondPower = zoomSecondPower)
             } else {
                 TiledZoomableImage(
                     item = item,
@@ -205,6 +208,7 @@ fun ViewerScreen(
                     cleanupMode = cleanupMode && !recycleBinMode,
                     onTrash = { onTrash(item) },
                     active = activePage,
+                    zoomSecondPower = zoomSecondPower,
                 )
             }
         }
@@ -615,6 +619,7 @@ internal fun TiledZoomableImage(
     cleanupMode: Boolean,
     onTrash: () -> Unit,
     active: Boolean = true,
+    zoomSecondPower: Float = .85f,
 ) {
     val context = LocalContext.current
     var imageFailed by remember(item.uri, item.dateModifiedMillis, item.sizeBytes) { mutableStateOf(false) }
@@ -667,7 +672,7 @@ internal fun TiledZoomableImage(
 
 
     var previousTapTarget by remember(item.uri) { mutableFloatStateOf(0f) }
-    val doubleClick = remember(item.id, cleanupMode) {
+    val doubleClick = remember(item.id, cleanupMode, zoomSecondPower) {
         DoubleClickToZoomListener { _, centroid ->
             val state = zoomableState
             if (cleanupMode) {
@@ -683,7 +688,7 @@ internal fun TiledZoomableImage(
             val current = if (state.isAnimationRunning && previousTapTarget > 0f) {
                 previousTapTarget
             } else maxOf(transformation.scale.scaleX, transformation.scale.scaleY)
-            val target = nextDoubleTapZoom(current, fit, maxOf(8f, fit * 8f), smallImage = fit * 2f >= 1f)
+            val target = nextDoubleTapZoom(current, fit, maxOf(8f, fit * 8f), smallImage = fit * 2f >= 1f, power = zoomSecondPower)
             previousTapTarget = target
             if (target <= fit * 1.001f) state.resetZoom(animationSpec = tween(260))
             else state.zoomTo(zoomFactor = target, centroid = centroid, animationSpec = tween(260))
@@ -722,6 +727,24 @@ internal fun TiledZoomableImage(
                 this[ViewerImageReady] = imageState.isImageDisplayed && (!needsFullSource || fullDecoded)
             }.testTag("viewer-image"),
         )
+        if (imageState.isImageDisplayed && (!needsFullSource || fullDecoded)) {
+            val transformation = zoomableState.contentTransformation
+            val initial = transformation.scaleMetadata.initialScale
+            val fitted = maxOf(initial.scaleX, initial.scaleY)
+            val currentScale = maxOf(transformation.scale.scaleX, transformation.scale.scaleY)
+            if (transformation.isSpecified && fitted.isFinite() && fitted > 0f && currentScale.isFinite()) {
+                val maximumScale = maxOf(8f, fitted * 8f)
+                Text(
+                    text = "сейчас ${(currentScale * 100).toInt()}% · максимум ${(maximumScale * 100).toInt()}%",
+                    color = Color.White,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 54.dp)
+                        .background(Color.Black.copy(alpha = .68f), RoundedCornerShape(6.dp))
+                        .padding(horizontal = 10.dp, vertical = 5.dp)
+                        .testTag("zoom-diagnostic"),
+                )
+            }
+        }
         if (imageFailed && cachedPreview == null) Text("Не удалось открыть изображение. Формат может не поддерживаться декодером устройства.", color = Color.White, modifier = Modifier.padding(24.dp))
         if (needsFullSource && !fullDecoded) {
             if (fullError == null && active) CircularProgressIndicator(Modifier.align(Alignment.BottomCenter).padding(24.dp))
