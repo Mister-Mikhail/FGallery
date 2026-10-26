@@ -134,4 +134,45 @@ class ImageZoomTest {
         }
     }
 
+    @Test fun afterSecondDoubleTapPinchStillReachesUnchangedMaximum() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val file = File(context.cacheDir, "pinch-ceiling-zoom.jpg")
+        val bitmap = Bitmap.createBitmap(6000, 4000, Bitmap.Config.ARGB_8888)
+        bitmap.eraseColor(android.graphics.Color.GREEN)
+        file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.JPEG, 82, it) }
+        bitmap.recycle()
+        val item = MediaItem(987658, Uri.fromFile(file), file.name, "image/jpeg",
+            MediaKind.IMAGE, 0, 6000, 4000, 0, "Tests", "", file.length())
+        rule.setContent {
+            Box(Modifier.fillMaxSize()) {
+                TiledZoomableImage(item, {}, false, {}, zoomSecondPower = .85f)
+            }
+        }
+        val node = rule.onNodeWithTag("viewer-image")
+        rule.waitUntil(15000) {
+            runCatching { node.fetchSemanticsNode().config[ViewerImageReady] }.getOrDefault(false)
+        }
+        fun zoom() = node.fetchSemanticsNode().config[SemanticsProperties.StateDescription]
+            .removePrefix("Zoom ").removeSuffix("%").toInt()
+        val (fit, maximum) = node.fetchSemanticsNode().config[ViewerZoomRange]
+        node.performTouchInput { doubleClick(center) }
+        rule.waitForIdle()
+        assertEquals(200, zoom(), 2)
+        node.performTouchInput { doubleClick(center) }
+        rule.waitForIdle()
+        val afterTap = zoom()
+        assertTrue("Second tap should leave pinch headroom", afterTap < (maximum / fit * 100).toInt() - 15)
+        node.performTouchInput {
+            pinch(
+                start0 = center - Offset(30f, 0f), end0 = center - Offset(190f, 0f),
+                start1 = center + Offset(30f, 0f), end1 = center + Offset(190f, 0f),
+                durationMillis = 700,
+            )
+        }
+        rule.waitForIdle()
+        assertTrue("Pinch must zoom farther after second tap: ${zoom()} <= $afterTap", zoom() > afterTap + 8)
+        assertTrue("Pinch must not cross the configured maximum", zoom() <= (maximum / fit * 100).toInt() + 2)
+        file.delete()
+    }
+
 }
