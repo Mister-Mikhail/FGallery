@@ -1,6 +1,7 @@
 package com.mistermikhail.fgallery.ui
 
 import org.junit.Assert.assertEquals
+import kotlin.math.pow
 import org.junit.Test
 
 class ZoomLevelsTest {
@@ -15,7 +16,9 @@ class ZoomLevelsTest {
             val maximum = maxOf(8f, fit * 8f)
             val first = nextDoubleTapZoom(fit, fit, maximum)
             val second = nextDoubleTapZoom(first, fit, maximum)
-            assertEquals(.85f, (second - fit) / (maximum - fit), .0001f)
+            assertEquals(.85f, kotlin.math.ln(second / fit) / kotlin.math.ln(maximum / fit), .0001f)
+            assertEquals(secondDoubleTapZoom(fit, maximum), second, .0001f)
+            assertEquals(true, second < maximum)
             assertEquals(fit, nextDoubleTapZoom(second, fit, maximum), .0001f)
         }
     }
@@ -38,4 +41,26 @@ class ZoomLevelsTest {
         assertEquals(10f, firstDoubleTapZoom(10f, 8f), .0001f)
         assertEquals(2f, nextDoubleTapZoom(Float.NaN, 1f, Float.NaN), .0001f)
     }
+    @Test fun diagnosticPowerSelectionMovesSecondTapThroughDoublings() {
+        val fit = .124f
+        val maximum = 8f
+        val first = fit * 2f
+        val a = nextDoubleTapZoom(first, fit, maximum, power = .80f)
+        val b = nextDoubleTapZoom(first, fit, maximum, power = .85f)
+        val c = nextDoubleTapZoom(first, fit, maximum, power = .90f)
+        assertEquals(fit * (maximum / fit).toDouble().pow(.85).toFloat(), b, .0001f)
+        assertEquals(true, a < b && b < c && c < maximum)
+        assertEquals(fit, nextDoubleTapZoom(c, fit, maximum, power = .90f), .0001f)
+    }
+
+    @Test fun pinchCanContinueBeyondSecondTapToTheExistingMaximum() {
+        for (p in listOf(.80f, .85f, .90f)) {
+            val f = .124f
+            val m = 8f
+            val second = nextDoubleTapZoom(f * 2f, f, m, power = p)
+            assertEquals(true, second < m)
+            assertEquals(true, m / second > 1.2f)
+        }
+    }
+
 }
