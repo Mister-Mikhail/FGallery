@@ -160,3 +160,11 @@ For the user's test-build update/delivery requirement, the active-branch push wo
 
 ### Shared-signature correction for final delivery — 2026-10-05
 The shared development certificate starts with 0.2.7/versionCode9. Final extraction of the published 0.2.6 artifact showed that the CI default keystore path did not control Gradle’s selected key. Explicit Gradle signing configuration and a packaged-certificate CI check replace reliance on that default. All prior random-key debug builds need an initial reinstall; future 0.2.7+ debug updates share the intended key. Functional viewer/bin/update requirements are unchanged.
+
+
+
+## Approved TZ v1 supersedes conflicting historical notes — 2026-10-27
+- Authoritative next-cycle specification: `docs/FGallery_TZ_v1.md` (exact copy from `docs/tz-v1`). Its **СОГЛАСОВАНО** requirements override any earlier behavior described here. **РЕШЕНИЕ НЕ ПРИНЯТО** items are not authorized for implementation.
+- New code branch: `feature/fgallery-0.3.0-stage1` from 0.2.9 SHA `7a9e290ac3642861274332464c17adbd92ba44fd`. Stage 1 / 0.3.0 is under development; no acceptance on physical Samsung S23 yet. Do not close earlier FG-01…FG-09 blockers without new direct user verification.
+- In particular **previous linear .85 zoom**, video **standard Media3 PlayerView controls** and **emoji 🧹** are superseded by TZ v1 §2 / Stage 1. Legacy mentions above are historical; new criteria: logarithmic 0.80/0.85/0.90 diagnostic zoom, unified Compose video chrome, proper Material CleaningServices icon and Cleanup-on confirmation, LibRaw full RAW dimensions.
+- TZ v1 stages 2+ are deferred until 0.3.0 stage 1 user-device verification. Release/store, license, editor, commercial protection remain **undecided** where marked so in TZ.
