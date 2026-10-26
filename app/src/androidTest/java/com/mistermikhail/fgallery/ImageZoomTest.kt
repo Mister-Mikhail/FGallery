@@ -157,7 +157,7 @@ class ImageZoomTest {
         val (fit, maximum) = node.fetchSemanticsNode().config[ViewerZoomRange]
         node.performTouchInput { doubleClick(center) }
         rule.waitForIdle()
-        assertEquals(200, zoom(), 2)
+        assertTrue("First tap should be 200% fitted scale", kotlin.math.abs(200 - zoom()) <= 2)
         node.performTouchInput { doubleClick(center) }
         rule.waitForIdle()
         val afterTap = zoom()
