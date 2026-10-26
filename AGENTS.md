@@ -33,3 +33,10 @@ The latest direct test report from the user takes precedence over old notes, PR 
 
 ## Current source of truth
 `docs/PRODUCT_SPEC.md` and `docs/UX_RULES.md` define agreed behavior. `docs/OPEN_BUGS.md` records the current test status and acceptance checks. Keep these documents aligned when requirements change.
+
+
+## Authoritative approved specification (2026-10-27)
+- Authoritative next-cycle specification: `docs/FGallery_TZ_v1.md` (exact copy from `docs/tz-v1`). Its **СОГЛАСОВАНО** requirements override any earlier behavior described here. **РЕШЕНИЕ НЕ ПРИНЯТО** items are not authorized for implementation.
+- New code branch: `feature/fgallery-0.3.0-stage1` from 0.2.9 SHA `7a9e290ac3642861274332464c17adbd92ba44fd`. Stage 1 / 0.3.0 is under development; no acceptance on physical Samsung S23 yet. Do not close earlier FG-01…FG-09 blockers without new direct user verification.
+- In particular **previous linear .85 zoom**, video **standard Media3 PlayerView controls** and **emoji 🧹** are superseded by TZ v1 §2 / Stage 1. Legacy mentions above are historical; new criteria: logarithmic 0.80/0.85/0.90 diagnostic zoom, unified Compose video chrome, proper Material CleaningServices icon and Cleanup-on confirmation, LibRaw full RAW dimensions.
+- TZ v1 stages 2+ are deferred until 0.3.0 stage 1 user-device verification. Release/store, license, editor, commercial protection remain **undecided** where marked so in TZ.
