@@ -95,3 +95,11 @@ These limits describe 0.2.5 source d36b3d7, independently of the requested zoom 
 - Prepared RAW/TIFF display sources currently use 8 bits per color channel, even when the original sensor/TIFF data has higher bit depth. Preserving native dimensions does not preserve original higher bit depth in the display source.
 - PDF initially renders an 1800px page preview and rerenders the visible viewport up to a 2560px longest edge after zoom/pan settles. This is a viewport rendering limit, not a maximum PDF page size. SVG is drawn from vectors; there is no app-configured raster megapixel ceiling for it.
 - Full-source disk retention has a soft 1GiB budget. The current source is retained even if it alone exceeds the budget; older prepared sources are removed. This does not reduce source resolution, but evicted sources need preparation again.
+
+
+
+## Approved TZ v1 supersedes conflicting historical notes — 2026-10-27
+- Authoritative next-cycle specification: `docs/FGallery_TZ_v1.md` (exact copy from `docs/tz-v1`). Its **СОГЛАСОВАНО** requirements override any earlier behavior described here. **РЕШЕНИЕ НЕ ПРИНЯТО** items are not authorized for implementation.
+- New code branch: `feature/fgallery-0.3.0-stage1` from 0.2.9 SHA `7a9e290ac3642861274332464c17adbd92ba44fd`. Stage 1 / 0.3.0 is under development; no acceptance on physical Samsung S23 yet. Do not close earlier FG-01…FG-09 blockers without new direct user verification.
+- In particular **previous linear .85 zoom**, video **standard Media3 PlayerView controls** and **emoji 🧹** are superseded by TZ v1 §2 / Stage 1. Legacy mentions above are historical; new criteria: logarithmic 0.80/0.85/0.90 diagnostic zoom, unified Compose video chrome, proper Material CleaningServices icon and Cleanup-on confirmation, LibRaw full RAW dimensions.
+- TZ v1 stages 2+ are deferred until 0.3.0 stage 1 user-device verification. Release/store, license, editor, commercial protection remain **undecided** where marked so in TZ.
