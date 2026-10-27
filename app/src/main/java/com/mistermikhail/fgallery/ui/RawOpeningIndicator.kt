@@ -11,8 +11,9 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -20,78 +21,81 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.nativeCanvas
-import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlin.math.cos
+import kotlin.math.PI
 import kotlin.math.sin
 
-internal const val RAW_INDICATOR_SIZE_DP = 56
+internal const val RAW_INDICATOR_HEIGHT_DP = 34
+internal const val RAW_INDICATOR_TRACK_MULTIPLIER = 1.5f
+internal const val RAW_INDICATOR_TEXT = "OPEN RAW"
 
 /**
- * Advancing clockwise around the top arc keeps "Open Raw" in its natural
- * order. A bounded phase wave makes characters catch up to their neighbours,
- * but never reverses the sequence or causes them to overtake one another.
+ * Each upright letter follows the preceding letter with a small phase delay.
+ * One sine cycle moves the caption left -> right -> left continuously.
+ * The available horizontal track is exactly 150% of the measured caption width.
  */
-internal fun rawLetterOrbitAngle(rotation: Float, index: Int): Float {
-    val chase = 3.2f * sin(Math.toRadians((rotation * 2f - index * 38f).toDouble())).toFloat()
-    return rotation - 160f + index * 20f + chase
+internal fun rawLetterChaseOffset(phaseRadians: Float, index: Int, textWidth: Float): Float {
+    if (textWidth <= 0f) return 0f
+    val laggedPhase = phaseRadians - index * .13f
+    val normalized = (1f + sin(laggedPhase)) * .5f
+    return normalized * (RAW_INDICATOR_TRACK_MULTIPLIER - 1f) * textWidth
 }
 
-/** Minimal non-blocking RAW loading indicator, centred by the owning viewer. */
+/** Subtle horizontal RAW decoder status, centered by the image viewer. */
 @Composable
 internal fun RawOpeningIndicator(modifier: Modifier = Modifier) {
-    val transition = rememberInfiniteTransition(label = "raw-open-motion")
-    val rotation by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(3200, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart,
-        ),
-        label = "raw-open-orbit",
-    )
-    val paint = remember {
+    val density = LocalDensity.current
+    val fontPx = with(density) { 15.sp.toPx() }
+    val paint = remember(fontPx) {
         Paint(Paint.ANTI_ALIAS_FLAG).apply {
             typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-            textAlign = Paint.Align.CENTER
+            textSize = fontPx
+            textAlign = Paint.Align.LEFT
+            setShadowLayer(2f, 0f, 1f, android.graphics.Color.BLACK)
         }
     }
+    val captionWidth = remember(fontPx) { paint.measureText(RAW_INDICATOR_TEXT) }
+    val trackWidth = with(density) { (captionWidth * RAW_INDICATOR_TRACK_MULTIPLIER).toDp() }
+    val transition = rememberInfiniteTransition(label = "raw-open-chase")
+    val phase by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = (2 * PI).toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(2600, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "raw-open-horizontal-chase",
+    )
+
     Box(
-        modifier = modifier
-            .size(RAW_INDICATOR_SIZE_DP.dp)
-            // A subtle backdrop retains contrast but does not obscure the photo.
-            .background(Color.Black.copy(alpha = .24f), CircleShape)
+        modifier = modifier.width(trackWidth).height(RAW_INDICATOR_HEIGHT_DP.dp)
+            .background(Color.Black.copy(alpha = .22f), RoundedCornerShape(8.dp))
             .semantics { contentDescription = "Открываем RAW" }
             .testTag("raw-open-indicator"),
         contentAlignment = Alignment.Center,
     ) {
-        Canvas(Modifier.size(52.dp)) {
-            val radius = size.minDimension * .40f
-            val centreX = size.width / 2f
-            val centreY = size.height / 2f
-            paint.textSize = 9.sp.toPx()
-            drawCircle(
-                color = Color.White.copy(alpha = .16f),
-                radius = radius,
-                style = Stroke(width = 0.75f.dp.toPx()),
-            )
-            val caption = "Open Raw"
+        Canvas(Modifier.width(trackWidth).height(RAW_INDICATOR_HEIGHT_DP.dp)) {
             val canvas = drawContext.canvas.nativeCanvas
-            caption.forEachIndexed { index, glyph ->
+            val baseline = (size.height - paint.ascent() - paint.descent()) * .5f
+            var advance = 0f
+            RAW_INDICATOR_TEXT.forEachIndexed { index, glyph ->
+                val glyphText = glyph.toString()
                 if (glyph != ' ') {
-                    val radians = Math.toRadians(rawLetterOrbitAngle(rotation, index).toDouble())
-                    val x = centreX + radius * cos(radians).toFloat()
-                    val y = centreY + radius * sin(radians).toFloat()
                     paint.color = if (index >= 5) android.graphics.Color.rgb(255, 117, 74)
                         else android.graphics.Color.WHITE
-                    // Keep characters upright. Rotating each glyph by the orbit tangent
-                    // made the old wordmark appear mirrored/upside down on the S23.
-                    canvas.drawText(glyph.toString(), x, y + paint.textSize * .34f, paint)
+                    canvas.drawText(
+                        glyphText,
+                        advance + rawLetterChaseOffset(phase, index, captionWidth),
+                        baseline,
+                        paint,
+                    )
                 }
+                advance += paint.measureText(glyphText)
             }
         }
     }
