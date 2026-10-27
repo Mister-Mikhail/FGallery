@@ -728,24 +728,6 @@ internal fun TiledZoomableImage(
                 this[ViewerImageReady] = imageState.isImageDisplayed && (!needsFullSource || fullDecoded)
             }.testTag("viewer-image"),
         )
-        if (imageState.isImageDisplayed && (!needsFullSource || fullDecoded)) {
-            val transformation = zoomableState.contentTransformation
-            val initial = transformation.scaleMetadata.initialScale
-            val fitted = maxOf(initial.scaleX, initial.scaleY)
-            val currentScale = maxOf(transformation.scale.scaleX, transformation.scale.scaleY)
-            if (transformation.isSpecified && fitted.isFinite() && fitted > 0f && currentScale.isFinite()) {
-                val maximumScale = maxOf(8f, fitted * 8f)
-                Text(
-                    text = "сейчас ${(currentScale * 100).roundToInt()}% · максимум ${(maximumScale * 100).roundToInt()}%",
-                    color = Color.White,
-                    fontWeight = FontWeight.Medium,
-                    modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 54.dp)
-                        .background(Color.Black.copy(alpha = .68f), RoundedCornerShape(6.dp))
-                        .padding(horizontal = 10.dp, vertical = 5.dp)
-                        .testTag("zoom-diagnostic"),
-                )
-            }
-        }
         if (imageFailed && cachedPreview == null) Text("Не удалось открыть изображение. Формат может не поддерживаться декодером устройства.", color = Color.White, modifier = Modifier.padding(24.dp))
         if (needsFullSource && !fullDecoded) {
             if (fullError == null && active) {
