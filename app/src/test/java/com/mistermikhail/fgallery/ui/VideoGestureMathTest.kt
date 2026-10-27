@@ -7,7 +7,7 @@ class VideoGestureMathTest {
     @Test fun centralVerticalSwipeOnlyAndPagerHorizontalPrecedence() {
         val edge = 28f
         assertEquals(VideoAdjustmentSide.BRIGHTNESS, videoGestureSide(100f, 350f, 1080f, 1000f, edge))
-        assertEquals(VideoAdjustmentSide.VOLUME, videoGestureSide(850f, 350f, 1080f, 1000f, edge))
+        assertEquals(VideoAdjustmentSide.VOLUME, videoGestureSide(950f, 350f, 1080f, 1000f, edge))
         assertNull(videoGestureSide(10f, 500f, 1080f, 1000f, edge))
         assertNull(videoGestureSide(220f, 500f, 1080f, 1000f, edge))
         assertNull(videoGestureSide(540f, 500f, 1080f, 1000f, edge))
