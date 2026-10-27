@@ -24,18 +24,27 @@ internal object RawDefaultCropReader {
     fun read(context: Context, item: MediaItem): Pair<Int, Int>? {
         val ext = item.name.substringAfterLast('.', "").lowercase(Locale.ROOT)
         if (ext !in setOf("3fr", "fff", "dng")) return null
-        return runCatching {
-            context.contentResolver.openInputStream(item.uri)?.use { input ->
-                val data = ByteArray(MAX_HEADER_BYTES)
-                var length = 0
-                while (length < data.size) {
-                    val count = input.read(data, length, data.size - length)
-                    if (count <= 0) break
-                    length += count
-                }
-                parse(data.copyOf(length))
-            }
+        // Some camera files are readable as direct files even when MediaStore
+        // cannot provide a stream. Probe both access routes before expensive JNI.
+        val local = runCatching {
+            StorageAccess.file(context, item)?.takeIf { it.isFile && it.canRead() }
+                ?.inputStream()?.use(::parseHeader)
         }.getOrNull()
+        if (local != null) return local
+        return runCatching {
+            context.contentResolver.openInputStream(item.uri)?.use(::parseHeader)
+        }.getOrNull()
+    }
+
+    private fun parseHeader(input: java.io.InputStream): Pair<Int, Int>? {
+        val bytes = ByteArray(MAX_HEADER_BYTES)
+        var read = 0
+        while (read < bytes.size) {
+            val n = input.read(bytes, read, bytes.size - read)
+            if (n <= 0) break
+            read += n
+        }
+        return parse(bytes.copyOf(read))
     }
 
     internal fun parse(data: ByteArray): Pair<Int, Int>? {
