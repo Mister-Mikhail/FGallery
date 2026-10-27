@@ -96,6 +96,7 @@ import coil3.request.ImageRequest
 import coil3.video.videoFrameMillis
 import com.mistermikhail.fgallery.data.MediaItem
 import com.mistermikhail.fgallery.data.MediaKind
+import com.mistermikhail.fgallery.data.StorageFolders
 import com.mistermikhail.fgallery.data.ThumbnailCache
 import kotlinx.coroutines.delay
 
@@ -108,6 +109,7 @@ fun GalleryScreen(
     onImportDocuments: () -> Unit,
     onAddStorage: () -> Unit,
     onManageFileAccess: () -> Unit,
+    limitedMediaAccess: Boolean,
     onOpenAlbum: (String) -> Unit,
     onBackToAlbums: () -> Unit,
     onOpenMedia: (MediaItem) -> Unit,
@@ -397,6 +399,20 @@ fun GalleryScreen(
                     )
                 }
 
+                if (limitedMediaAccess && !selectionMode) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                            .padding(horizontal = 8.dp, vertical = 3.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("Ограниченный доступ: видны только выбранные файлы",
+                            style = MaterialTheme.typography.labelSmall,
+                            modifier = Modifier.weight(1f))
+                        TextButton(onClick = onRequestPermission) { Text("Выбрать ещё") }
+                        TextButton(onClick = onRequestPermission) { Text("Разрешить ко всем") }
+                    }
+                }
                 if (state.searchVisible && !selectionMode) {
                     OutlinedTextField(
                         value = state.query,
@@ -415,10 +431,10 @@ fun GalleryScreen(
     ) { innerPadding ->
         when {
             !state.hasPermission && state.allItems.isEmpty() -> {
-                Column(Modifier.fillMaxSize().padding(innerPadding), horizontalAlignment = Alignment.CenterHorizontally) {
-                    TextButton(onClick = onManageFileAccess) { Text("Разрешить доступ ко всем файлам") }
-                    TextButton(onClick = onImportDocuments) { Text("Открыть PDF / SVG…") }
-                    PermissionState(PaddingValues(0.dp), onRequestPermission)
+                Column(Modifier.fillMaxSize().padding(innerPadding),
+                    horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("Доступ к медиатеке не предоставлен. FGallery может работать с доступными файлами.")
+                    TextButton(onClick = onRequestPermission) { Text("Настроить доступ к фото и видео") }
                 }
             }
             state.isLoading && state.allItems.isEmpty() -> MessageState("Загрузка…", innerPadding)
@@ -487,6 +503,10 @@ fun GalleryScreen(
             zoomSecondPower = zoomSecondPower,
             onZoomSecondPowerChanged = onZoomSecondPowerChanged,
             confirmMove = state.confirmMove,
+            mediaAccessStatus = if (limitedMediaAccess) "ограничен" else if (state.hasPermission) "выдан" else "не выдан",
+            allFilesGranted = !limitedMediaAccess && state.hasPermission && StorageFolders.hasFileAccess(),
+            onMediaAccess = onRequestPermission,
+            onFilesAccess = onManageFileAccess,
             confirmRename = state.confirmRename,
             onConfirmMoveChanged = onConfirmMoveChanged,
             onConfirmRenameChanged = onConfirmRenameChanged,
