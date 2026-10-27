@@ -274,7 +274,11 @@ fun GalleryScreen(
                             IconButton(onClick = onToggleSearch, modifier = Modifier.size(40.dp)) {
                                 Icon(Icons.Outlined.Search, contentDescription = "Поиск")
                             }
-                            if (cleanupMode) CleanupExitButton(onDisable = { onCleanupModeChanged(false) })
+                            CleanupToggleButton(
+                                enabled = cleanupMode,
+                                onEnableRequest = { confirmCleanupEnable = true },
+                                onDisable = { onCleanupModeChanged(false) },
+                            )
 
                             Box {
                                 IconButton(onClick = { sortMenuExpanded = true }, modifier = Modifier.size(40.dp)) {
@@ -370,8 +374,7 @@ fun GalleryScreen(
                                         },
                                         onClick = {
                                             apply {
-                                                if (cleanupMode) onCleanupModeChanged(false)
-                                                else confirmCleanupEnable = true
+                                                onCleanupModeChanged(!cleanupMode)
                                             }
                                         },
                                     )
@@ -556,9 +559,9 @@ private fun AlbumsGrid(
         modifier = modifier.background(
             if (cleanupMode) Color(0xFFFF5A36) else MaterialTheme.colorScheme.background
         ),
-        contentPadding = PaddingValues(if (cleanupMode) 5.dp else 0.dp),
-        horizontalArrangement = Arrangement.spacedBy(if (cleanupMode) 5.dp else 0.dp),
-        verticalArrangement = Arrangement.spacedBy(if (cleanupMode) 5.dp else 0.dp),
+        contentPadding = PaddingValues(if (cleanupMode) 2.5.dp else 0.dp),
+        horizontalArrangement = Arrangement.spacedBy(if (cleanupMode) 2.5.dp else 0.dp),
+        verticalArrangement = Arrangement.spacedBy(if (cleanupMode) 2.5.dp else 0.dp),
     ) {
         gridItems(albums, key = { it.key }) { album ->
             Box(
@@ -652,7 +655,7 @@ private fun MosaicGrid(
     onLongPressSelection: (MediaItem) -> Unit,
     activeLiveVideoId: Long?,
 ) {
-    val gap = if (cleanupMode) 5.dp else 0.dp
+    val gap = if (cleanupMode) 2.5.dp else 0.dp
     val density = LocalDensity.current
     var gridWidthPx by remember { mutableIntStateOf(0) }
 
@@ -743,7 +746,7 @@ private fun UniformGrid(
     onLongPressSelection: (MediaItem) -> Unit,
     activeLiveVideoId: Long?,
 ) {
-    val gap = if (cleanupMode) 5.dp else 0.dp
+    val gap = if (cleanupMode) 2.5.dp else 0.dp
 
     LazyVerticalGrid(
         columns = GridCells.Adaptive(112.dp),

@@ -5,7 +5,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import com.mistermikhail.fgallery.ui.CleanupEnableDialog
-import com.mistermikhail.fgallery.ui.CleanupExitButton
+import com.mistermikhail.fgallery.ui.CleanupToggleButton
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -29,19 +29,30 @@ class CleanupModeControlsTest {
         rule.onNodeWithText("Включить режим уборки?").assertDoesNotExist()
     }
 
-    @Test fun enablingThenBroomTapDisablesWithoutPrompt() {
+    @Test fun greyBroomRequestsConfirmationOrangeBroomDisablesWithoutPrompt() {
         var disabled = false
         rule.setContent {
             var enabled by remember { mutableStateOf(false) }
-            if (!enabled) CleanupEnableDialog(
-                onCancel = {},
-                onEnable = { enabled = true },
-            ) else CleanupExitButton(onDisable = { enabled = false; disabled = true })
+            var confirm by remember { mutableStateOf(false) }
+            CleanupToggleButton(
+                enabled = enabled,
+                onEnableRequest = { confirm = true },
+                onDisable = { enabled = false; disabled = true },
+            )
+            if (confirm) CleanupEnableDialog(
+                onCancel = { confirm = false },
+                onEnable = { confirm = false; enabled = true },
+            )
         }
-        rule.onNodeWithText("Включить").performClick()
+        rule.onNodeWithContentDescription("Включить режим уборки").assertExists().performClick()
+        rule.onNodeWithText("Отмена").performClick()
+        rule.onNodeWithContentDescription("Включить режим уборки").assertExists()
+        rule.onNodeWithContentDescription("Выключить режим уборки").assertDoesNotExist()
+        rule.onNodeWithContentDescription("Включить режим уборки").performClick()
+        rule.onNodeWithText("Включить", useUnmergedTree = true).performClick()
         rule.onNodeWithContentDescription("Выключить режим уборки").assertExists().performClick()
         rule.waitForIdle()
         assertTrue(disabled)
-        rule.onNodeWithContentDescription("Выключить режим уборки").assertDoesNotExist()
+        rule.onNodeWithContentDescription("Включить режим уборки").assertExists()
     }
 }
