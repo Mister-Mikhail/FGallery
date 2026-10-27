@@ -478,15 +478,23 @@ private fun VideoPlayer(
     val maxVolume = remember(audio) { audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1) }
     val originalBrightness = remember(item.uriKey) { activity?.window?.attributes?.screenBrightness ?: -1f }
     var adjustment by remember(item.uriKey) { mutableStateOf<Pair<VideoAdjustmentSide, Float>?>(null) }
-    val edgePx = with(LocalDensity.current) { 28.dp.toPx() }
-    DisposableEffect(activity, item.uriKey) {
-        onDispose {
-            activity?.window?.let { window ->
-                val params = window.attributes
-                params.screenBrightness = originalBrightness
-                window.attributes = params
-            }
+    var brightnessAdjusted by remember(item.uriKey) { mutableStateOf(false) }
+    fun restoreWindowBrightness() {
+        if (!brightnessAdjusted) return
+        activity?.window?.let { window ->
+            val params = window.attributes
+            params.screenBrightness = originalBrightness
+            window.attributes = params
         }
+        brightnessAdjusted = false
+    }
+    val edgePx = with(LocalDensity.current) { 28.dp.toPx() }
+    // Inactive pager pages may remain composed; disposal alone is too late to restore.
+    LaunchedEffect(active, brightnessAdjusted) {
+        if (!active && brightnessAdjusted) restoreWindowBrightness()
+    }
+    DisposableEffect(activity, item.uriKey) {
+        onDispose { restoreWindowBrightness() }
     }
     LaunchedEffect(adjustment) {
         if (adjustment != null) {
@@ -538,6 +546,7 @@ private fun VideoPlayer(
                                 val params = window.attributes
                                 params.screenBrightness = fraction.coerceAtLeast(.01f)
                                 window.attributes = params
+                                brightnessAdjusted = true
                             }
                         }
                         adjustment = side to fraction
