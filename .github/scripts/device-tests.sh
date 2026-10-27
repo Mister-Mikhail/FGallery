@@ -6,7 +6,7 @@ capture_device_log() {
 }
 trap capture_device_log EXIT
 if [[ "${GITHUB_REF:-}" == "refs/heads/feature/fgallery-0.3.1-stage2-build" || "${GITHUB_BASE_REF:-}" == "feature/fgallery-0.3.0-stage1" ]]; then
-  gradle :app:connectedReleaseAndroidTest
+  gradle :app:connectedMinifiedTestAndroidTest
 else
   gradle :app:connectedDebugAndroidTest
 fi
