@@ -728,7 +728,7 @@ internal fun TiledZoomableImage(
             if (transformation.isSpecified && fitted.isFinite() && fitted > 0f && currentScale.isFinite()) {
                 val maximumScale = maxOf(8f, fitted * 8f)
                 Text(
-                    text = "сейчас ${(currentScale * 100).toInt()}% · максимум ${(maximumScale * 100).toInt()}%",
+                    text = "сейчас ${(currentScale * 100).roundToInt()}% · максимум ${(maximumScale * 100).roundToInt()}%",
                     color = Color.White,
                     fontWeight = FontWeight.Medium,
                     modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 54.dp)
