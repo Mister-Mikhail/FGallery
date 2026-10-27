@@ -77,7 +77,7 @@ internal fun RawOpeningIndicator(modifier: Modifier = Modifier) {
             drawCircle(
                 color = Color.White.copy(alpha = .16f),
                 radius = radius,
-                style = Stroke(width = .75.dp.toPx()),
+                style = Stroke(width = 0.75f.dp.toPx()),
             )
             val caption = "Open Raw"
             val canvas = drawContext.canvas.nativeCanvas
