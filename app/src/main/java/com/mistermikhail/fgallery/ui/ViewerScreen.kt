@@ -100,7 +100,6 @@ import com.mistermikhail.fgallery.data.ThumbnailCache
 import kotlinx.coroutines.delay
 import me.saket.telephoto.zoomable.DoubleClickToZoomListener
 import me.saket.telephoto.zoomable.ZoomSpec
-import me.saket.telephoto.zoomable.OverzoomEffect
 import me.saket.telephoto.zoomable.rememberZoomableImageState
 import me.saket.telephoto.zoomable.rememberZoomableState
 import me.saket.telephoto.zoomable.coil3.ZoomableAsyncImage
@@ -650,8 +649,9 @@ internal fun TiledZoomableImage(
     var maximum by remember(item.uri) { mutableFloatStateOf(8f) }
 
     val zoomableState = rememberZoomableState(
-        // S23: suppress the default 40% RubberBanding overshoot (800% -> 1120%).
-        zoomSpec = ZoomSpec(maxZoomFactor = maximum, overzoomEffect = OverzoomEffect.Disabled),
+        // Preserve Telephoto's default elastic overzoom animation, confirmed desirable on S23.
+        // 800% is the stable ceiling; a brief ~1120% while stretching is intentional.
+        zoomSpec = ZoomSpec(maxZoomFactor = maximum),
     )
     val imageState = rememberZoomableImageState(zoomableState)
     LaunchedEffect(zoomableState) {
