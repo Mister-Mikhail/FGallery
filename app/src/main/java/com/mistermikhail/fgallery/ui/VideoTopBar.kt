@@ -26,7 +26,7 @@ internal fun VideoTopBar(
     onRestore: () -> Unit,
     recycleBinMode: Boolean,
 ) {
-    Box(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 4.dp)) {
+    Box(Modifier.fillMaxWidth().safeDrawingPadding().padding(horizontal = 4.dp)) {
         IconButton(onClick = onBack, modifier = Modifier.align(Alignment.CenterStart)) {
             Icon(Icons.Outlined.ArrowBack, contentDescription = "Назад", tint = Color.White)
         }
