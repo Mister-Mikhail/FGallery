@@ -263,3 +263,17 @@ An initial uninstall/reinstall is required when upgrading from an earlier random
 - **FG-TZ-1.3 / P1 / in code + CI passed:** one Compose video chrome, 3s autoplay hide and persistent pause; gestures volume right / brightness left central 20–80%, horizontal pager and gesture nav excluded, reset window brightness on exit. Required real S23 ordinary and 360, playback/lifecycle/no sound bleed/portrait/landscape and repeat swipes. Not user-verified.
 - **FG-TZ-1.4 / P1 / in code + CI passed:** `RawSensorDimensions` LibRaw open/unpack metadata, cache, full and quick EXIF. Required X2D .3FR, Phase One P65+ .IIQ, CR2, DNG, FFF, especially true sensor resolution (not 3888×2918 preview) and peak memory. Unpack in JNI open may be expensive. Not user-verified.
 - Source SHA `a5b7ee8f408ed804b87eba49203d337b5d1b1e42`, CI `40426282849` success (43 Android emulator cases, Gradle+JVM+signer), arm64 artifact `12700002376`. No issue resolved by CI alone. Exact scope/behavior from `docs/FGallery_TZ_v1.md` remains authoritative.
+
+### S23 user zoom QA — 2026-10-27 — Stage 1.1 diagnostic 0.3.0
+
+**Priority P1, status: directly reproduced on Samsung Galaxy S23 / Android 16, OPEN; not accepted.** User tested the diagnostic build associated with Stage 1.1; exact APK SHA should be confirmed when next discussing builds. Recorded readings in **absolute scale relative to source pixels**:
+
+| Real sample | Fit | First double-tap | Second double-tap | Pinch peak | Pinch settled | User-desired first/second |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| TIFF 4679×6460 | 23% | 46% | 470% | 1120% | 800% | 50% / 160% |
+| JPEG 5792×8688 | 18% | 37% | 455% | 1120% | 800% | 50% / 160% |
+| CR2 5616×3744 | 19% | 38% | 457% | 1120% | 800% | 50% / 160% |
+
+Observed from the user: **visually the pinch after second tap adds only ≈5–8%**, despite the indicated jump from ~455–470% to transient 1120%, settling at 800%. The transient overshoot and elastic return strongly suggest the zoom library's temporary overzoom gesture rendering; it is *not* demonstrated that stable zoom exceeds the configured M=800%. Do not conflate displayed pixel scale with perceived crop-area/linear magnification. S23 observations override emulator CI.
+
+**Conflict needing explicit confirmation before modifying the approved method:** TZ v1 §2.1.1 specifies first=2F and second=F(M/F)^p with p 80/85/90%; user now requests **absolute 50% and 160%** across these three files. 50% cannot be identical to 2F across differing fits (18/19/23%). Do not silently replace the approved formula or p selector. Ask user whether 50%/160% are the new fixed absolute targets for large files (with fit/small-image safeguards), or only experimental preferred results from which to choose a new scale policy. Once confirmed, add explicit test cases for all three fit values and pinch to max, update ZoomLevelsTest/TiffImageTest/ImageZoomTest/ZoomBehavior docs, run CI, then new S23 APK. No bug closure before new user retest.
