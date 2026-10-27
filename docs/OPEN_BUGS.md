@@ -254,3 +254,12 @@ An initial uninstall/reinstall is required when upgrading from an earlier random
 - New code branch: `feature/fgallery-0.3.0-stage1` from 0.2.9 SHA `7a9e290ac3642861274332464c17adbd92ba44fd`. Stage 1 / 0.3.0 is under development; no acceptance on physical Samsung S23 yet. Do not close earlier FG-01…FG-09 blockers without new direct user verification.
 - In particular **previous linear .85 zoom**, video **standard Media3 PlayerView controls** and **emoji 🧹** are superseded by TZ v1 §2 / Stage 1. Legacy mentions above are historical; new criteria: logarithmic 0.80/0.85/0.90 diagnostic zoom, unified Compose video chrome, proper Material CleaningServices icon and Cleanup-on confirmation, LibRaw full RAW dimensions.
 - TZ v1 stages 2+ are deferred until 0.3.0 stage 1 user-device verification. Release/store, license, editor, commercial protection remain **undecided** where marked so in TZ.
+
+
+
+### FGallery TZ v1 — Stage 1 / 0.3.0 device acceptance STILL OPEN — 2026-10-27
+- **FG-TZ-1.1 / P1 / in code + CI passed:** second zoom step log-space p=.80/.85/.90, 2× first tap, real percent/max indicator, PDF/SVG; required Samsung S23 selection of p, confirm pinch reaches maximum after second tap, vertical 5DS R/phone examples. Not user-verified.
+- **FG-TZ-1.2 / P1 / in code + CI passed:** cleanup confirmation and 24dp CleaningServices; required S23 cancel/enable/disable, double-tap sends PDF/RAW/video to on-volume bin, no accidental delete. Not user-verified.
+- **FG-TZ-1.3 / P1 / in code + CI passed:** one Compose video chrome, 3s autoplay hide and persistent pause; gestures volume right / brightness left central 20–80%, horizontal pager and gesture nav excluded, reset window brightness on exit. Required real S23 ordinary and 360, playback/lifecycle/no sound bleed/portrait/landscape and repeat swipes. Not user-verified.
+- **FG-TZ-1.4 / P1 / in code + CI passed:** `RawSensorDimensions` LibRaw open/unpack metadata, cache, full and quick EXIF. Required X2D .3FR, Phase One P65+ .IIQ, CR2, DNG, FFF, especially true sensor resolution (not 3888×2918 preview) and peak memory. Unpack in JNI open may be expensive. Not user-verified.
+- Source SHA `a5b7ee8f408ed804b87eba49203d337b5d1b1e42`, CI `40426282849` success (43 Android emulator cases, Gradle+JVM+signer), arm64 artifact `12700002376`. No issue resolved by CI alone. Exact scope/behavior from `docs/FGallery_TZ_v1.md` remains authoritative.
