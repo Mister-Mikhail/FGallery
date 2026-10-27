@@ -590,7 +590,8 @@ private fun VideoPlayer(
         adjustment?.let { (side, amount) ->
             VideoAdjustmentIndicator(
                 side = side, value = amount,
-                modifier = Modifier,
+                modifier = Modifier.align(if (side == VideoAdjustmentSide.BRIGHTNESS) Alignment.CenterStart else Alignment.CenterEnd)
+                    .padding(horizontal = 26.dp),
             )
         }
     }
