@@ -1,0 +1,94 @@
+name: Android R8 QA (Stage 2)
+
+on:
+  push:
+    branches:
+      - feature/fgallery-0.3.1-stage2-r8
+  pull_request:
+    branches:
+      - feature/fgallery-0.3.0-stage1
+  workflow_dispatch:
+
+concurrency:
+  group: fgallery-r8-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  r8-qa:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+      - name: R8 release unit tests and signed QA APK
+        run: gradle :app:testReleaseUnitTest :app:assembleRelease
+      - name: Verify R8 map and test signature
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s app/build/outputs/mapping/release/mapping.txt
+          fgallery_apksigner=""
+          for fgallery_candidate in "$ANDROID_HOME"/build-tools/*/apksigner; do
+            if [[ -x "$fgallery_candidate" ]]; then fgallery_apksigner="$fgallery_candidate"; fi
+          done
+          test -n "$fgallery_apksigner"
+          for abi in arm64-v8a universal; do
+            apk="app/build/outputs/apk/release/app-$abi-release.apk"
+            test -s "$apk"
+            fgallery_report=$("$fgallery_apksigner" verify --print-certs "$apk")
+            printf '%s\n' "$fgallery_report"
+            fgallery_certificate=$(printf '%s\n' "$fgallery_report" | sed -nE 's/^.*certificate SHA-256 digest: ([0-9a-f]{64})$/\1/p')
+            test "$fgallery_certificate" = "ce2293752c0a4a8c844caff57fa3bc28ee9206e927ad311dbcf3a5e71c803eb2"
+            du -h "$apk"
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: FGallery-R8-arm64-qa
+          path: app/build/outputs/apk/release/app-arm64-v8a-release.apk
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: FGallery-R8-universal-qa
+          path: app/build/outputs/apk/release/app-universal-release.apk
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: FGallery-R8-mapping
+          path: app/build/outputs/mapping/release/mapping.txt
+
+  r8-device-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          # Test the release-equivalent R8 build with test-only host classes,
+          # never embed those helper activities into the shipped release APK.
+          script: gradle :app:connectedR8TestAndroidTest
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: FGallery-R8-instrumentation-results
+          path: app/build/reports/androidTests/connected/
