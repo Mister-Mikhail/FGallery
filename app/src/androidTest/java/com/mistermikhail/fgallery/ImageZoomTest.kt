@@ -28,7 +28,7 @@ import java.io.File
 class ImageZoomTest {
     @get:Rule val rule = createComposeRule()
 
-    @Test fun smallImageDoublesAndReturnsOnTheSecondTap() {
+    @Test fun smallImageZoomsTwoAndHalfThenReturnsOnSecondTap() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val file = File(context.cacheDir, "small-zoom.png")
         val bitmap = Bitmap.createBitmap(64, 48, Bitmap.Config.ARGB_8888).apply { eraseColor(android.graphics.Color.GREEN) }
@@ -39,7 +39,7 @@ class ImageZoomTest {
         rule.waitUntil(15000) { runCatching { node.fetchSemanticsNode().config[ViewerImageReady] }.getOrDefault(false) }
         node.performTouchInput { doubleClick(center) }
         rule.waitForIdle()
-        node.assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Zoom 200%"))
+        node.assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Zoom 250%"))
         node.performTouchInput { doubleClick(center) }
         rule.waitForIdle()
         node.assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Zoom 100%"))

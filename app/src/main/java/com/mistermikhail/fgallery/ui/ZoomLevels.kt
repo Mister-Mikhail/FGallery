@@ -38,7 +38,7 @@ internal fun firstDoubleTapZoom(fitScale: Float, maximum: Float): Float =
 /**
  * S23-revised raster targets, requested after testing the 0.3.0 diagnostics:
  * 50% and 160% of a source pixel, not percentages relative to fitted size.
- * Preserve the small-image fit -> 2x fit -> fit cycle from approved TZ v1.
+ * On S23-approved update, small raster images now use fit -> 2.5x fit -> fit.
  * PDF/SVG deliberately continue to use nextDoubleTapZoom() and the agreed p.
  */
 internal fun nextRasterDoubleTapZoom(
@@ -49,7 +49,13 @@ internal fun nextRasterDoubleTapZoom(
 ): Float {
     val base = fit.takeIf { it.isFinite() && it > 0f } ?: 1f
     val ceiling = maximum.takeIf { it.isFinite() && it >= base } ?: maxOf(8f, 8f * base)
-    if (smallImage) return nextDoubleTapZoom(current, base, ceiling, smallImage = true)
+    if (smallImage) {
+        // The small-raster target is a multiple of fitted size, not source pixel scale.
+        // Keep the document zoom helper untouched: PDF/SVG still use their approved 2x rule.
+        val first = (base * 2.5f).coerceAtMost(ceiling)
+        val relative = current / base
+        return if (!relative.isFinite() || relative <= 1.02f) first else base
+    }
     val first = 0.50f.coerceIn(base, ceiling)
     val second = 1.60f.coerceIn(base, ceiling)
     val relative = current / base

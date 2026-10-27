@@ -78,12 +78,14 @@ class ZoomLevelsTest {
         }
     }
 
-    @Test fun rasterSmallSourceKeepsFitDoubleAndReset() {
+    @Test fun rasterSmallSourceZoomsTwoAndHalfThenReturnsToFit() {
         for (fit in listOf(.5f, .75f, 1f, 2f)) {
             val maximum = maxOf(8f, fit * 8f)
             val first = nextRasterDoubleTapZoom(fit, fit, maximum, smallImage = true)
-            assertEquals(fit * 2f, first, .0001f)
+            assertEquals("small raster first step is 2.5x fit", fit * 2.5f, first, .0001f)
             assertEquals(fit, nextRasterDoubleTapZoom(first, fit, maximum, smallImage = true), .0001f)
+            assertEquals(first, nextRasterDoubleTapZoom(fit * 1.01f, fit, maximum, smallImage = true), .0001f)
+            assertEquals(true, first <= maximum)
         }
     }
 
