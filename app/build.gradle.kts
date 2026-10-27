@@ -51,6 +51,11 @@ android {
             "proguard-rules.pro",
         )
     }
+    buildTypes.create("minifiedTest") {
+        initWith(getByName("release"))
+        isDebuggable = true
+        matchingFallbacks += listOf("release", "debug")
+    }
 
     splits {
         abi {
