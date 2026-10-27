@@ -69,6 +69,15 @@ import com.mistermikhail.fgallery.data.EditedMediaStore
 import com.mistermikhail.fgallery.data.DriveLibrary
 import com.mistermikhail.fgallery.data.StorageAccess
 import com.mistermikhail.fgallery.data.StorageFolder
+import com.mistermikhail.fgallery.data.MoveNamePlanner
+import java.io.File
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarResult
+import androidx.compose.ui.Alignment
+import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import com.mistermikhail.fgallery.data.DocumentLibrary
 import com.mistermikhail.fgallery.ui.VideoCropDialog
 import kotlinx.coroutines.Dispatchers
@@ -78,6 +87,13 @@ import kotlinx.coroutines.withContext
 private data class PendingTreeMove(
     val sourceItems: List<MediaItem>,
     val copiedUris: List<Uri>,
+)
+
+private data class CompletedMove(
+    val source: MediaItem,
+    val destination: Uri,
+    val destinationName: String,
+    val originalParent: String,
 )
 
 private class PartialMoveException(val remaining: List<MediaItem>, cause: Exception) : Exception(cause.localizedMessage, cause)
@@ -144,6 +160,7 @@ class MainActivity : ComponentActivity() {
         var updateChecks by remember { mutableStateOf(0) }
         var videoCropItem by remember { mutableStateOf<MediaItem?>(null) }
         val uiScope = rememberCoroutineScope()
+        val moveSnackbar = remember { SnackbarHostState() }
         val extraFolders by produceState<List<StorageFolder>>(emptyList(), pendingMoveItems.isNotEmpty(), folderRevision) {
             if (pendingMoveItems.isNotEmpty()) value = withContext(Dispatchers.IO) { DriveLibrary.folders(this@MainActivity) }
         }
@@ -228,7 +245,7 @@ class MainActivity : ComponentActivity() {
             viewModel.onPermissionChanged(hasMediaPermission())
         }
 
-        suspend fun executeWrite(operation: PendingWriteOperation) {
+        suspend fun executeWrite(operation: PendingWriteOperation, moved: MutableList<CompletedMove>) {
             when (operation) {
                 is PendingWriteOperation.Replace -> EditedMediaStore(this@MainActivity).replace(operation.item, operation.editedUri, operation.mime, operation.extension)
                 is PendingWriteOperation.Rename -> {
@@ -260,24 +277,61 @@ class MainActivity : ComponentActivity() {
                     val qualified = rawPath.startsWith("/") || rawPath.startsWith("content://")
                     val path = if (qualified) rawPath else rawPath.replace('\\', '/').trim('/') + "/"
                     require(path.isNotBlank() && path != "/") { "Недопустимая папка" }
+
+                    // Reserve names for the batch, so same-frame RAW+JPEG share a suffix.
+                    val roots = StorageAccess.mounted(this@MainActivity)
+                    fun destinationOf(item: MediaItem): String {
+                        if (qualified) return path
+                        val sourceFile = StorageAccess.file(this@MainActivity, item)
+                        val root = roots.firstOrNull { root ->
+                            sourceFile != null && root.directory != null &&
+                                sourceFile.canonicalPath.startsWith(root.directory.canonicalPath + "/")
+                        }?.directory ?: Environment.getExternalStorageDirectory()
+                        return File(root, path).canonicalPath
+                    }
+                    val groups = operation.items.groupBy(::destinationOf)
+                    val planned = mutableMapOf<String, String>()
+                    groups.forEach { (destination, items) ->
+                        val names = StorageAccess.children(this@MainActivity, destination).map { it.first }
+                        val resolved = MoveNamePlanner.plan(items.map { it.name }, names)
+                        items.zip(resolved).forEach { (item, name) -> planned[item.uriKey] = name }
+                    }
                     var firstFailure: Exception? = null
                     val remaining = mutableListOf<MediaItem>()
                     for (item in operation.items) {
                         try {
-                            if (qualified) { StorageAccess.move(this@MainActivity, item, path); continue }
-                            if (item.relativePath == path) continue
-                            if (StorageFolders.hasFileAccess()) {
-                                StorageFolders.move(this@MainActivity, item, path)
-                                continue
+                            if (!qualified && item.relativePath == path) continue
+                            val name = planned[item.uriKey] ?: item.name
+                            val oldParent = StorageAccess.file(this@MainActivity, item)?.parent
+                                ?: StorageAccess.parent(this@MainActivity, item)
+                            val destination = destinationOf(item)
+                            val result = if (qualified) {
+                                StorageAccess.move(this@MainActivity, item, destination, name)
+                            } else if (StorageFolders.hasFileAccess()) {
+                                StorageFolders.move(this@MainActivity, item, path, name)
+                            } else {
+                                val values = ContentValues().apply {
+                                    put(MediaStore.MediaColumns.RELATIVE_PATH, path)
+                                    put(MediaStore.MediaColumns.DISPLAY_NAME, name)
+                                }
+                                check(contentResolver.update(item.uri, values, null, null) == 1) {
+                                    "Файл ${item.name} не перемещён"
+                                }
+                                val actual = contentResolver.query(item.uri,
+                                    arrayOf(MediaStore.MediaColumns.RELATIVE_PATH, MediaStore.MediaColumns.DISPLAY_NAME),
+                                    null, null, null)?.use {
+                                    if (it.moveToFirst()) it.getString(0) to it.getString(1) else null
+                                }
+                                check(actual?.first == path && actual.second.equals(name, ignoreCase = true)) {
+                                    "Android не подтвердил имя или папку перемещённого файла"
+                                }
+                                item.uri
                             }
-                            val values = ContentValues().apply { put(MediaStore.MediaColumns.RELATIVE_PATH, path) }
-                            // Use the exact URI Android granted, never the Files alias.
-                            check(contentResolver.update(item.uri, values, null, null) == 1) { "Файл ${item.name} не перемещён" }
-                            val actual = contentResolver.query(item.uri, arrayOf(MediaStore.MediaColumns.RELATIVE_PATH), null, null, null)?.use {
-                                if (it.moveToFirst()) it.getString(0) else null
-                            }
-                            check(actual == path) { "Папка ${item.name} не изменилась" }
-                        } catch (e: Exception) { remaining += item; if (firstFailure == null) firstFailure = e }
+                            moved += CompletedMove(item, result, name, oldParent)
+                        } catch (e: Exception) {
+                            remaining += item
+                            if (firstFailure == null) firstFailure = e
+                        }
                     }
                     firstFailure?.let { throw PartialMoveException(remaining, it) }
                 }
@@ -291,8 +345,40 @@ class MainActivity : ComponentActivity() {
             is PendingWriteOperation.Replace -> listOf(operation.item.uri)
         }
 
-        suspend fun performWrite(operation: PendingWriteOperation): Exception? = withContext(Dispatchers.IO) {
-            try { executeWrite(operation); null } catch (e: Exception) { e }
+        suspend fun performWrite(operation: PendingWriteOperation): Pair<Exception?, List<CompletedMove>> = withContext(Dispatchers.IO) {
+            val moved = mutableListOf<CompletedMove>()
+            val error = try { executeWrite(operation, moved); null } catch (e: Exception) { e }
+            error to moved.toList()
+        }
+
+        fun offerMoveUndo(records: List<CompletedMove>, label: String) {
+            if (records.isEmpty()) return
+            uiScope.launch {
+                val result = async {
+                    moveSnackbar.showSnackbar("Перемещено в $label", actionLabel = "Отменить",
+                        withDismissAction = false, duration = SnackbarDuration.Indefinite)
+                }
+                delay(5_000)
+                moveSnackbar.currentSnackbarData?.dismiss()
+                if (result.await() == SnackbarResult.ActionPerformed) {
+                    operationBusy = true
+                    operationMessage = "Отмена перемещения"
+                    val error = withContext(Dispatchers.IO) {
+                        runCatching {
+                            records.asReversed().forEach { record ->
+                                val movedItem = record.source.copy(uri = record.destination,
+                                    name = record.destinationName, folderTarget = record.destination.toString())
+                                StorageAccess.move(this@MainActivity, movedItem,
+                                    record.originalParent, record.source.name)
+                            }
+                        }.exceptionOrNull()
+                    }
+                    operationBusy = false
+                    viewModel.refresh()
+                    notify(if (error == null) "Перемещение отменено" else
+                        "Не удалось вернуть все файлы: ${error.localizedMessage}")
+                }
+            }
         }
 
         fun retainFailedMove(failure: Exception?) {
@@ -316,7 +402,7 @@ class MainActivity : ComponentActivity() {
                 notify("Операция отменена. Выбор файлов сохранён.")
             } else uiScope.launch {
                 operationBusy = true
-                val failure = performWrite(operation)
+                val (failure, moved) = performWrite(operation)
                 retainFailedMove(failure)
                 operationBusy = false
                 if (failure == null) {
@@ -325,7 +411,8 @@ class MainActivity : ComponentActivity() {
                         uiScope.launch { kotlinx.coroutines.delay(450); cropPreview = null }
                     }
                     finishOperation()
-                    notify("Готово")
+                    if (operation is PendingWriteOperation.Move) offerMoveUndo(moved, operation.relativePath)
+                    else notify("Готово")
                 } else {
                     cropPreview = null
                     viewModel.refresh()
@@ -373,6 +460,11 @@ class MainActivity : ComponentActivity() {
                 is PendingWriteOperation.Replace -> false // Explicit overwrite dialog already accepted.
             }
             if (!skipConfirmation && needsConfirmation) { pendingWriteConfirmation = operation; return }
+            if (operation is PendingWriteOperation.Move && !StorageFolders.hasFileAccess() &&
+                !operation.relativePath.startsWith("content://")) {
+                pendingAccessWrite = operation
+                return
+            }
             // Relative-path MediaStore moves work without broad all-files access.
             // Do not require MANAGE_EXTERNAL_STORAGE before attempting them; if Android
             // denies a particular URI, the existing SecurityException path requests
@@ -385,7 +477,7 @@ class MainActivity : ComponentActivity() {
             }
             operationBusy = true
             uiScope.launch {
-                val failure = performWrite(operation)
+                val (failure, moved) = performWrite(operation)
                 retainFailedMove(failure)
                 operationBusy = false
                 if (failure == null) {
@@ -393,7 +485,8 @@ class MainActivity : ComponentActivity() {
                     if (operation is PendingWriteOperation.Replace) {
                         uiScope.launch { kotlinx.coroutines.delay(450); cropPreview = null }
                     }
-                    notify("Готово")
+                    if (operation is PendingWriteOperation.Move) offerMoveUndo(moved, operation.relativePath)
+                    else notify("Готово")
                     return@launch
                 }
                 val security = when (failure) {
@@ -889,7 +982,11 @@ class MainActivity : ComponentActivity() {
                     query = moveQuery,
                     selectedAlbum = moveDestinationAlbum,
                     onQueryChanged = { moveQuery = it },
-                    onSelectAlbum = { moveDestinationAlbum = it },
+                    onSelectAlbum = { album ->
+                        requestWrite(PendingWriteOperation.Move(pendingMoveItems,
+                            album.cover.folderTarget.ifBlank { album.cover.relativePath }))
+                    },
+                    onOpenAlbum = { moveDestinationAlbum = it },
                     onBackFromAlbum = { moveDestinationAlbum = null },
                     onCancel = {
                         pendingMoveItems = emptyList()
@@ -1065,6 +1162,9 @@ class MainActivity : ComponentActivity() {
                     )
                 }
             }
+        }
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
+            SnackbarHost(moveSnackbar, modifier = Modifier.navigationBarsPadding())
         }
         if (firstLaunchAccess) AlertDialog(
             onDismissRequest = { firstLaunchAccess = false },
