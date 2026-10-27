@@ -79,8 +79,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.ui.Alignment
-import kotlinx.coroutines.async
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeoutOrNull
 import com.mistermikhail.fgallery.data.DocumentLibrary
 import com.mistermikhail.fgallery.ui.VideoCropDialog
 import kotlinx.coroutines.Dispatchers
@@ -115,6 +114,7 @@ private sealed interface PendingWriteOperation {
         val items: List<MediaItem>,
         val relativePath: String,
         val plannedNames: Map<String, String> = emptyMap(),
+        val completed: List<CompletedMove> = emptyList(),
     ) : PendingWriteOperation
 }
 
@@ -398,13 +398,11 @@ class MainActivity : ComponentActivity() {
         fun offerMoveUndo(records: List<CompletedMove>, label: String) {
             if (records.isEmpty()) return
             uiScope.launch {
-                val result = async {
+                val result = withTimeoutOrNull(5_000L) {
                     moveSnackbar.showSnackbar("Перемещено в $label", actionLabel = "Отменить",
                         withDismissAction = false, duration = SnackbarDuration.Indefinite)
                 }
-                delay(5_000)
-                moveSnackbar.currentSnackbarData?.dismiss()
-                if (result.await() == SnackbarResult.ActionPerformed) {
+                if (result == SnackbarResult.ActionPerformed) {
                     operationBusy = true
                     operationMessage = "Отмена перемещения"
                     val error = withContext(Dispatchers.IO) {
@@ -455,7 +453,7 @@ class MainActivity : ComponentActivity() {
                         uiScope.launch { kotlinx.coroutines.delay(450); cropPreview = null }
                     }
                     finishOperation()
-                    if (operation is PendingWriteOperation.Move) offerMoveUndo(moved, operation.relativePath)
+                    if (operation is PendingWriteOperation.Move) offerMoveUndo(operation.completed + moved, operation.relativePath)
                     else notify("Готово")
                 } else {
                     cropPreview = null
@@ -472,7 +470,7 @@ class MainActivity : ComponentActivity() {
                         // A grant can cover only the first 2000 MediaStore URIs.
                         // Prompt for the next remaining group without moving completed files again.
                         val remainingOperation = when {
-                            failure is PartialMoveException && operation is PendingWriteOperation.Move -> operation.copy(items = failure.remaining, plannedNames = failure.names)
+                            failure is PartialMoveException && operation is PendingWriteOperation.Move -> operation.copy(items = failure.remaining, plannedNames = failure.names, completed = operation.completed + moved)
                             failure is PartialRenameException && operation is PendingWriteOperation.RenameBatch -> operation.copy(plan = failure.remaining)
                             else -> operation
                         }
@@ -527,7 +525,7 @@ class MainActivity : ComponentActivity() {
                     if (operation is PendingWriteOperation.Replace) {
                         uiScope.launch { kotlinx.coroutines.delay(450); cropPreview = null }
                     }
-                    if (operation is PendingWriteOperation.Move) offerMoveUndo(moved, operation.relativePath)
+                    if (operation is PendingWriteOperation.Move) offerMoveUndo(operation.completed + moved, operation.relativePath)
                     else notify("Готово")
                     return@launch
                 }
@@ -540,7 +538,7 @@ class MainActivity : ComponentActivity() {
                     // Never repeat files that already moved successfully before a partial failure.
                     // Android limits each MediaStore permission request to 2000 items.
                     val retry = when {
-                        failure is PartialMoveException && operation is PendingWriteOperation.Move -> operation.copy(items = failure.remaining, plannedNames = failure.names)
+                        failure is PartialMoveException && operation is PendingWriteOperation.Move -> operation.copy(items = failure.remaining, plannedNames = failure.names, completed = operation.completed + moved)
                         failure is PartialRenameException && operation is PendingWriteOperation.RenameBatch -> operation.copy(plan = failure.remaining)
                         else -> operation
                     }
