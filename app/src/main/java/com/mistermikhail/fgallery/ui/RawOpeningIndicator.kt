@@ -18,7 +18,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -30,15 +29,23 @@ import androidx.compose.ui.unit.sp
 import kotlin.math.cos
 import kotlin.math.sin
 
+internal const val RAW_INDICATOR_SIZE_DP = 56
+
 /**
- * Compact non-blocking RAW loading animation.
- * Letters travel around the same circular track with staggered phases,
- * slightly accelerating/closing their spacing like a chasing train.
+ * Advancing clockwise around the top arc keeps "Open Raw" in its natural
+ * order. A bounded phase wave makes characters catch up to their neighbours,
+ * but never reverses the sequence or causes them to overtake one another.
  */
+internal fun rawLetterOrbitAngle(rotation: Float, index: Int): Float {
+    val chase = 3.2f * sin(Math.toRadians((rotation * 2f - index * 38f).toDouble())).toFloat()
+    return rotation - 160f + index * 20f + chase
+}
+
+/** Minimal non-blocking RAW loading indicator, centred by the owning viewer. */
 @Composable
 internal fun RawOpeningIndicator(modifier: Modifier = Modifier) {
     val transition = rememberInfiniteTransition(label = "raw-open-motion")
-    val progress by transition.animateFloat(
+    val rotation by transition.animateFloat(
         initialValue = 0f,
         targetValue = 360f,
         animationSpec = infiniteRepeatable(
@@ -54,39 +61,36 @@ internal fun RawOpeningIndicator(modifier: Modifier = Modifier) {
         }
     }
     Box(
-        modifier = modifier.size(124.dp)
-            .background(Color.Black.copy(alpha = 0.72f), CircleShape)
+        modifier = modifier
+            .size(RAW_INDICATOR_SIZE_DP.dp)
+            // A subtle backdrop retains contrast but does not obscure the photo.
+            .background(Color.Black.copy(alpha = .24f), CircleShape)
             .semantics { contentDescription = "Открываем RAW" }
             .testTag("raw-open-indicator"),
         contentAlignment = Alignment.Center,
     ) {
-        Canvas(Modifier.size(112.dp)) {
-            val radius = size.minDimension * .355f
+        Canvas(Modifier.size(52.dp)) {
+            val radius = size.minDimension * .40f
             val centreX = size.width / 2f
             val centreY = size.height / 2f
-            paint.textSize = 14.sp.toPx()
+            paint.textSize = 9.sp.toPx()
             drawCircle(
-                color = Color.White.copy(alpha = .14f),
+                color = Color.White.copy(alpha = .16f),
                 radius = radius,
-                style = Stroke(width = 1.dp.toPx()),
+                style = Stroke(width = .75.dp.toPx()),
             )
             val caption = "Open Raw"
-            caption.forEachIndexed { i, glyph ->
+            val canvas = drawContext.canvas.nativeCanvas
+            caption.forEachIndexed { index, glyph ->
                 if (glyph != ' ') {
-                    // Distinct phase offsets keep the letters chasing one another.
-                    val chase = 4.5f * sin(Math.toRadians((progress * 2f - i * 37f).toDouble())).toFloat()
-                    val angle = progress - 92f - i * 19f + chase
-                    val radians = Math.toRadians(angle.toDouble())
+                    val radians = Math.toRadians(rawLetterOrbitAngle(rotation, index).toDouble())
                     val x = centreX + radius * cos(radians).toFloat()
                     val y = centreY + radius * sin(radians).toFloat()
-                    paint.color = if (i >= 5) android.graphics.Color.rgb(255, 117, 74)
+                    paint.color = if (index >= 5) android.graphics.Color.rgb(255, 117, 74)
                         else android.graphics.Color.WHITE
-                    val canvas = drawContext.canvas.nativeCanvas
-                    canvas.save()
-                    canvas.translate(x, y)
-                    canvas.rotate(angle + 90f)
-                    canvas.drawText(glyph.toString(), 0f, paint.textSize * .34f, paint)
-                    canvas.restore()
+                    // Keep characters upright. Rotating each glyph by the orbit tangent
+                    // made the old wordmark appear mirrored/upside down on the S23.
+                    canvas.drawText(glyph.toString(), x, y + paint.textSize * .34f, paint)
                 }
             }
         }
