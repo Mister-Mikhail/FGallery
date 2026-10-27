@@ -151,6 +151,9 @@ class MainActivity : ComponentActivity() {
         var accessWizardStep by remember { mutableStateOf<AccessWizardStep?>(null) }
         var accessRequestInFlight by remember { mutableStateOf(false) }
         var pendingAccessWrite by remember { mutableStateOf<PendingWriteOperation?>(null) }
+        var accessNeededAction by remember { mutableStateOf<(() -> Unit)?>(null) }
+        var accessNeededReason by remember { mutableStateOf("") }
+        var resumeAfterFileGrant by remember { mutableStateOf<(() -> Unit)?>(null) }
         var waitingAccessWrite by remember { mutableStateOf<PendingWriteOperation?>(null) }
         var createFolderVisible by remember { mutableStateOf(false) }
         var createFolderPath by remember { mutableStateOf("Новая папка") }
@@ -541,6 +544,12 @@ class MainActivity : ComponentActivity() {
                 getSharedPreferences("fgallery_onboarding", MODE_PRIVATE)
                     .edit().putBoolean("access_wizard_completed", true).apply()
             }
+            val action = resumeAfterFileGrant
+            resumeAfterFileGrant = null
+            if (action != null) {
+                if (StorageFolders.hasFileAccess()) action()
+                else notify("Доступ не выдан. Действие не выполнено.")
+            }
             val operation = waitingAccessWrite
             waitingAccessWrite = null
             if (operation != null && StorageFolders.hasFileAccess()) requestWrite(operation, skipConfirmation = true)
@@ -804,6 +813,15 @@ class MainActivity : ComponentActivity() {
 
         fun requestTrash(items: List<MediaItem>, keepViewerOpen: Boolean = false) {
             if (items.isEmpty() || operationBusy) return
+            if (!StorageFolders.hasFileAccess()) {
+                accessNeededReason = "Для корзины на каждом накопителе нужен доступ ко всем файлам. " +
+                    "Без него выбранные файлы останутся на месте."
+                accessNeededAction = {
+                    if (cleanupMode) performTrash(items, keepViewerOpen)
+                    else pendingTrash = items to keepViewerOpen
+                }
+                return
+            }
             if (cleanupMode) performTrash(items, keepViewerOpen)
             else pendingTrash = items to keepViewerOpen
         }
@@ -1017,8 +1035,12 @@ class MainActivity : ComponentActivity() {
                     },
                     onChooseOtherFolder = { folderPickerLauncher.launch(null) },
                     onCreateFolder = {
-                        if (StorageFolders.hasFileAccess() || moveDestinationAlbum?.cover?.folderTarget?.startsWith("content://") == true) createFolderVisible = true
-                        else openFileAccessSettings()
+                        if (StorageFolders.hasFileAccess() || moveDestinationAlbum?.cover?.folderTarget?.startsWith("content://") == true)
+                            createFolderVisible = true
+                        else {
+                            accessNeededReason = "Создание папки в выбранном накопителе требует полного доступа к файлам."
+                            accessNeededAction = { createFolderVisible = true }
+                        }
                     },
                 )
             } else if (state.recycleBinVisible) {
@@ -1199,6 +1221,23 @@ class MainActivity : ComponentActivity() {
                         getSharedPreferences("fgallery_onboarding", MODE_PRIVATE)
                             .edit().putBoolean("access_wizard_completed", true).apply()
                     }
+                },
+            )
+        }
+        accessNeededAction?.let { action ->
+            AlertDialog(
+                onDismissRequest = { accessNeededAction = null },
+                title = { Text("Нужен доступ к файлам") },
+                text = { Text(accessNeededReason) },
+                confirmButton = {
+                    TextButton(onClick = {
+                        accessNeededAction = null
+                        resumeAfterFileGrant = action
+                        openFileAccessSettings()
+                    }) { Text("Открыть настройки") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { accessNeededAction = null }) { Text("Позже") }
                 },
             )
         }
