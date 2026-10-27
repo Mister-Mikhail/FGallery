@@ -56,6 +56,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
+import androidx.core.app.ActivityCompat
 import com.mistermikhail.fgallery.data.MediaItem
 import com.mistermikhail.fgallery.ui.AlbumSummary
 import com.mistermikhail.fgallery.ui.GalleryScreen
@@ -151,6 +152,7 @@ class MainActivity : ComponentActivity() {
         var cropPreview by remember { mutableStateOf<Pair<String, Uri>?>(null) }
         var accessWizardStep by remember { mutableStateOf<AccessWizardStep?>(null) }
         var accessRequestInFlight by remember { mutableStateOf(false) }
+        var mediaSettingsNeeded by remember { mutableStateOf(false) }
         var pendingAccessWrite by remember { mutableStateOf<PendingWriteOperation?>(null) }
         var accessNeededAction by remember { mutableStateOf<(() -> Unit)?>(null) }
         var accessNeededReason by remember { mutableStateOf("") }
@@ -254,6 +256,23 @@ class MainActivity : ComponentActivity() {
             if (accessWizardStep == AccessWizardStep.MEDIA) {
                 accessRequestInFlight = false
                 accessWizardStep = AccessWizardStep.ALL_FILES
+            }
+        }
+
+        fun requestMediaAccess() {
+            val prefs = getSharedPreferences("fgallery_onboarding", MODE_PRIVATE)
+            val blocked = prefs.getBoolean("media_requested", false) &&
+                !hasMediaPermission() &&
+                requiredPermissions().all { permission ->
+                    ContextCompat.checkSelfPermission(this@MainActivity, permission) !=
+                        PackageManager.PERMISSION_GRANTED &&
+                        !ActivityCompat.shouldShowRequestPermissionRationale(this@MainActivity, permission)
+                }
+            if (blocked) {
+                mediaSettingsNeeded = true
+            } else {
+                prefs.edit().putBoolean("media_requested", true).apply()
+                permissionLauncher.launch(visualPermissionRequest())
             }
         }
 
@@ -1083,9 +1102,7 @@ class MainActivity : ComponentActivity() {
             } else {
                 GalleryScreen(
                     state = state,
-                    onRequestPermission = {
-                        permissionLauncher.launch(visualPermissionRequest())
-                    },
+                    onRequestPermission = ::requestMediaAccess,
                     limitedMediaAccess = hasLimitedMediaPermission(),
                     onRefresh = viewModel::refresh,
                     onAddStorage = { storagePickerLauncher.launch(null) },
@@ -1223,6 +1240,8 @@ class MainActivity : ComponentActivity() {
                 onGrant = {
                     accessRequestInFlight = true
                     if (step == AccessWizardStep.MEDIA) {
+                        getSharedPreferences("fgallery_onboarding", MODE_PRIVATE)
+                            .edit().putBoolean("media_requested", true).apply()
                         permissionLauncher.launch(visualPermissionRequest())
                     } else {
                         openFileAccessSettings()
@@ -1255,6 +1274,19 @@ class MainActivity : ComponentActivity() {
                 },
             )
         }
+        if (mediaSettingsNeeded) AlertDialog(
+            onDismissRequest = { mediaSettingsNeeded = false },
+            title = { Text("Доступ к фото и видео") },
+            text = { Text("Android больше не показывает запрос доступа. Открой настройки FGallery → Разрешения → Фото и видео и выбери «Разрешить ко всем».") },
+            confirmButton = {
+                TextButton(onClick = {
+                    mediaSettingsNeeded = false
+                    fileAccessLauncher.launch(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                        Uri.parse("package:$packageName")))
+                }) { Text("Открыть настройки") }
+            },
+            dismissButton = { TextButton(onClick = { mediaSettingsNeeded = false }) { Text("Позже") } },
+        )
         pendingAccessWrite?.let { operation ->
             AlertDialog(
                 onDismissRequest = { pendingAccessWrite = null },
