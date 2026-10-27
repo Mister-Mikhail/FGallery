@@ -121,11 +121,11 @@ internal fun formatVideoTimestamp(milliseconds: Long): String {
 }
 
 @Composable
-internal fun VideoAdjustmentIndicator(side: VideoAdjustmentSide, value: Float) {
+internal fun VideoAdjustmentIndicator(side: VideoAdjustmentSide, value: Float, modifier: Modifier = Modifier) {
     val fraction = value.coerceIn(0f, 1f)
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.background(Color.Black.copy(alpha = .65f), RoundedCornerShape(9.dp))
+        modifier = modifier.background(Color.Black.copy(alpha = .65f), RoundedCornerShape(9.dp))
             .padding(9.dp),
     ) {
         Icon(
