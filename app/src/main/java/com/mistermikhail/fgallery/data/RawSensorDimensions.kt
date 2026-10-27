@@ -13,7 +13,7 @@ import kotlinx.coroutines.withContext
  */
 internal object RawSensorDimensions {
     // Invalidate previous cached values which used overscanned LibRaw X2D sizes.
-    private const val PREFERENCES = "raw_sensor_dimensions_v2"
+    private const val PREFERENCES = "raw_sensor_dimensions_v3"
 
     // AndroidLibRaw.open() and openFd() call unpack() in JNI. On large files
     // this may allocate >200MB. A single metadata probe runs at a time and
