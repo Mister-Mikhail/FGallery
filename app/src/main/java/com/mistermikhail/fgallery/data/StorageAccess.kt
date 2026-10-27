@@ -11,6 +11,7 @@ import android.provider.MediaStore
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import java.io.File
+import java.nio.file.Files
 import java.security.MessageDigest
 import java.util.UUID
 
@@ -163,7 +164,7 @@ object StorageAccess {
         if (source.scheme == "file" && !target.startsWith("content://")) {
             val destination = File(target, resolvedName)
             check(!destination.exists()) { "В папке уже есть $resolvedName" }
-            if (File(source.path!!).renameTo(destination)) {
+            if (runCatching { Files.move(File(source.path!!).toPath(), destination.toPath()); true }.getOrDefault(false)) {
                 MediaScannerConnection.scanFile(context, arrayOf(source.path!!, destination.path), null, null)
                 return Uri.fromFile(destination)
             }
