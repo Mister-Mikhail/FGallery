@@ -151,7 +151,7 @@ object StorageAccess {
     suspend fun move(context: Context, item: MediaItem, parent: String, name: String = item.name): Uri {
         val sourceFile = file(context, item)
         val source = if (sourceFile?.exists() == true && sourceFile.canWrite()) Uri.fromFile(sourceFile)
-            else sourceFile?.let { documentForFile(context, it) } ?: item.uri
+            else sourceFile?.takeIf { it.exists() }?.let { documentForFile(context, it) } ?: item.uri
         val target = if (parent.startsWith("content://")) parent else {
             val folder = File(parent)
             if (!folder.canWrite()) documentForFile(context, folder)?.toString() ?: parent else parent
