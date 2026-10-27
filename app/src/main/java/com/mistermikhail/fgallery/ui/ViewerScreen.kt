@@ -383,6 +383,7 @@ fun ViewerScreen(
 }
 
 @Composable
+@OptIn(UnstableApi::class)
 private fun VideoPlayer(
     item: MediaItem,
     active: Boolean,
@@ -437,36 +438,30 @@ private fun VideoPlayer(
         if (active && detected360 != null && lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
             sphericalView?.onResume()
             player.volume = 1f
-            player.play()
+            if (!startedPlayback) { startedPlayback = true; player.play() }
         } else {
             sphericalView?.onPause()
             player.pause()
             player.volume = 0f
+            if (!active) startedPlayback = false
         }
     }
 
-    val gestureDetector = remember(item.id) {
-        GestureDetector(
-            context,
-            object : GestureDetector.SimpleOnGestureListener() {
-                override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
-                    latestSingleTap()
-                    return true
-                }
-
-                override fun onDoubleTap(e: MotionEvent): Boolean {
-                    latestDoubleTap()
-                    return true
-                }
-            },
-        )
-    }
-
+    var startedPlayback by remember(item.uri) { mutableStateOf(false) }
+    var wasPlayingAtLifecyclePause by remember(item.uri) { mutableStateOf(false) }
     DisposableEffect(player, lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                Lifecycle.Event.ON_PAUSE -> { player.pause(); sphericalView?.onPause() }
-                Lifecycle.Event.ON_RESUME -> if (latestActive && latestDetection != null) { player.volume = 1f; player.play(); sphericalView?.onResume() }
+                Lifecycle.Event.ON_PAUSE -> {
+                    wasPlayingAtLifecyclePause = player.isPlaying
+                    player.pause()
+                    sphericalView?.onPause()
+                }
+                Lifecycle.Event.ON_RESUME -> if (latestActive && latestDetection != null) {
+                    player.volume = 1f
+                    if (wasPlayingAtLifecyclePause) player.play()
+                    sphericalView?.onResume()
+                }
                 else -> Unit
             }
         }
@@ -478,71 +473,126 @@ private fun VideoPlayer(
         }
     }
 
-    val videoModifier = Modifier.fillMaxSize().navigationBarsPadding().semantics {
-        this[ViewerVideoReady] = firstFrameRendered
-        this[ViewerCurrentUri] = player.currentMediaItem?.localConfiguration?.uri?.toString().orEmpty()
-    }.testTag("viewer-video")
+    val activity = context as? Activity
+    val audio = remember(context) { context.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
+    val maxVolume = remember(audio) { audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1) }
+    val originalBrightness = remember(item.uriKey) { activity?.window?.attributes?.screenBrightness ?: -1f }
+    var adjustment by remember(item.uriKey) { mutableStateOf<Pair<VideoAdjustmentSide, Float>?>(null) }
+    val edgePx = with(LocalDensity.current) { 28.dp.toPx() }
+    DisposableEffect(activity, item.uriKey) {
+        onDispose {
+            activity?.window?.let { window ->
+                val params = window.attributes
+                params.screenBrightness = originalBrightness
+                window.attributes = params
+            }
+        }
+    }
+    LaunchedEffect(adjustment) {
+        if (adjustment != null) {
+            delay(900L)
+            adjustment = null
+        }
+    }
 
-    if (spherical) {
-        AndroidView(
-            factory = { ctx ->
-                FrameLayout(ctx).apply {
-                    val surface = ZoomableSphericalView(ctx)
-                    sphericalView = surface
-                    surface.setUseSensorRotation(active)
-                    surface.setTapCallbacks({ latestSingleTap() }, { latestDoubleTap() })
-                    player.setVideoFrameMetadataListener(surface.videoFrameMetadataListener)
-                    player.setCameraMotionListener(surface.cameraMotionListener)
-                    surface.addVideoSurfaceListener(object : ZoomableSphericalView.VideoSurfaceListener {
-                        override fun onVideoSurfaceCreated(videoSurface: android.view.Surface) { player.setVideoSurface(videoSurface) }
-                        override fun onVideoSurfaceDestroyed(videoSurface: android.view.Surface) { player.clearVideoSurface(videoSurface) }
-                    })
-                    addView(surface, FrameLayout.LayoutParams(-1, -1))
-                    val controls = PlayerControlView(ctx).apply { this.player = player; showTimeoutMs = 0 }
-                    addView(controls, FrameLayout.LayoutParams(-1, -2, android.view.Gravity.BOTTOM).apply {
-                        bottomMargin = if (ctx.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE) 0 else 12
-                    })
-                    if (active && lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) surface.onResume() else surface.onPause()
+    val videoModifier = Modifier.fillMaxSize()
+        .semantics {
+            this[ViewerVideoReady] = firstFrameRendered
+            this[ViewerCurrentUri] = player.currentMediaItem?.localConfiguration?.uri?.toString().orEmpty()
+        }.testTag("viewer-video")
+
+    Box(
+        videoModifier.pointerInput(active, item.uriKey) {
+            awaitEachGesture {
+                val down = awaitFirstDown(requireUnconsumed = false)
+                if (!active) return@awaitEachGesture
+                val side = videoGestureSide(down.position.x, down.position.y,
+                    size.width.toFloat(), size.height.toFloat(), edgePx)
+                    ?: return@awaitEachGesture
+                var initialLevel = when (side) {
+                    VideoAdjustmentSide.VOLUME ->
+                        audio.getStreamVolume(AudioManager.STREAM_MUSIC).toFloat() / maxVolume
+                    VideoAdjustmentSide.BRIGHTNESS ->
+                        activity?.window?.attributes?.screenBrightness?.takeIf { it >= 0f } ?: .5f
                 }
-            },
-            update = { frame ->
-                val surface = frame.getChildAt(0) as ZoomableSphericalView
-                surface.setUseSensorRotation(active)
-                val controls = frame.getChildAt(1) as PlayerControlView
-                if (controlsVisible) controls.show() else controls.hide()
-                val scale = frame.resources.displayMetrics.density
-                controls.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_progress)?.translationY =
-                    if (frame.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE) 9f * scale else 0f
-                val timeShift = if (frame.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT) -10f * scale else 0f
-                controls.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_position)?.translationY = timeShift
-                controls.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_duration)?.translationY = timeShift
-            },
-            modifier = videoModifier,
-        )
-    } else {
-        AndroidView(
-            factory = { ctx ->
-                PlayerView(ctx).apply {
-                    this.player = player
-                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                    controllerShowTimeoutMs = 0
-                    controllerAutoShow = false
-                    controllerHideOnTouch = false
-                    setOnTouchListener { _, event -> gestureDetector.onTouchEvent(event); true }
+                initialLevel = initialLevel.coerceIn(0f, 1f)
+                var vertical = false
+                while (true) {
+                    val event = awaitPointerEvent()
+                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                    if (!change.pressed) break
+                    if (change.isConsumed && !vertical) break
+                    val dx = change.position.x - down.position.x
+                    val dy = change.position.y - down.position.y
+                    if (!vertical && isUnambiguousVertical(dx, dy, viewConfiguration.touchSlop))
+                        vertical = true
+                    if (!vertical && abs(dx) > viewConfiguration.touchSlop && abs(dx) > abs(dy))
+                        break // HorizontalPager retains horizontal file swiping.
+                    if (vertical) {
+                        val fraction = videoAdjustmentFraction(initialLevel, dy, size.height.toFloat())
+                        if (side == VideoAdjustmentSide.VOLUME) {
+                            audio.setStreamVolume(AudioManager.STREAM_MUSIC,
+                                (fraction * maxVolume).roundToInt().coerceIn(0, maxVolume), 0)
+                        } else {
+                            activity?.window?.let { window ->
+                                val params = window.attributes
+                                params.screenBrightness = fraction.coerceAtLeast(.01f)
+                                window.attributes = params
+                            }
+                        }
+                        adjustment = side to fraction
+                        change.consume()
+                    }
                 }
-            },
-            update = { view ->
-                if (view.player !== player) view.player = player
-                if (controlsVisible) view.showController() else view.hideController()
-                val scale = view.resources.displayMetrics.density
-                view.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_progress)?.translationY =
-                    if (view.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE) 9f * scale else 0f
-                val timeShift = if (view.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT) -10f * scale else 0f
-                view.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_position)?.translationY = timeShift
-                view.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_duration)?.translationY = timeShift
-            },
-            modifier = videoModifier,
+            }
+        },
+    ) {
+        if (spherical) {
+            AndroidView(
+                factory = { ctx ->
+                    ZoomableSphericalView(ctx).apply {
+                        sphericalView = this
+                        setUseSensorRotation(active)
+                        setTapCallbacks({ latestSingleTap() }, { latestDoubleTap() })
+                        player.setVideoFrameMetadataListener(videoFrameMetadataListener)
+                        player.setCameraMotionListener(cameraMotionListener)
+                        addVideoSurfaceListener(object : ZoomableSphericalView.VideoSurfaceListener {
+                            override fun onVideoSurfaceCreated(videoSurface: android.view.Surface) {
+                                player.setVideoSurface(videoSurface)
+                            }
+                            override fun onVideoSurfaceDestroyed(videoSurface: android.view.Surface) {
+                                player.clearVideoSurface(videoSurface)
+                            }
+                        })
+                        if (active && lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) onResume()
+                    }
+                },
+                update = { view -> view.setUseSensorRotation(active) },
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else {
+            ContentFrame(player, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
+            Box(
+                Modifier.fillMaxSize().pointerInput(item.uriKey) {
+                    detectTapGestures(
+                        onTap = { latestSingleTap() },
+                        onDoubleTap = { latestDoubleTap() },
+                    )
+                },
+            )
+        }
+
+        UnifiedVideoChrome(
+            player = player, filename = item.name,
+            visible = controlsVisible, topBar = topBar,
         )
+
+        adjustment?.let { (side, amount) ->
+            VideoAdjustmentIndicator(
+                side = side, value = amount,
+                modifier = Modifier,
+            )
+        }
     }
 
 }
