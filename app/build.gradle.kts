@@ -52,8 +52,14 @@ android {
         )
     }
     buildTypes.create("minifiedTest") {
-        initWith(getByName("release"))
+        signingConfig = signingConfigs.getByName("debug")
         isDebuggable = true
+        isMinifyEnabled = true
+        isShrinkResources = true
+        proguardFiles(
+            getDefaultProguardFile("proguard-android-optimize.txt"),
+            "proguard-rules.pro",
+        )
         matchingFallbacks += listOf("release", "debug")
     }
 
