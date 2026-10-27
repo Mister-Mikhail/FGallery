@@ -155,14 +155,22 @@ class ImageZoomTest {
         }
         fun zoom() = node.fetchSemanticsNode().config[SemanticsProperties.StateDescription]
             .removePrefix("Zoom ").removeSuffix("%").toInt()
+        fun nodeDiagnosticText(): String = rule.onNodeWithTag("zoom-diagnostic")
+            .fetchSemanticsNode().config[SemanticsProperties.Text].first().text
         val (fit, maximum) = node.fetchSemanticsNode().config[ViewerZoomRange]
         node.performTouchInput { doubleClick(center) }
         rule.waitForIdle()
         val desired = (nextRasterDoubleTapZoom(fit, fit, maximum) / fit * 100).toInt()
         assertTrue("First tap should target 50% file pixels, got ${zoom()} vs $desired", kotlin.math.abs(desired - zoom()) <= 2)
+        val firstHud = nodeDiagnosticText()
+        assertTrue("First tap diagnostic should read 50% of source pixels, got $firstHud",
+            Regex("сейчас (?:4[89]|50|51|52)%").containsMatchIn(firstHud))
         node.performTouchInput { doubleClick(center) }
         rule.waitForIdle()
         val afterTap = zoom()
+        val hud = nodeDiagnosticText()
+        assertTrue("Second tap diagnostic should read 160% of source pixels, got $hud",
+            Regex("сейчас 1(?:5[89]|60|61|62)%").containsMatchIn(hud))
         assertTrue("Second tap should leave pinch headroom", afterTap < (maximum / fit * 100).toInt() - 15)
         node.performTouchInput {
             pinch(
