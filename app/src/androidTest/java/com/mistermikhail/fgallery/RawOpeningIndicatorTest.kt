@@ -31,6 +31,6 @@ class RawOpeningIndicatorTest {
             .assertHeightIsEqualTo(RAW_INDICATOR_HEIGHT_DP.dp)
         rule.onNodeWithContentDescription("Открываем RAW").assertIsDisplayed()
         val bounds = rule.onNodeWithTag("raw-open-indicator").getUnclippedBoundsInRoot()
-        org.junit.Assert.assertTrue("Horizontal caption must be wider than tall", bounds.width > bounds.height * 1.4f)
+        org.junit.Assert.assertTrue("Horizontal caption must be wider than tall", (bounds.right - bounds.left) > (bounds.bottom - bounds.top) * 1.4f)
     }
 }
