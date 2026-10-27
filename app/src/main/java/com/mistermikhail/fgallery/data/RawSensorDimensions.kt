@@ -9,7 +9,7 @@ import kotlinx.coroutines.sync.withLock
 
 /** Metadata dimensions from LibRaw rather than embedded JPEG EXIF/MediaStore preview. */
 internal object RawSensorDimensions {
-    private const val PREFERENCES = "raw_sensor_dimensions_v1"
+    private const val PREFERENCES = "raw_sensor_dimensions_v2"
 
     // AndroidLibRaw.open()/openFd() also unpack the Bayer buffer in JNI. On 100 MP
     // files this may temporarily allocate hundreds of megabytes. Serialize metadata
@@ -34,7 +34,7 @@ internal object RawSensorDimensions {
             if (width != null && height != null && width > 0 && height > 0)
                 return@withLock width to height
         }
-        val result = runCatching {
+        // For TIFF-based RAW, a validated DefaultCropSize describes the usable sensor\n        // area without invoking AndroidLibRaw.open(), whose JNI unpacks the full RAW.\n        val tiffCrop = RawDefaultCropReader.read(context, item)\n        if (tiffCrop != null) {\n            prefs.edit().putString(key, "${tiffCrop.first}x${tiffCrop.second}").apply()\n            return@withLock tiffCrop\n        }\n        val result = runCatching {
             LibRaw().use { raw ->
                 val file = StorageAccess.file(context, item)?.takeIf { it.isFile && it.canRead() }
                 val status = if (file != null) raw.open(file.canonicalPath)
