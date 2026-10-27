@@ -52,6 +52,18 @@ android {
         )
     }
 
+    // Instrumentation needs CropTestHostActivity and TestDriveProvider. Package
+    // those helpers only into a separate, R8-minified test build type: never into
+    // the release APK that the user installs.
+    buildTypes.create("r8Test") {
+        initWith(buildTypes.getByName("release"))
+        matchingFallbacks += "release"
+    }
+    sourceSets.getByName("r8Test") {
+        java.srcDir("src/debug/java")
+        manifest.srcFile("src/debug/AndroidManifest.xml")
+    }
+
     splits {
         abi {
             isEnable = true
@@ -64,8 +76,8 @@ android {
     externalNativeBuild {
         cmake { path = file("src/main/cpp/CMakeLists.txt"); version = "3.22.1" }
     }
-    // Instrument app tests against the actual shrunk release variant, not debug.
-    testBuildType = "release"
+    // Same R8 rules as release, plus test-only Activity/Provider for instrumentation.
+    testBuildType = "r8Test"
     buildFeatures { compose = true }
 
     compileOptions {
@@ -106,6 +118,7 @@ dependencies {
     androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
     androidTestImplementation("androidx.compose.ui:ui-test-junit4:1.9.3")
     debugImplementation("androidx.compose.ui:ui-test-manifest:1.9.3")
+    add("r8TestImplementation", "androidx.compose.ui:ui-test-manifest:1.9.3")
     implementation("me.saket.telephoto:zoomable-image-coil3:0.15.1")
     implementation("com.vanniktech:android-image-cropper:4.7.0")
     implementation("androidx.exifinterface:exifinterface:1.3.7")
