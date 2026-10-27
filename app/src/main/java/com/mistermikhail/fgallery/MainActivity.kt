@@ -412,7 +412,8 @@ class MainActivity : ComponentActivity() {
                         runCatching {
                             records.asReversed().forEach { record ->
                                 val movedItem = record.source.copy(uri = record.destination,
-                                    name = record.destinationName, folderTarget = record.destination.toString())
+                                    name = record.destinationName, folderTarget = record.destination.toString(),
+                                    sourcePath = "")
                                 StorageAccess.move(this@MainActivity, movedItem,
                                     record.originalParent, record.source.name)
                             }
