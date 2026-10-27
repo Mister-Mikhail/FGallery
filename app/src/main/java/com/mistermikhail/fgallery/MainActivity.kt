@@ -398,8 +398,11 @@ class MainActivity : ComponentActivity() {
         fun offerMoveUndo(records: List<CompletedMove>, label: String) {
             if (records.isEmpty()) return
             uiScope.launch {
+                val destinationName = (if (label.startsWith("content://")) Uri.parse(label).lastPathSegment
+                    else label)?.trimEnd('/')?.substringAfterLast('/')?.substringAfterLast(':')
+                    ?.ifBlank { "папку" } ?: "папку"
                 val result = withTimeoutOrNull(5_000L) {
-                    moveSnackbar.showSnackbar("Перемещено в $label", actionLabel = "Отменить",
+                    moveSnackbar.showSnackbar("Перемещено в $destinationName", actionLabel = "Отменить",
                         withDismissAction = false, duration = SnackbarDuration.Indefinite)
                 }
                 if (result == SnackbarResult.ActionPerformed) {
