@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -14,6 +15,8 @@ import androidx.compose.material.icons.outlined.BrightnessHigh
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Slider
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -39,7 +42,7 @@ internal fun videoGestureSide(
     if (width <= excludedEdgePx * 2 || height <= 0f ||
         x <= excludedEdgePx || x >= width - excludedEdgePx ||
         y <= height * .20f || y >= height * .80f) return null
-    return if (x < width / 2f) VideoAdjustmentSide.BRIGHTNESS else VideoAdjustmentSide.VOLUME
+    return when { x < width * .20f -> VideoAdjustmentSide.BRIGHTNESS; x > width * .80f -> VideoAdjustmentSide.VOLUME; else -> null }
 }
 
 /** One complete animation for both video bars and all inline metadata. */
@@ -54,9 +57,11 @@ internal fun UnifiedVideoChrome(
     var durationMs by remember(player) { mutableLongStateOf(0L) }
     var dragging by remember(player) { mutableStateOf(false) }
     var sliderFraction by remember(player) { mutableFloatStateOf(0f) }
+    var isPlaying by remember(player) { mutableStateOf(player.isPlaying) }
 
     LaunchedEffect(player) {
         while (isActive) {
+            isPlaying = player.isPlaying
             durationMs = player.duration.coerceAtLeast(0L)
             positionMs = player.currentPosition.coerceAtLeast(0L)
             if (!dragging && durationMs > 0L)
@@ -71,12 +76,23 @@ internal fun UnifiedVideoChrome(
     ) {
         Box(Modifier.fillMaxSize()) {
             Box(Modifier.align(Alignment.TopCenter).fillMaxWidth()) { topBar() }
+            IconButton(
+                onClick = {
+                    if (player.playbackState == Player.STATE_ENDED) player.seekTo(0L)
+                    if (player.isPlaying) player.pause() else player.play()
+                },
+                modifier = Modifier.align(Alignment.Center).size(64.dp).testTag("video-center-play"),
+            ) {
+                Icon(if (isPlaying) Icons.Outlined.Pause else Icons.Outlined.PlayArrow,
+                    contentDescription = if (isPlaying) "Пауза" else "Воспроизвести",
+                    tint = Color.White, modifier = Modifier.size(36.dp))
+            }
             Column(
                 modifier = Modifier.align(Alignment.BottomCenter)
                     .fillMaxWidth()
                     .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = .86f))))
                     .navigationBarsPadding()
-                    .padding(horizontal = 10.dp, vertical = 10.dp),
+                    .padding(horizontal = 10.dp, vertical = 3.dp),
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
@@ -84,16 +100,7 @@ internal fun UnifiedVideoChrome(
                         maxLines = 1, overflow = TextOverflow.MiddleEllipsis,
                         modifier = Modifier.weight(1f).padding(start = 6.dp),
                     )
-                    IconButton(onClick = {
-                        if (player.isPlaying) player.pause() else player.play()
-                    }) {
-                        Icon(
-                            if (player.isPlaying) Icons.Outlined.Pause else Icons.Outlined.PlayArrow,
-                            contentDescription = if (player.isPlaying) "Пауза" else "Воспроизвести",
-                            tint = Color.White,
-                        )
-                    }
-                    Text(
+Text(
                         text = "${formatVideoTimestamp(positionMs)} / ${formatVideoTimestamp(durationMs)}",
                         color = Color.White,
                         modifier = Modifier.padding(end = 6.dp),
@@ -106,7 +113,17 @@ internal fun UnifiedVideoChrome(
                         if (durationMs > 0L) player.seekTo((durationMs * sliderFraction).roundToLong())
                         dragging = false
                     },
-                    modifier = Modifier.fillMaxWidth().height(26.dp).testTag("video-seek"),
+                    modifier = Modifier.fillMaxWidth().height(20.dp).testTag("video-seek"),
+                    thumb = { Box(Modifier.width(3.dp).height(18.dp).background(Color(0xFF80B7FF), RoundedCornerShape(2.dp))) },
+                    track = {
+                        Canvas(Modifier.fillMaxWidth().height(2.dp)) {
+                            val x = size.width * sliderFraction.coerceIn(0f, 1f)
+                            drawLine(Color(0xFF80B7FF), Offset(0f, size.height / 2), Offset(x, size.height / 2),
+                                strokeWidth = size.height, cap = StrokeCap.Round)
+                            drawLine(Color(0xFF555267), Offset(x, size.height / 2), Offset(size.width, size.height / 2),
+                                strokeWidth = size.height, cap = StrokeCap.Round)
+                        }
+                    },
                 )
             }
         }
