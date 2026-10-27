@@ -90,7 +90,7 @@ object StorageAccess {
         }.orEmpty()
     }
 
-    fun find(context: Context, parent: String, name: String): String? = children(context, parent).firstOrNull { it.first == name }?.second
+    fun find(context: Context, parent: String, name: String): String? = children(context, parent).firstOrNull { it.first.equals(name, ignoreCase = true) }?.second
 
     fun directory(context: Context, requestedParent: String, name: String): String {
         val parent = if (!requestedParent.startsWith("content://") && !File(requestedParent).canWrite())
@@ -155,26 +155,38 @@ object StorageAccess {
             val folder = File(parent)
             if (!folder.canWrite()) documentForFile(context, folder)?.toString() ?: parent else parent
         }
+        if (source.scheme == "file" && !target.startsWith("content://") &&
+            sourceFile?.canonicalFile == File(target, name).canonicalFile) return source
+        val resolvedName = MoveNamePlanner.plan(
+            listOf(name), children(context, target).map { it.first }
+        ).single()
         if (source.scheme == "file" && !target.startsWith("content://")) {
-            val destination = File(target, name)
-            if (sourceFile?.canonicalFile == destination.canonicalFile) return source
-            check(!destination.exists()) { "В папке уже есть $name" }
+            val destination = File(target, resolvedName)
+            check(!destination.exists()) { "В папке уже есть $resolvedName" }
             if (File(source.path!!).renameTo(destination)) {
                 MediaScannerConnection.scanFile(context, arrayOf(source.path!!, destination.path), null, null)
                 return Uri.fromFile(destination)
             }
         }
-        if (name == item.name && source.scheme == "content" && DocumentsContract.isDocumentUri(context, source) && target.startsWith("content://") && source.authority == Uri.parse(target).authority) {
-            check(find(context, target, name) == null) { "В папке уже есть $name" }
+        if (resolvedName == item.name && source.scheme == "content" && DocumentsContract.isDocumentUri(context, source) && target.startsWith("content://") && source.authority == Uri.parse(target).authority) {
             val originalParent = StorageAccess.parent(context, item)
             val moved = runCatching { DocumentsContract.moveDocument(context.contentResolver, source, Uri.parse(originalParent), Uri.parse(target)) }.getOrNull()
             if (moved != null) return moved
         }
         currentCoroutineContext().ensureActive()
         val expectedSize = sourceFile?.takeIf { it.exists() }?.length() ?: item.sizeBytes.takeIf { it > 0 }
-        val destination = create(context, target, name, item.mimeType ?: "application/octet-stream")
+        val destination = create(context, target, resolvedName, item.mimeType ?: "application/octet-stream")
         var sourceDeleted = false
         try {
+            if (destination.scheme == "content" && DocumentsContract.isDocumentUri(context, destination)) {
+                val actualName = context.contentResolver.query(destination,
+                    arrayOf(DocumentsContract.Document.COLUMN_DISPLAY_NAME), null, null, null)?.use {
+                    if (it.moveToFirst()) it.getString(0) else null
+                }
+                check(actualName != null && actualName.equals(resolvedName, ignoreCase = true)) {
+                    "Android изменил имя файла назначения. Исходник сохранён"
+                }
+            }
             val expected = MessageDigest.getInstance("SHA-256")
             val written = context.contentResolver.openInputStream(source)?.use { input ->
                 context.contentResolver.openOutputStream(destination, "w")?.use { output ->
