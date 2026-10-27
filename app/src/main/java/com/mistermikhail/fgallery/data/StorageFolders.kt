@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import java.io.File
+import java.nio.file.Files
 
 object StorageFolders {
     fun hasFileAccess(): Boolean = Build.VERSION.SDK_INT >= 30 && Environment.isExternalStorageManager()
@@ -52,8 +53,14 @@ object StorageFolders {
         val destination = File(folder, destinationName)
         check(source != destination && !destination.exists()) { "Файл назначения уже существует" }
         val before = source.length()
-        check(source.renameTo(destination)) { "Не удалось переместить ${source.name}" }
-        check(destination.exists() && destination.length() == before && !source.exists()) { "Перемещение не подтверждено" }
+        // Files.move without REPLACE_EXISTING is safe against a concurrent name
+        // collision; File.renameTo may silently overwrite on Linux filesystems.
+        Files.move(source.toPath(), destination.toPath())
+        if (!(destination.exists() && destination.length() == before && !source.exists())) {
+            runCatching { if (destination.exists() && !source.exists())
+                Files.move(destination.toPath(), source.toPath()) }
+            error("Перемещение не подтверждено, исходник не удалён намеренно")
+        }
         // An asynchronous scan avoids blocking once per file (up to 20 s each)
         // during large 1000+ item moves. Both old and new paths are reconciled.
         MediaScannerConnection.scanFile(context, arrayOf(source.path, destination.path), null, null)
