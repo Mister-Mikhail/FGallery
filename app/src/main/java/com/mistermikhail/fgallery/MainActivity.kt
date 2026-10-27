@@ -473,10 +473,8 @@ class MainActivity : ComponentActivity() {
                 pendingAccessWrite = operation
                 return
             }
-            // Relative-path MediaStore moves work without broad all-files access.
-            // Do not require MANAGE_EXTERNAL_STORAGE before attempting them; if Android
-            // denies a particular URI, the existing SecurityException path requests
-            // a scoped write grant and preserves the selection on cancellation.
+            // Without all-files access, offer a single explained permission request.
+            // Do not replace it with a recurring Android per-file write dialog.
             operationMessage = when (operation) {
                 is PendingWriteOperation.Move -> "Перемещение в ${operation.relativePath}"
                 is PendingWriteOperation.Rename -> "Переименование"
@@ -554,6 +552,7 @@ class MainActivity : ComponentActivity() {
                 fileAccessLauncher.launch(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:$packageName")))
             }.onFailure {
                 waitingAccessWrite = null
+                accessRequestInFlight = false
                 notify("Не удалось открыть настройки доступа. Откройте их в настройках Android для FGallery.")
             }
         }
@@ -1049,8 +1048,9 @@ class MainActivity : ComponentActivity() {
                 GalleryScreen(
                     state = state,
                     onRequestPermission = {
-                        permissionLauncher.launch(requiredPermissions())
+                        permissionLauncher.launch(visualPermissionRequest())
                     },
+                    limitedMediaAccess = hasLimitedMediaPermission(),
                     onRefresh = viewModel::refresh,
                     onAddStorage = { storagePickerLauncher.launch(null) },
                     onImportDocuments = { documentsLauncher.launch(arrayOf("application/pdf", "image/svg+xml", "image/tiff", "image/x-tiff")) },
