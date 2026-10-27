@@ -40,7 +40,7 @@ jobs:
           mkdir -p "$HOME/.android"
           base64 --decode .github/debug-signing/debug.keystore.b64 > "$HOME/.android/debug.keystore"
       - name: Test and build debug APK
-        run: gradle :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease
+        run: gradle :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease :app:assembleMinifiedTest
       - name: Record release APK sizes
         run: |
           ls -lh app/build/outputs/apk/{debug,release}/app-*-*.apk
