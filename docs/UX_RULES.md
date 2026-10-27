@@ -168,3 +168,8 @@ The shared development certificate starts with 0.2.7/versionCode9. Final extract
 - New code branch: `feature/fgallery-0.3.0-stage1` from 0.2.9 SHA `7a9e290ac3642861274332464c17adbd92ba44fd`. Stage 1 / 0.3.0 is under development; no acceptance on physical Samsung S23 yet. Do not close earlier FG-01…FG-09 blockers without new direct user verification.
 - In particular **previous linear .85 zoom**, video **standard Media3 PlayerView controls** and **emoji 🧹** are superseded by TZ v1 §2 / Stage 1. Legacy mentions above are historical; new criteria: logarithmic 0.80/0.85/0.90 diagnostic zoom, unified Compose video chrome, proper Material CleaningServices icon and Cleanup-on confirmation, LibRaw full RAW dimensions.
 - TZ v1 stages 2+ are deferred until 0.3.0 stage 1 user-device verification. Release/store, license, editor, commercial protection remain **undecided** where marked so in TZ.
+
+
+
+### Stage 1 / 0.3.0 approved UX supersession — 2026-10-27
+This test APK follows `docs/FGallery_TZ_v1.md`: logarithmic p=80/85/90 zoom with absolute diagnostic scale overlay (remove after user choice), cleanup menu opt-in dialog and orange Material broom only when active, video player unified Compose chrome with 3-second hide ONLY during playback and sticky pause, centered vertical brightness/volume gestures with excluded system navigation margins, and LibRaw-derived RAW sensor dimensions in Quick EXIF/details. The historical one-line linear zoom, emoji broom and displaced Media3 controls above are no longer active UX requirements. Verified Android CI SHA `a5b7ee8f408ed804b87eba49203d337b5d1b1e42`, run `40426282849` 43/43; **not S23 accepted**.
