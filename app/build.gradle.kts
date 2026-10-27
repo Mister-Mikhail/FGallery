@@ -4,6 +4,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("androidx.baselineprofile")
 }
 
 android {
@@ -76,6 +77,8 @@ android {
 kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }
 
 dependencies {
+    baselineProfile(project(":baselineprofile"))
+    implementation("androidx.profileinstaller:profileinstaller:1.4.1")
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.documentfile:documentfile:1.0.1")
     implementation("androidx.activity:activity-compose:1.10.0")
@@ -113,4 +116,11 @@ dependencies {
     implementation("androidx.media3:media3-effect:1.9.3")
 
     debugImplementation("androidx.compose.ui:ui-tooling:1.9.3")
+}
+
+baselineProfile {
+    // Generate only on explicit release profiling runs; do not silently boot
+    // an emulator during every Gradle build or publish unverified fake rules.
+    automaticGenerationDuringBuild = false
+    saveInSrc = true
 }
