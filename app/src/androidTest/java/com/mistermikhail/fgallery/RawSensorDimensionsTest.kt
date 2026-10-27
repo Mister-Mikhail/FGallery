@@ -18,19 +18,27 @@ class RawSensorDimensionsTest {
                 file.outputStream().use { input.copyTo(it) }
             }
             val item = MediaItem(97001, Uri.fromFile(file), file.name, "image/x-adobe-dng",
-                MediaKind.RAW, 0L, 0, 0, 0L, "Tests", "", file.length(),
+                MediaKind.RAW, 0L, 3888, 2918, 0L, "Tests", "", file.length(),
                 dateModifiedMillis = file.lastModified())
             val expected = LibRaw().use { raw ->
                 assertEquals(0, raw.open(file.canonicalPath))
                 RawSensorDimensions.orientedSize(raw.width, raw.height, raw.orientation)
             }
             assertNotNull(expected)
+            // A real Hasselblad 3FR can report IFD0 embedded JPEG dimensions in the library.
+            // The RAW details must use LibRaw sensor dimensions instead of those cached preview values.
+            assertNotEquals(3888 to 2918, expected)
             assertEquals(expected, RawSensorDimensions.read(context, item))
             assertEquals(expected, RawSensorDimensions.read(context, item))
             val details = MediaDetailsRepository(context).load(item)
             val resolution = details.sections.flatMap { it.fields }
                 .single { it.label == "Разрешение" }.value
             assertEquals("${expected!!.first} × ${expected.second}", resolution)
+            assertNotEquals("3888 × 2918", resolution)
+
+            // A changed metadata key must not reuse old sensor dimensions from cache.
+            val changedItem = item.copy(dateModifiedMillis = item.dateModifiedMillis + 1L)
+            assertEquals(expected, RawSensorDimensions.read(context, changedItem))
         } finally {
             file.delete()
         }
