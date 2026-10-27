@@ -173,7 +173,6 @@ fun ViewerScreen(
 
     fun toggleChrome() {
         if (currentIsVideo) {
-            if (!videoPlaying) { chromeVisible = true; chromeEpoch++; return }
             if (chromeVisible) {
                 chromeVisible = false
             } else {
