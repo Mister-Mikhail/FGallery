@@ -322,7 +322,7 @@ class MainActivity : ComponentActivity() {
                                     null, null, null)?.use {
                                     if (it.moveToFirst()) it.getString(0) to it.getString(1) else null
                                 }
-                                check(actual?.first == path && actual.second.equals(name, ignoreCase = true)) {
+                                check(actual?.first == path && actual.second?.equals(name, ignoreCase = true) == true) {
                                     "Android не подтвердил имя или папку перемещённого файла"
                                 }
                                 item.uri
