@@ -1381,19 +1381,20 @@ class MainActivity : ComponentActivity() {
             requiredPermissions() + Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED
         else requiredPermissions()
 
+    private fun fullMediaPermission(): Boolean = requiredPermissions().all {
+        ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
+    }
+
     private fun hasLimitedMediaPermission(): Boolean =
-        Build.VERSION.SDK_INT >= 34 &&
-            ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) ==
-                PackageManager.PERMISSION_GRANTED &&
-            !requiredPermissions().all {
+        !StorageFolders.hasFileAccess() && !fullMediaPermission() && (
+            (Build.VERSION.SDK_INT >= 34 &&
+                ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) ==
+                    PackageManager.PERMISSION_GRANTED) ||
+            requiredPermissions().any {
                 ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
             }
+        )
 
     private fun hasMediaPermission(): Boolean =
-        StorageFolders.hasFileAccess() || requiredPermissions().all {
-            ContextCompat.checkSelfPermission(
-                this,
-                it,
-            ) == PackageManager.PERMISSION_GRANTED
-        }
+        StorageFolders.hasFileAccess() || fullMediaPermission() || hasLimitedMediaPermission()
 }
