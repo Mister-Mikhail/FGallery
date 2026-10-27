@@ -138,6 +138,7 @@ fun GalleryScreen(
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
     var sortMenuExpanded by remember { mutableStateOf(false) }
+    var confirmCleanupEnable by remember { mutableStateOf(false) }
     var renameItems by remember { mutableStateOf<List<MediaItem>>(emptyList()) }
 
     val albumsGridState = rememberLazyGridState()
@@ -273,9 +274,7 @@ fun GalleryScreen(
                             IconButton(onClick = onToggleSearch, modifier = Modifier.size(40.dp)) {
                                 Icon(Icons.Outlined.Search, contentDescription = "Поиск")
                             }
-                            if (cleanupMode) IconButton(onClick = { onCleanupModeChanged(false) }, modifier = Modifier.size(40.dp)) {
-                                Text("🧹", color = Color(0xFFFF5A36))
-                            }
+                            if (cleanupMode) CleanupExitButton(onDisable = { onCleanupModeChanged(false) })
 
                             Box {
                                 IconButton(onClick = { sortMenuExpanded = true }, modifier = Modifier.size(40.dp)) {
@@ -371,7 +370,8 @@ fun GalleryScreen(
                                         },
                                         onClick = {
                                             apply {
-                                                onCleanupModeChanged(!cleanupMode)
+                                                if (cleanupMode) onCleanupModeChanged(false)
+                                                else confirmCleanupEnable = true
                                             }
                                         },
                                     )
@@ -461,6 +461,14 @@ fun GalleryScreen(
             )
         }
     }
+
+    if (confirmCleanupEnable) CleanupEnableDialog(
+        onCancel = { confirmCleanupEnable = false },
+        onEnable = {
+            confirmCleanupEnable = false
+            onCleanupModeChanged(true)
+        },
+    )
 
     if (renameItems.isNotEmpty()) RenameDialog(
         items = renameItems,
