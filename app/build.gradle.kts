@@ -64,6 +64,8 @@ android {
     externalNativeBuild {
         cmake { path = file("src/main/cpp/CMakeLists.txt"); version = "3.22.1" }
     }
+    // Instrument app tests against the actual shrunk release variant, not debug.
+    testBuildType = "release"
     buildFeatures { compose = true }
 
     compileOptions {
