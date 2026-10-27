@@ -60,6 +60,8 @@ import com.mistermikhail.fgallery.data.MediaItem
 import com.mistermikhail.fgallery.ui.AlbumSummary
 import com.mistermikhail.fgallery.ui.GalleryScreen
 import com.mistermikhail.fgallery.ui.MoveDestinationScreen
+import com.mistermikhail.fgallery.ui.AccessOnboarding
+import com.mistermikhail.fgallery.ui.AccessWizardStep
 import com.mistermikhail.fgallery.ui.GalleryViewModel
 import com.mistermikhail.fgallery.ui.RecycleBinScreen
 import com.mistermikhail.fgallery.ui.ViewerScreen
@@ -146,7 +148,8 @@ class MainActivity : ComponentActivity() {
         var pendingCropItem by remember { mutableStateOf<MediaItem?>(null) }
         var pendingCropSave by remember { mutableStateOf<Pair<MediaItem, Uri>?>(null) }
         var cropPreview by remember { mutableStateOf<Pair<String, Uri>?>(null) }
-        var firstLaunchAccess by remember { mutableStateOf(false) }
+        var accessWizardStep by remember { mutableStateOf<AccessWizardStep?>(null) }
+        var accessRequestInFlight by remember { mutableStateOf(false) }
         var pendingAccessWrite by remember { mutableStateOf<PendingWriteOperation?>(null) }
         var waitingAccessWrite by remember { mutableStateOf<PendingWriteOperation?>(null) }
         var createFolderVisible by remember { mutableStateOf(false) }
@@ -243,6 +246,11 @@ class MainActivity : ComponentActivity() {
             ActivityResultContracts.RequestMultiplePermissions(),
         ) {
             viewModel.onPermissionChanged(hasMediaPermission())
+            folderRevision++
+            if (accessWizardStep == AccessWizardStep.MEDIA) {
+                accessRequestInFlight = false
+                accessWizardStep = AccessWizardStep.ALL_FILES
+            }
         }
 
         suspend fun executeWrite(operation: PendingWriteOperation, moved: MutableList<CompletedMove>) {
@@ -529,6 +537,12 @@ class MainActivity : ComponentActivity() {
         val fileAccessLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
             folderRevision++
             viewModel.onPermissionChanged(hasMediaPermission())
+            if (accessWizardStep == AccessWizardStep.ALL_FILES) {
+                accessRequestInFlight = false
+                accessWizardStep = null
+                getSharedPreferences("fgallery_onboarding", MODE_PRIVATE)
+                    .edit().putBoolean("access_wizard_completed", true).apply()
+            }
             val operation = waitingAccessWrite
             waitingAccessWrite = null
             if (operation != null && StorageFolders.hasFileAccess()) requestWrite(operation, skipConfirmation = true)
@@ -851,13 +865,14 @@ class MainActivity : ComponentActivity() {
         LaunchedEffect(Unit) {
             viewModel.onPermissionChanged(hasMediaPermission())
             val onboarding = getSharedPreferences("fgallery_onboarding", MODE_PRIVATE)
-            if (!onboarding.getBoolean("file_access_shown", false) && !hasMediaPermission()) {
-                onboarding.edit().putBoolean("file_access_shown", true).apply()
-                if (Build.VERSION.SDK_INT >= 30) firstLaunchAccess = true
-                else permissionLauncher.launch(requiredPermissions())
-            } else if (!onboarding.getBoolean("file_access_shown", false) && !StorageFolders.hasFileAccess() && Build.VERSION.SDK_INT >= 30) {
-                onboarding.edit().putBoolean("file_access_shown", true).apply()
-                firstLaunchAccess = true
+            if (!onboarding.getBoolean("access_wizard_completed", false)) {
+                // Do not unexpectedly re-run onboarding for existing installations.
+                if (onboarding.getBoolean("file_access_shown", false)) {
+                    onboarding.edit().putBoolean("access_wizard_completed", true).apply()
+                } else {
+                    onboarding.edit().putBoolean("file_access_shown", true).apply()
+                    accessWizardStep = AccessWizardStep.MEDIA
+                }
             }
         }
 
@@ -1166,13 +1181,27 @@ class MainActivity : ComponentActivity() {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
             SnackbarHost(moveSnackbar, modifier = Modifier.navigationBarsPadding())
         }
-        if (firstLaunchAccess) AlertDialog(
-            onDismissRequest = { firstLaunchAccess = false },
-            title = { Text("Доступ к файлам для FGallery") },
-            text = { Text("Чтобы видеть фото, видео, RAW, PDF и SVG во всех доступных папках, создавать папки и перемещать файлы без повторных подтверждений, разрешите доступ ко всем файлам на следующем экране Android.") },
-            confirmButton = { TextButton(onClick = { firstLaunchAccess = false; openFileAccessSettings() }) { Text("Разрешить доступ") } },
-            dismissButton = { TextButton(onClick = { firstLaunchAccess = false; permissionLauncher.launch(requiredPermissions()) }) { Text("Только фото и видео") } },
-        )
+        accessWizardStep?.takeIf { !accessRequestInFlight }?.let { step ->
+            AccessOnboarding(
+                step = step,
+                onGrant = {
+                    accessRequestInFlight = true
+                    if (step == AccessWizardStep.MEDIA) {
+                        permissionLauncher.launch(visualPermissionRequest())
+                    } else {
+                        openFileAccessSettings()
+                    }
+                },
+                onLater = {
+                    if (step == AccessWizardStep.MEDIA) accessWizardStep = AccessWizardStep.ALL_FILES
+                    else {
+                        accessWizardStep = null
+                        getSharedPreferences("fgallery_onboarding", MODE_PRIVATE)
+                            .edit().putBoolean("access_wizard_completed", true).apply()
+                    }
+                },
+            )
+        }
         pendingAccessWrite?.let { operation ->
             AlertDialog(
                 onDismissRequest = { pendingAccessWrite = null },
@@ -1293,6 +1322,19 @@ class MainActivity : ComponentActivity() {
         } else {
             arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE)
         }
+
+    private fun visualPermissionRequest(): Array<String> =
+        if (Build.VERSION.SDK_INT >= 34)
+            requiredPermissions() + Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED
+        else requiredPermissions()
+
+    private fun hasLimitedMediaPermission(): Boolean =
+        Build.VERSION.SDK_INT >= 34 &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) ==
+                PackageManager.PERMISSION_GRANTED &&
+            !requiredPermissions().all {
+                ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
+            }
 
     private fun hasMediaPermission(): Boolean =
         StorageFolders.hasFileAccess() || requiredPermissions().all {
