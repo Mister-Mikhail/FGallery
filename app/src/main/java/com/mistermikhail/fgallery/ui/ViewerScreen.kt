@@ -100,6 +100,7 @@ import com.mistermikhail.fgallery.data.ThumbnailCache
 import kotlinx.coroutines.delay
 import me.saket.telephoto.zoomable.DoubleClickToZoomListener
 import me.saket.telephoto.zoomable.ZoomSpec
+import me.saket.telephoto.zoomable.OverzoomEffect
 import me.saket.telephoto.zoomable.rememberZoomableImageState
 import me.saket.telephoto.zoomable.rememberZoomableState
 import me.saket.telephoto.zoomable.coil3.ZoomableAsyncImage
@@ -649,7 +650,8 @@ internal fun TiledZoomableImage(
     var maximum by remember(item.uri) { mutableFloatStateOf(8f) }
 
     val zoomableState = rememberZoomableState(
-        zoomSpec = ZoomSpec(maxZoomFactor = maximum),
+        // S23: suppress the default 40% RubberBanding overshoot (800% -> 1120%).
+        zoomSpec = ZoomSpec(maxZoomFactor = maximum, overzoomEffect = OverzoomEffect.Disabled),
     )
     val imageState = rememberZoomableImageState(zoomableState)
     LaunchedEffect(zoomableState) {
@@ -679,7 +681,7 @@ internal fun TiledZoomableImage(
             val current = if (state.isAnimationRunning && previousTapTarget > 0f) {
                 previousTapTarget
             } else maxOf(transformation.scale.scaleX, transformation.scale.scaleY)
-            val target = nextDoubleTapZoom(current, fit, maxOf(8f, fit * 8f), smallImage = fit * 2f >= 1f, power = zoomSecondPower)
+            val target = nextRasterDoubleTapZoom(current, fit, maxOf(8f, fit * 8f), smallImage = fit * 2f >= 1f)
             previousTapTarget = target
             if (target <= fit * 1.001f) state.resetZoom(animationSpec = tween(260))
             else state.zoomTo(zoomFactor = target, centroid = centroid, animationSpec = tween(260))
