@@ -300,7 +300,16 @@ class MainActivity : ComponentActivity() {
                         }?.directory ?: Environment.getExternalStorageDirectory()
                         return File(root, path).canonicalPath
                     }
-                    val groups = operation.items.groupBy(::destinationOf)
+                    // A destination already containing the source is a no-op;
+                    // its own existing filename must not force an artificial "_2".
+                    fun alreadyInDestination(item: MediaItem): Boolean {
+                        val source = StorageAccess.file(this@MainActivity, item) ?: return false
+                        val destination = destinationOf(item)
+                        return !destination.startsWith("content://") &&
+                            source.parentFile?.canonicalPath == File(destination).canonicalPath
+                    }
+                    val movableItems = operation.items.filterNot(::alreadyInDestination)
+                    val groups = movableItems.groupBy(::destinationOf)
                     val planned = mutableMapOf<String, String>()
                     groups.forEach { (destination, items) ->
                         val names = StorageAccess.children(this@MainActivity, destination).map { it.first }
@@ -311,7 +320,7 @@ class MainActivity : ComponentActivity() {
                     val remaining = mutableListOf<MediaItem>()
                     for (item in operation.items) {
                         try {
-                            if (!qualified && item.relativePath == path) continue
+                            if (alreadyInDestination(item) || (!qualified && item.relativePath == path)) continue
                             val name = planned[item.uriKey] ?: item.name
                             val oldParent = StorageAccess.file(this@MainActivity, item)?.parent
                                 ?: StorageAccess.parent(this@MainActivity, item)
