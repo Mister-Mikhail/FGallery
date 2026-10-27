@@ -11,7 +11,6 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.consume
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.platform.LocalDensity
@@ -434,6 +433,9 @@ private fun VideoPlayer(
         onDispose { player.removeListener(listener) }
     }
 
+    var startedPlayback by remember(item.uri) { mutableStateOf(false) }
+    var wasPlayingAtLifecyclePause by remember(item.uri) { mutableStateOf(false) }
+
     LaunchedEffect(active, detected360, spherical) {
         if (active && detected360 != null && lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
             sphericalView?.onResume()
@@ -447,8 +449,6 @@ private fun VideoPlayer(
         }
     }
 
-    var startedPlayback by remember(item.uri) { mutableStateOf(false) }
-    var wasPlayingAtLifecyclePause by remember(item.uri) { mutableStateOf(false) }
     DisposableEffect(player, lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
