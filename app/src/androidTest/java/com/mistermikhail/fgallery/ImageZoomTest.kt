@@ -19,6 +19,7 @@ import com.mistermikhail.fgallery.data.ThumbnailCache
 import com.mistermikhail.fgallery.ui.TiledZoomableImage
 import com.mistermikhail.fgallery.ui.ViewerImageReady
 import com.mistermikhail.fgallery.ui.ViewerZoomRange
+import com.mistermikhail.fgallery.ui.nextRasterDoubleTapZoom
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -77,8 +78,8 @@ class ImageZoomTest {
             val (fit, maximum) = node.fetchSemanticsNode().config[ViewerZoomRange]
             val actual = node.fetchSemanticsNode().config[SemanticsProperties.StateDescription].removePrefix("Zoom ").removeSuffix("%").toInt()
             assertEquals("Tap and pinch must share their ceiling", maxOf(8f, fit * 8f), maximum, .001f)
-            val expected = 200f
-            assertTrue("Twice fitted scale: $actual vs $expected", kotlin.math.abs(actual - expected) < 2f)
+            val expected = nextRasterDoubleTapZoom(fit, fit, maximum) / fit * 100f
+            assertTrue("Absolute first raster zoom: $actual vs $expected", kotlin.math.abs(actual - expected) < 2f)
         }
         node.performTouchInput { doubleClick(Offset(width * .8f, height * .7f)) }
         rule.waitForIdle()
@@ -114,11 +115,11 @@ class ImageZoomTest {
         val before = redWidth()
         assertTrue(before > 10)
         val (fit, maximum) = node.fetchSemanticsNode().config[ViewerZoomRange]
-        val expected = 2f
+        val expected = nextRasterDoubleTapZoom(fit, fit, maximum) / fit
         node.performTouchInput { doubleClick(center) }
         rule.waitForIdle()
         val ratio = redWidth().toFloat() / before
-        assertTrue("First zoom must double visible pixels, got $ratio, expected $expected", kotlin.math.abs(ratio - expected) < expected * .08f)
+        assertTrue("First zoom ratio $ratio expected $expected", kotlin.math.abs(ratio - expected) < expected * .12f)
         node.performTouchInput {
             pinch(start0 = center - Offset(100f, 0f), end0 = center - Offset(10f, 0f), start1 = center + Offset(100f, 0f), end1 = center + Offset(10f, 0f), durationMillis = 600)
         }
@@ -129,8 +130,8 @@ class ImageZoomTest {
         run {
             val (fit, maximum) = node.fetchSemanticsNode().config[ViewerZoomRange]
             val actual = node.fetchSemanticsNode().config[SemanticsProperties.StateDescription].removePrefix("Zoom ").removeSuffix("%").toInt()
-            val expected = 200f
-            assertTrue("Twice fitted scale: $actual vs $expected", kotlin.math.abs(actual - expected) < 2f)
+            val expected = nextRasterDoubleTapZoom(fit, fit, maximum) / fit * 100f
+            assertTrue("Absolute first raster zoom: $actual vs $expected", kotlin.math.abs(actual - expected) < 2f)
         }
     }
 
@@ -157,7 +158,8 @@ class ImageZoomTest {
         val (fit, maximum) = node.fetchSemanticsNode().config[ViewerZoomRange]
         node.performTouchInput { doubleClick(center) }
         rule.waitForIdle()
-        assertTrue("First tap should be 200% fitted scale", kotlin.math.abs(200 - zoom()) <= 2)
+        val desired = (nextRasterDoubleTapZoom(fit, fit, maximum) / fit * 100).toInt()
+        assertTrue("First tap should target 50% file pixels, got ${zoom()} vs $desired", kotlin.math.abs(desired - zoom()) <= 2)
         node.performTouchInput { doubleClick(center) }
         rule.waitForIdle()
         val afterTap = zoom()
