@@ -15,8 +15,8 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         minSdk = 29
         targetSdk = 35
-        versionCode = 21
-        versionName = "0.3.0"
+        versionCode = 22
+        versionName = "0.3.1"
         externalNativeBuild { cmake { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64") } }
     }
 
@@ -38,6 +38,18 @@ android {
     }
     buildTypes.getByName("debug") {
         signingConfig = signingConfigs.getByName("debug")
+    }
+    // QA-only optimized build. The shared development certificate permits installing
+    // over the existing S23 test APK without wiping the user's media/database.
+    // Never use this public development key for a production store release.
+    buildTypes.getByName("release") {
+        isMinifyEnabled = true
+        isShrinkResources = true
+        signingConfig = signingConfigs.getByName("debug")
+        proguardFiles(
+            getDefaultProguardFile("proguard-android-optimize.txt"),
+            "proguard-rules.pro",
+        )
     }
 
     splits {
