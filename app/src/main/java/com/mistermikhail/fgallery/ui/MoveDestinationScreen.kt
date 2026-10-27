@@ -206,11 +206,7 @@ fun MoveDestinationScreen(
                             Text(
                                 album.name,
                                 maxLines = 1,
-                                modifier = Modifier.padding(
-                                    horizontal = 8.dp,
-                                    vertical = 6.dp,
-                                ),
-                                modifier = Modifier.weight(1f),
+                                modifier = Modifier.weight(1f).padding(horizontal = 8.dp, vertical = 6.dp),
                             )
                             IconButton(onClick = { onOpenAlbum(album) }) {
                                 Icon(Icons.Outlined.ChevronRight, contentDescription = "Открыть папку ${album.name}")
