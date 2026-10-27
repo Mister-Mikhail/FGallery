@@ -17,6 +17,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -36,6 +37,11 @@ fun SettingsSheet(
     onDismiss: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val context = LocalContext.current
+    val installedVersion = runCatching {
+        val info = context.packageManager.getPackageInfo(context.packageName, 0)
+        "Версия ${info.versionName} · сборка ${info.longVersionCode}"
+    }.getOrDefault("Версия не определена")
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -105,6 +111,12 @@ fun SettingsSheet(
                 }
             }
             TextButton(onClick = onCheckForUpdates) { Text("Проверить обновления") }
+            Text(
+                text = installedVersion,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.52f),
+                modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = 10.dp, bottom = 4.dp),
+            )
 
         }
     }
