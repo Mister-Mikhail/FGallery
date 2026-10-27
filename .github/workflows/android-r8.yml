@@ -84,7 +84,9 @@ jobs:
           arch: x86_64
           profile: pixel_2
           disable-animations: true
-          script: gradle :app:connectedReleaseAndroidTest
+          # Test the release-equivalent R8 build with test-only host classes,
+          # never embed those helper activities into the shipped release APK.
+          script: gradle :app:connectedR8TestAndroidTest
       - uses: actions/upload-artifact@v4
         if: always()
         with:
