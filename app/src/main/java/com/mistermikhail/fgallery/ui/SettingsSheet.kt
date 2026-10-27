@@ -85,13 +85,13 @@ fun SettingsSheet(
             SettingSwitch("Подтверждать перемещение", "Выключено по умолчанию", confirmMove, onConfirmMoveChanged)
             SettingSwitch("Подтверждать переименование", "", confirmRename, onConfirmRenameChanged)
             Text(
-                text = "Тест · второй двойной тап",
+                text = "Тест · масштаб PDF/SVG",
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(top = 12.dp),
             )
             Text(
-                text = "Доля пути в удвоениях масштаба. Индикатор во время просмотра.",
+                text = "Для больших фотографий и RAW: 50% → 160% по индикатору, независимо от формата. Параметр p ниже относится только к PDF/SVG.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = .72f),
             )
