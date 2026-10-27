@@ -373,10 +373,10 @@ class MainActivity : ComponentActivity() {
                 is PendingWriteOperation.Replace -> false // Explicit overwrite dialog already accepted.
             }
             if (!skipConfirmation && needsConfirmation) { pendingWriteConfirmation = operation; return }
-            if (operation is PendingWriteOperation.Move && !operation.relativePath.startsWith("content://") && Build.VERSION.SDK_INT >= 30 && !StorageFolders.hasFileAccess()) {
-                pendingAccessWrite = operation
-                return
-            }
+            // Relative-path MediaStore moves work without broad all-files access.
+            // Do not require MANAGE_EXTERNAL_STORAGE before attempting them; if Android
+            // denies a particular URI, the existing SecurityException path requests
+            // a scoped write grant and preserves the selection on cancellation.
             operationMessage = when (operation) {
                 is PendingWriteOperation.Move -> "Перемещение в ${operation.relativePath}"
                 is PendingWriteOperation.Rename -> "Переименование"
