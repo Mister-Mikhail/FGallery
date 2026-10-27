@@ -4,6 +4,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("androidx.baselineprofile")
 }
 
 android {
@@ -15,8 +16,8 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         minSdk = 29
         targetSdk = 35
-        versionCode = 21
-        versionName = "0.3.0"
+        versionCode = 22
+        versionName = "0.3.1"
         externalNativeBuild { cmake { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64") } }
     }
 
@@ -39,6 +40,28 @@ android {
     buildTypes.getByName("debug") {
         signingConfig = signingConfigs.getByName("debug")
     }
+    buildTypes.getByName("release") {
+        // Temporary update-compatible development signature. A real store key
+        // must be configured separately and never placed in this repository.
+        signingConfig = signingConfigs.getByName("debug")
+        isMinifyEnabled = true
+        isShrinkResources = true
+        proguardFiles(
+            getDefaultProguardFile("proguard-android-optimize.txt"),
+            "proguard-rules.pro",
+        )
+    }
+    buildTypes.create("minifiedTest") {
+        signingConfig = signingConfigs.getByName("debug")
+        isDebuggable = true
+        isMinifyEnabled = true
+        isShrinkResources = true
+        proguardFiles(
+            getDefaultProguardFile("proguard-android-optimize.txt"),
+            "proguard-rules.pro",
+        )
+        matchingFallbacks += listOf("release", "debug")
+    }
 
     splits {
         abi {
@@ -52,7 +75,7 @@ android {
     externalNativeBuild {
         cmake { path = file("src/main/cpp/CMakeLists.txt"); version = "3.22.1" }
     }
-    buildFeatures { compose = true }
+    // Exercise the minified release build with the existing Android 16 tests.\n    testBuildType = "release"\n    buildFeatures { compose = true }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -65,6 +88,8 @@ android {
 kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }
 
 dependencies {
+    baselineProfile(project(":baselineprofile"))
+    implementation("androidx.profileinstaller:profileinstaller:1.4.1")
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.documentfile:documentfile:1.0.1")
     implementation("androidx.activity:activity-compose:1.10.0")
@@ -102,4 +127,11 @@ dependencies {
     implementation("androidx.media3:media3-effect:1.9.3")
 
     debugImplementation("androidx.compose.ui:ui-tooling:1.9.3")
+}
+
+baselineProfile {
+    // Generate only on explicit release profiling runs; do not silently boot
+    // an emulator during every Gradle build or publish unverified fake rules.
+    automaticGenerationDuringBuild = false
+    saveInSrc = true
 }
