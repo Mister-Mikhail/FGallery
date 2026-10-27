@@ -29,6 +29,31 @@ class RawDefaultCropReaderTest {
         assertNull(RawDefaultCropReader.parse(corrupted))
     }
 
+    @Test fun realisticHasselblad3frLayoutWithManyIfdEntries() {
+        val data = ByteArray(4096)
+        val b = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN)
+        b.put(0, 0x49.toByte()); b.put(1, 0x49.toByte())
+        b.putShort(2, 42.toShort()); b.putInt(4, 8)
+        b.putShort(8, 29) // Actual X2D root IFD has 29 tags.
+        fun tag(pos: Int, id: Int, type: Int, count: Int, value: Int) {
+            b.putShort(pos, id.toShort())
+            b.putShort(pos + 2, type.toShort())
+            b.putInt(pos + 4, count)
+            b.putInt(pos + 8, value)
+        }
+        tag(10, 254, 4, 1, 1)
+        tag(22, 256, 3, 1, 3888)  // Root JPEG only, never sensor size.
+        tag(34, 257, 3, 1, 2918)
+        tag(118, 274, 3, 1, 6) // Camera orientation.
+        tag(238, 330, 4, 1, 822) // Real camera SubIFD offset.
+        b.putShort(822, 17)
+        tag(836, 256, 3, 1, 11904) // Overscanned RAW pixel buffer.
+        tag(848, 257, 3, 1, 8842)
+        tag(980, 50719, 3, 2, (96 shl 16) or 128)
+        tag(992, 50720, 3, 2, (8742 shl 16) or 11656)
+        assertEquals(8742 to 11656, RawDefaultCropReader.parse(data))
+    }
+
     private fun makeTiff(orientation: Int, cropWidth: Int = 11656): ByteArray {
         val bytes = ByteArray(1024)
         val b = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
