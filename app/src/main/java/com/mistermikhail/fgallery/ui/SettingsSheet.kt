@@ -31,6 +31,10 @@ fun SettingsSheet(
     zoomSecondPower: Float,
     onZoomSecondPowerChanged: (Float) -> Unit,
     confirmMove: Boolean,
+    mediaAccessStatus: String,
+    allFilesGranted: Boolean,
+    onMediaAccess: () -> Unit,
+    onFilesAccess: () -> Unit,
     confirmRename: Boolean,
     onConfirmMoveChanged: (Boolean) -> Unit,
     onConfirmRenameChanged: (Boolean) -> Unit,
@@ -88,7 +92,24 @@ fun SettingsSheet(
                 )
             }
 
-            SettingSwitch("Подтверждать перемещение", "Выключено по умолчанию", confirmMove, onConfirmMoveChanged)
+            Text("Доступы", style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Фото и видео")
+                    Text("Статус: $mediaAccessStatus", style = MaterialTheme.typography.bodySmall)
+                }
+                TextButton(onClick = onMediaAccess) { Text("Настроить") }
+            }
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Доступ ко всем файлам")
+                    Text(if (allFilesGranted) "Статус: выдан" else "Статус: не выдан",
+                        style = MaterialTheme.typography.bodySmall)
+                }
+                TextButton(onClick = onFilesAccess) { Text("Настроить") }
+            }
+                        SettingSwitch("Подтверждать перемещение", "Выключено по умолчанию", confirmMove, onConfirmMoveChanged)
             SettingSwitch("Подтверждать переименование", "", confirmRename, onConfirmRenameChanged)
             Text(
                 text = "Тест · масштаб PDF/SVG",
