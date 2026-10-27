@@ -748,7 +748,13 @@ internal fun TiledZoomableImage(
         }
         if (imageFailed && cachedPreview == null) Text("Не удалось открыть изображение. Формат может не поддерживаться декодером устройства.", color = Color.White, modifier = Modifier.padding(24.dp))
         if (needsFullSource && !fullDecoded) {
-            if (fullError == null && active) CircularProgressIndicator(Modifier.align(Alignment.BottomCenter).padding(24.dp))
+            if (fullError == null && active) {
+                if (item.kind == MediaKind.RAW) {
+                    RawOpeningIndicator(Modifier.align(Alignment.Center))
+                } else {
+                    CircularProgressIndicator(Modifier.align(Alignment.Center).padding(24.dp))
+                }
+            }
             fullError?.let { Text("Не удалось загрузить полный размер: $it", color = Color.White, modifier = Modifier.align(Alignment.BottomCenter).padding(24.dp)) }
         }
     }
