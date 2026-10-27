@@ -172,3 +172,8 @@ Rules: do not turn 0.2.8 CI into user acceptance; treat this S23 report as newes
 - **Implementation in code:** 1.1 log second-tap zoom p 80/85/90 temporary chooser + percent indicator; 1.2 explicit cleanup enable confirmation and orange Material CleaningServices exit; 1.3 custom Compose video controls (Media3 ContentFrame) with play/pause/seek/title/time and relative window brightness/media volume swipes; 1.4 RAW sensor resolution via LibRaw in full details and quick EXIF, prefs cache.
 - **S23 acceptance pending on ALL 1.1–1.4.** User must choose p on real Canon 5DS R, phone and portrait files before test diagnostic is removed. Device checks: after second tap pinch continues, PDF/SVG, cleanup enable/cancel/exit, video ordinary/360, pause/autohide, file swipe-vs-volume/brightness, restore window brightness, raw CR2/DNG/IIQ/X2D 3FR true sensor dims and memory. 43 emulator checks do NOT substitute for S23.
 - No PR merged and no permanent public Release v0.3.0 issued. Approved TZ v1 continues to control behavior; unapproved sections unchanged.
+
+### Samsung Galaxy S23 direct test: PDF/SVG zoom — 2026-10-27
+- User confirms **PDF and SVG zoom works normally** on S23 during Stage 1.1 diagnostic testing. **Do not change PDF/SVG zoom algorithm or gestures** as part of the raster 50%/160% follow-up; retain regression tests.
+- This positive confirmation applies **only to PDF/SVG zoom**, not full PDF/SVG format acceptance, unrelated viewer operations, or the complete 0.3.0 Stage 1.
+- Raster TIFF/JPEG/CR2 zoom still requires a separate user-approved target policy and S23 retest. Current source under PR #6 is not marked complete.
