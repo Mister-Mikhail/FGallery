@@ -4,6 +4,24 @@ import android.view.GestureDetector
 import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.ViewGroup
+import android.app.Activity
+import android.content.Context
+import android.media.AudioManager
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.consume
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.foundation.layout.offset
+import androidx.media3.ui.compose.ContentFrame
+import androidx.media3.common.util.UnstableApi
+import androidx.compose.runtime.mutableLongStateOf
+import kotlin.math.abs
+import kotlin.math.roundToInt
 import android.widget.FrameLayout
 import androidx.media3.exoplayer.video.spherical.ZoomableSphericalView
 import androidx.media3.ui.PlayerControlView
@@ -196,6 +214,21 @@ fun ViewerScreen(
                     onDoubleTap = {
                         if (cleanupMode && !recycleBinMode) onTrash(item)
                     },
+                    topBar = {
+                        VideoTopBar(
+                            expanded = videoMenuExpanded,
+                            onMenuExpandedChange = { videoMenuExpanded = it },
+                            onBack = onBack,
+                            onShare = { onShare(item) },
+                            onCrop = { onCrop(item) },
+                            onRename = { renameTarget = item },
+                            onMove = { onMove(item) },
+                            onDetails = { showDetails = true },
+                            onTrash = { onTrash(item) },
+                            onRestore = { onRestore(item) },
+                            recycleBinMode = recycleBinMode,
+                        )
+                    },
                 )
             } else if (item.kind == MediaKind.PDF) {
                 PdfViewer(item, ::toggleChrome, onDoubleTap = if (cleanupMode && !recycleBinMode) ({ onTrash(item) }) else null, zoomSecondPower = zoomSecondPower)
@@ -222,107 +255,13 @@ fun ViewerScreen(
             )
         }
 
-        // The video name is the only inline metadata; full EXIF stays in "Сведения".
-        if (chromeVisible && currentIsVideo && currentItem != null) {
-            Text(
-                text = currentItem.name,
-                color = Color.White,
-                maxLines = 1,
-                modifier = Modifier.align(Alignment.BottomEnd).navigationBarsPadding()
-                    .padding(end = 20.dp, bottom = if (context.resources.configuration.orientation ==
-                        android.content.res.Configuration.ORIENTATION_LANDSCAPE) 7.dp else 23.dp),
-            )
-        }
-
         AnimatedVisibility(
-            visible = chromeVisible,
+            visible = chromeVisible && !currentIsVideo,
             enter = fadeIn(),
             exit = fadeOut(),
             modifier = Modifier.align(Alignment.TopCenter),
         ) {
-            if (currentIsVideo) {
-                // Video mode: no wide top toolbar. Keep only back + compact actions menu.
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .statusBarsPadding()
-                        .padding(horizontal = 4.dp),
-                ) {
-                    IconButton(
-                        onClick = onBack,
-                        modifier = Modifier.align(Alignment.CenterStart),
-                    ) {
-                        Icon(
-                            Icons.Outlined.ArrowBack,
-                            contentDescription = "Назад",
-                            tint = Color.White,
-                        )
-                    }
-
-                    Box(
-                        modifier = Modifier.align(Alignment.CenterEnd),
-                    ) {
-                        IconButton(onClick = { videoMenuExpanded = true }) {
-                            Icon(
-                                Icons.Outlined.Menu,
-                                contentDescription = "Действия с файлом",
-                                tint = Color.White,
-                            )
-                        }
-
-                        if (currentItem != null) {
-                            DropdownMenu(
-                                expanded = videoMenuExpanded,
-                                onDismissRequest = { videoMenuExpanded = false },
-                            ) {
-                                DropdownMenuItem(
-                                    text = { Text("Отправить") },
-                                    onClick = {
-                                        videoMenuExpanded = false
-                                        onShare(currentItem)
-                                    },
-                                )
-                                if (!recycleBinMode) DropdownMenuItem(
-                                    text = { Text("Кадрировать видео") },
-                                    onClick = { videoMenuExpanded = false; onCrop(currentItem) },
-                                )
-                                if (!recycleBinMode) DropdownMenuItem(
-                                    text = { Text("Переименовать") },
-                                    onClick = {
-                                        videoMenuExpanded = false
-                                        renameTarget = currentItem
-                                                                            },
-                                )
-                                if (!recycleBinMode) DropdownMenuItem(
-                                    text = { Text("Переместить") },
-                                    onClick = {
-                                        videoMenuExpanded = false
-                                        onMove(currentItem)
-                                    },
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("Сведения") },
-                                    onClick = {
-                                        videoMenuExpanded = false
-                                        showDetails = true
-                                    },
-                                )
-                                if (recycleBinMode) DropdownMenuItem(
-                                    text = { Text("Восстановить") },
-                                    onClick = { videoMenuExpanded = false; onRestore(currentItem) },
-                                )
-                                if (!recycleBinMode) DropdownMenuItem(
-                                    text = { Text("В корзину") },
-                                    onClick = {
-                                        videoMenuExpanded = false
-                                        onTrash(currentItem)
-                                    },
-                                )
-                            }
-                        }
-                    }
-                }
-            } else {
+            if (!currentIsVideo) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -451,6 +390,7 @@ private fun VideoPlayer(
     onPlayingChanged: (Boolean) -> Unit,
     onSingleTap: () -> Unit,
     onDoubleTap: () -> Unit,
+    topBar: @Composable () -> Unit,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
