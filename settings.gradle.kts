@@ -15,5 +15,5 @@ dependencyResolutionManagement {
     }
 }
 rootProject.name = "FGallery"
-include(":app")
+include(":app", ":baselineprofile")
 
