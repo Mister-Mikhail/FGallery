@@ -44,7 +44,7 @@ class RawOpeningIndicatorGeometryTest {
         val c = rawLetterChaseOffset(.8f, 2, width)
         assertTrue("Right-going text: later characters follow", a > b && b > c)
         assertTrue("Only a subtle delay, not flying characters", abs(a - c) < width * .10f)
-        val leftGoing = (3 * PI / 2).toFloat() + .4f
+        val leftGoing = PI.toFloat() + .4f
         assertTrue(rawLetterChaseOffset(leftGoing, 0, width) <
             rawLetterChaseOffset(leftGoing, 1, width))
     }
