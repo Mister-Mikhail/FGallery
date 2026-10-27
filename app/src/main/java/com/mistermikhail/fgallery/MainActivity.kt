@@ -98,7 +98,7 @@ private data class CompletedMove(
     val originalParent: String,
 )
 
-private class PartialMoveException(val remaining: List<MediaItem>, cause: Exception) : Exception(cause.localizedMessage, cause)
+private class PartialMoveException(val remaining: List<MediaItem>, val names: Map<String, String>, cause: Exception) : Exception(cause.localizedMessage, cause)
 private class PartialRenameException(val remaining: List<Pair<MediaItem, String>>, cause: Exception) : Exception(cause.localizedMessage, cause)
 
 private sealed interface PendingWriteOperation {
@@ -113,6 +113,7 @@ private sealed interface PendingWriteOperation {
     data class Move(
         val items: List<MediaItem>,
         val relativePath: String,
+        val plannedNames: Map<String, String> = emptyMap(),
     ) : PendingWriteOperation
 }
 
@@ -310,11 +311,15 @@ class MainActivity : ComponentActivity() {
                     }
                     val movableItems = operation.items.filterNot(::alreadyInDestination)
                     val groups = movableItems.groupBy(::destinationOf)
-                    val planned = mutableMapOf<String, String>()
+                    val planned = operation.plannedNames.toMutableMap()
                     groups.forEach { (destination, items) ->
-                        val names = StorageAccess.children(this@MainActivity, destination).map { it.first }
-                        val resolved = MoveNamePlanner.plan(items.map { it.name }, names)
-                        items.zip(resolved).forEach { (item, name) -> planned[item.uriKey] = name }
+                        val unplanned = items.filterNot { planned.containsKey(it.uriKey) }
+                        if (unplanned.isNotEmpty()) {
+                            val names = StorageAccess.children(this@MainActivity, destination).map { it.first } +
+                                planned.values
+                            val resolved = MoveNamePlanner.plan(unplanned.map { it.name }, names)
+                            unplanned.zip(resolved).forEach { (item, name) -> planned[item.uriKey] = name }
+                        }
                     }
                     var firstFailure: Exception? = null
                     val remaining = mutableListOf<MediaItem>()
@@ -353,7 +358,7 @@ class MainActivity : ComponentActivity() {
                             if (firstFailure == null) firstFailure = e
                         }
                     }
-                    firstFailure?.let { throw PartialMoveException(remaining, it) }
+                    firstFailure?.let { throw PartialMoveException(remaining, planned, it) }
                 }
             }
         }
@@ -448,7 +453,7 @@ class MainActivity : ComponentActivity() {
                         // A grant can cover only the first 2000 MediaStore URIs.
                         // Prompt for the next remaining group without moving completed files again.
                         val remainingOperation = when {
-                            failure is PartialMoveException && operation is PendingWriteOperation.Move -> operation.copy(items = failure.remaining)
+                            failure is PartialMoveException && operation is PendingWriteOperation.Move -> operation.copy(items = failure.remaining, plannedNames = failure.names)
                             failure is PartialRenameException && operation is PendingWriteOperation.RenameBatch -> operation.copy(plan = failure.remaining)
                             else -> operation
                         }
@@ -516,7 +521,7 @@ class MainActivity : ComponentActivity() {
                     // Never repeat files that already moved successfully before a partial failure.
                     // Android limits each MediaStore permission request to 2000 items.
                     val retry = when {
-                        failure is PartialMoveException && operation is PendingWriteOperation.Move -> operation.copy(items = failure.remaining)
+                        failure is PartialMoveException && operation is PendingWriteOperation.Move -> operation.copy(items = failure.remaining, plannedNames = failure.names)
                         failure is PartialRenameException && operation is PendingWriteOperation.RenameBatch -> operation.copy(plan = failure.remaining)
                         else -> operation
                     }
