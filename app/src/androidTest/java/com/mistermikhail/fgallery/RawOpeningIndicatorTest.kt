@@ -7,13 +7,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertHeightIsEqualTo
-import androidx.compose.ui.test.assertWidthIsEqualTo
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import com.mistermikhail.fgallery.ui.RawOpeningIndicator
-import com.mistermikhail.fgallery.ui.RAW_INDICATOR_SIZE_DP
+import com.mistermikhail.fgallery.ui.RAW_INDICATOR_HEIGHT_DP
 import org.junit.Rule
 import org.junit.Test
 
@@ -28,8 +28,9 @@ class RawOpeningIndicatorTest {
         }
         rule.onNodeWithTag("raw-open-indicator")
             .assertIsDisplayed()
-            .assertWidthIsEqualTo(RAW_INDICATOR_SIZE_DP.dp)
-            .assertHeightIsEqualTo(RAW_INDICATOR_SIZE_DP.dp)
+            .assertHeightIsEqualTo(RAW_INDICATOR_HEIGHT_DP.dp)
         rule.onNodeWithContentDescription("Открываем RAW").assertIsDisplayed()
+        val bounds = rule.onNodeWithTag("raw-open-indicator").getUnclippedBoundsInRoot()
+        org.junit.Assert.assertTrue("Horizontal caption must be wider than tall", bounds.width > bounds.height * 1.4f)
     }
 }
