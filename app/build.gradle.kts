@@ -63,7 +63,7 @@ android {
     externalNativeBuild {
         cmake { path = file("src/main/cpp/CMakeLists.txt"); version = "3.22.1" }
     }
-    buildFeatures { compose = true }
+    // Exercise the minified release build with the existing Android 16 tests.\n    testBuildType = "release"\n    buildFeatures { compose = true }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
