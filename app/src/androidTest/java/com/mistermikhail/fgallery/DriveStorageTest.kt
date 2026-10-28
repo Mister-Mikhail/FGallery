@@ -43,12 +43,14 @@ class DriveStorageTest {
             val restarted = DriveRecycleBin(context, { connected }, { emptyList() })
             val reconnected = restarted.load().filter { it.folderTarget.startsWith(base.path) }
             assertEquals(2, reconnected.size)
+            // Collision-safe restore keeps the existing original and restores as a_2.jpg.
             File(a.sourcePath).writeText("existing")
-            try { restarted.restore(listOf(reconnected.first { it.name == "a.jpg" })); fail("Must not overwrite an existing original") } catch (_: IllegalStateException) { }
+            restarted.restore(listOf(reconnected.first { it.name == "a.jpg" }))
             assertEquals("existing", File(a.sourcePath).readText())
-            File(a.sourcePath).delete()
-            restarted.restore(reconnected)
-            assertEquals(100000, File(a.sourcePath).length().toInt()); assertEquals(100000, File(b.sourcePath).length().toInt())
+            val renamedRestore = File(File(a.sourcePath).parentFile!!, "a_2.jpg")
+            assertEquals(100000L, renamedRestore.length())
+            restarted.restore(reconnected.filter { it.name == "b.jpg" })
+            assertEquals(100000L, File(b.sourcePath).length())
             assertTrue(restarted.load().none { it.folderTarget.startsWith(base.path) })
         } finally { base.deleteRecursively() }
     }
@@ -61,9 +63,14 @@ class DriveStorageTest {
         try {
             val expected = source.readBytes()
             File(destination, source.name).writeText("collision")
-            try { StorageAccess.move(context, item, destination.path); fail("Collision must fail") } catch (_: IllegalStateException) { }
-            assertArrayEquals(expected, source.readBytes())
+            val collisionSafeMove = StorageAccess.move(context, item, destination.path)
+            assertFalse(source.exists())
+            assertEquals("collision", File(destination, source.name).readText())
+            assertEquals("source_2.jpg", File(collisionSafeMove.path!!).name)
+            assertArrayEquals(expected, File(collisionSafeMove.path!!).readBytes())
+            // Test an ordinary non-collision move independently.
             File(destination, source.name).delete()
+            source.writeBytes(expected)
             val moved = StorageAccess.move(context, item, destination.path)
             assertFalse(source.exists()); assertArrayEquals(expected, File(moved.path!!).readBytes())
             assertTrue(File(StorageAccess.directory(context, destination.path, "empty")).isDirectory)
@@ -92,15 +99,14 @@ class DriveStorageTest {
                 )
             }
             val collision = File(sourceFolder, "file-1.jpg").apply { writeText("original") }
-            try {
-                val item = DriveLibrary.item(Uri.fromFile(collision), collision.name, "image/jpeg",
-                    collision.length(), 0, root, sourceFolder.path)!!
-                StorageAccess.move(context, item, destinationFolder.path)
-                fail("A duplicate destination must never overwrite either file")
-            } catch (_: IllegalStateException) {
-                assertEquals("original", collision.readText())
-                assertEquals(2L, File(destinationFolder, "file-1.jpg").length())
-            }
+            val existingDestination = File(destinationFolder, "file-1.jpg").readBytes()
+            val collisionItem = DriveLibrary.item(Uri.fromFile(collision), collision.name, "image/jpeg",
+                collision.length(), 0, root, sourceFolder.path)!!
+            val renamed = StorageAccess.move(context, collisionItem, destinationFolder.path)
+            assertFalse(collision.exists())
+            assertArrayEquals(existingDestination, File(destinationFolder, "file-1.jpg").readBytes())
+            assertEquals("file-1_2.jpg", File(renamed.path!!).name)
+            assertEquals("original", File(renamed.path!!).readText())
         } finally {
             base.deleteRecursively()
         }
