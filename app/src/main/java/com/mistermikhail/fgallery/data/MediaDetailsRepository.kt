@@ -15,6 +15,10 @@ class MediaDetailsRepository(
 ) {
     suspend fun load(item: MediaItem): MediaDetails = withContext(Dispatchers.IO) {
         val sections = mutableListOf<DetailSection>()
+        // RAW resolution comes from the LibRaw sensor area, never from embedded-preview
+        // IFD0 dimensions or MediaStore's often-missing WIDTH/HEIGHT.
+        val sensorDimensions = if (item.kind == MediaKind.RAW)
+            RawSensorDimensions.read(context, item) else null
 
         sections += DetailSection(
             title = "Файл",
@@ -28,8 +32,10 @@ class MediaDetailsRepository(
                 if (item.sizeBytes > 0L) {
                     add(DetailField("Размер", formatBytes(item.sizeBytes)))
                 }
-                if (item.width > 0 && item.height > 0) {
-                    add(DetailField("Разрешение", "${item.width} × ${item.height}"))
+                val dimensions = if (item.kind == MediaKind.RAW) sensorDimensions
+                    else (item.width to item.height).takeIf { it.first > 0 && it.second > 0 }
+                dimensions?.let { (width, height) ->
+                    add(DetailField("Разрешение", "$width × $height"))
                 }
                 item.mimeType?.takeIf { it.isNotBlank() }?.let {
                     add(DetailField("Формат", it))

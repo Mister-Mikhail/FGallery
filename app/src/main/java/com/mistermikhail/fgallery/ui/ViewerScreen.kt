@@ -4,6 +4,23 @@ import android.view.GestureDetector
 import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.ViewGroup
+import android.app.Activity
+import android.content.Context
+import android.media.AudioManager
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.foundation.layout.offset
+import androidx.media3.ui.compose.ContentFrame
+import androidx.media3.common.util.UnstableApi
+import androidx.compose.runtime.mutableLongStateOf
+import kotlin.math.abs
+import kotlin.math.roundToInt
 import android.widget.FrameLayout
 import androidx.media3.exoplayer.video.spherical.ZoomableSphericalView
 import androidx.media3.ui.PlayerControlView
@@ -46,6 +63,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -103,6 +122,7 @@ fun ViewerScreen(
     onMove: (MediaItem) -> Unit,
     deletingItemUri: String? = null,
     recycleBinMode: Boolean = false,
+    zoomSecondPower: Float = .85f,
 ) {
     val initialPage = items.indexOfFirst { it.uriKey == initialItem.uriKey }.coerceAtLeast(0)
     val pagerState = rememberPagerState(
@@ -153,7 +173,6 @@ fun ViewerScreen(
 
     fun toggleChrome() {
         if (currentIsVideo) {
-            if (!videoPlaying) { chromeVisible = true; chromeEpoch++; return }
             if (chromeVisible) {
                 chromeVisible = false
             } else {
@@ -193,11 +212,26 @@ fun ViewerScreen(
                     onDoubleTap = {
                         if (cleanupMode && !recycleBinMode) onTrash(item)
                     },
+                    topBar = {
+                        VideoTopBar(
+                            expanded = videoMenuExpanded,
+                            onMenuExpandedChange = { videoMenuExpanded = it },
+                            onBack = onBack,
+                            onShare = { onShare(item) },
+                            onCrop = { onCrop(item) },
+                            onRename = { renameTarget = item },
+                            onMove = { onMove(item) },
+                            onDetails = { showDetails = true },
+                            onTrash = { onTrash(item) },
+                            onRestore = { onRestore(item) },
+                            recycleBinMode = recycleBinMode,
+                        )
+                    },
                 )
             } else if (item.kind == MediaKind.PDF) {
-                PdfViewer(item, ::toggleChrome, onDoubleTap = if (cleanupMode && !recycleBinMode) ({ onTrash(item) }) else null)
+                PdfViewer(item, ::toggleChrome, onDoubleTap = if (cleanupMode && !recycleBinMode) ({ onTrash(item) }) else null, zoomSecondPower = zoomSecondPower)
             } else if (item.kind == MediaKind.SVG) {
-                SvgViewer(item, ::toggleChrome, onDoubleTap = if (cleanupMode && !recycleBinMode) ({ onTrash(item) }) else null)
+                SvgViewer(item, ::toggleChrome, onDoubleTap = if (cleanupMode && !recycleBinMode) ({ onTrash(item) }) else null, zoomSecondPower = zoomSecondPower)
             } else {
                 TiledZoomableImage(
                     item = item,
@@ -205,6 +239,7 @@ fun ViewerScreen(
                     cleanupMode = cleanupMode && !recycleBinMode,
                     onTrash = { onTrash(item) },
                     active = activePage,
+                    zoomSecondPower = zoomSecondPower,
                 )
             }
         }
@@ -218,107 +253,13 @@ fun ViewerScreen(
             )
         }
 
-        // The video name is the only inline metadata; full EXIF stays in "Сведения".
-        if (chromeVisible && currentIsVideo && currentItem != null) {
-            Text(
-                text = currentItem.name,
-                color = Color.White,
-                maxLines = 1,
-                modifier = Modifier.align(Alignment.BottomEnd).navigationBarsPadding()
-                    .padding(end = 20.dp, bottom = if (context.resources.configuration.orientation ==
-                        android.content.res.Configuration.ORIENTATION_LANDSCAPE) 7.dp else 23.dp),
-            )
-        }
-
         AnimatedVisibility(
-            visible = chromeVisible,
+            visible = chromeVisible && !currentIsVideo,
             enter = fadeIn(),
             exit = fadeOut(),
             modifier = Modifier.align(Alignment.TopCenter),
         ) {
-            if (currentIsVideo) {
-                // Video mode: no wide top toolbar. Keep only back + compact actions menu.
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .statusBarsPadding()
-                        .padding(horizontal = 4.dp),
-                ) {
-                    IconButton(
-                        onClick = onBack,
-                        modifier = Modifier.align(Alignment.CenterStart),
-                    ) {
-                        Icon(
-                            Icons.Outlined.ArrowBack,
-                            contentDescription = "Назад",
-                            tint = Color.White,
-                        )
-                    }
-
-                    Box(
-                        modifier = Modifier.align(Alignment.CenterEnd),
-                    ) {
-                        IconButton(onClick = { videoMenuExpanded = true }) {
-                            Icon(
-                                Icons.Outlined.Menu,
-                                contentDescription = "Действия с файлом",
-                                tint = Color.White,
-                            )
-                        }
-
-                        if (currentItem != null) {
-                            DropdownMenu(
-                                expanded = videoMenuExpanded,
-                                onDismissRequest = { videoMenuExpanded = false },
-                            ) {
-                                DropdownMenuItem(
-                                    text = { Text("Отправить") },
-                                    onClick = {
-                                        videoMenuExpanded = false
-                                        onShare(currentItem)
-                                    },
-                                )
-                                if (!recycleBinMode) DropdownMenuItem(
-                                    text = { Text("Кадрировать видео") },
-                                    onClick = { videoMenuExpanded = false; onCrop(currentItem) },
-                                )
-                                if (!recycleBinMode) DropdownMenuItem(
-                                    text = { Text("Переименовать") },
-                                    onClick = {
-                                        videoMenuExpanded = false
-                                        renameTarget = currentItem
-                                                                            },
-                                )
-                                if (!recycleBinMode) DropdownMenuItem(
-                                    text = { Text("Переместить") },
-                                    onClick = {
-                                        videoMenuExpanded = false
-                                        onMove(currentItem)
-                                    },
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("Сведения") },
-                                    onClick = {
-                                        videoMenuExpanded = false
-                                        showDetails = true
-                                    },
-                                )
-                                if (recycleBinMode) DropdownMenuItem(
-                                    text = { Text("Восстановить") },
-                                    onClick = { videoMenuExpanded = false; onRestore(currentItem) },
-                                )
-                                if (!recycleBinMode) DropdownMenuItem(
-                                    text = { Text("В корзину") },
-                                    onClick = {
-                                        videoMenuExpanded = false
-                                        onTrash(currentItem)
-                                    },
-                                )
-                            }
-                        }
-                    }
-                }
-            } else {
+            if (!currentIsVideo) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -440,6 +381,7 @@ fun ViewerScreen(
 }
 
 @Composable
+@OptIn(UnstableApi::class)
 private fun VideoPlayer(
     item: MediaItem,
     active: Boolean,
@@ -447,6 +389,7 @@ private fun VideoPlayer(
     onPlayingChanged: (Boolean) -> Unit,
     onSingleTap: () -> Unit,
     onDoubleTap: () -> Unit,
+    topBar: @Composable () -> Unit,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -489,40 +432,35 @@ private fun VideoPlayer(
         onDispose { player.removeListener(listener) }
     }
 
+    var startedPlayback by remember(item.uri) { mutableStateOf(false) }
+    var wasPlayingAtLifecyclePause by remember(item.uri) { mutableStateOf(false) }
+
     LaunchedEffect(active, detected360, spherical) {
         if (active && detected360 != null && lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
             sphericalView?.onResume()
             player.volume = 1f
-            player.play()
+            if (!startedPlayback) { startedPlayback = true; player.play() }
         } else {
             sphericalView?.onPause()
             player.pause()
             player.volume = 0f
+            if (!active) startedPlayback = false
         }
-    }
-
-    val gestureDetector = remember(item.id) {
-        GestureDetector(
-            context,
-            object : GestureDetector.SimpleOnGestureListener() {
-                override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
-                    latestSingleTap()
-                    return true
-                }
-
-                override fun onDoubleTap(e: MotionEvent): Boolean {
-                    latestDoubleTap()
-                    return true
-                }
-            },
-        )
     }
 
     DisposableEffect(player, lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                Lifecycle.Event.ON_PAUSE -> { player.pause(); sphericalView?.onPause() }
-                Lifecycle.Event.ON_RESUME -> if (latestActive && latestDetection != null) { player.volume = 1f; player.play(); sphericalView?.onResume() }
+                Lifecycle.Event.ON_PAUSE -> {
+                    wasPlayingAtLifecyclePause = player.isPlaying
+                    player.pause()
+                    sphericalView?.onPause()
+                }
+                Lifecycle.Event.ON_RESUME -> if (latestActive && latestDetection != null) {
+                    player.volume = 1f
+                    if (wasPlayingAtLifecyclePause) player.play()
+                    sphericalView?.onResume()
+                }
                 else -> Unit
             }
         }
@@ -534,71 +472,136 @@ private fun VideoPlayer(
         }
     }
 
-    val videoModifier = Modifier.fillMaxSize().navigationBarsPadding().semantics {
-        this[ViewerVideoReady] = firstFrameRendered
-        this[ViewerCurrentUri] = player.currentMediaItem?.localConfiguration?.uri?.toString().orEmpty()
-    }.testTag("viewer-video")
+    val activity = context as? Activity
+    val audio = remember(context) { context.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
+    val maxVolume = remember(audio) { audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1) }
+    val originalBrightness = remember(item.uriKey) { activity?.window?.attributes?.screenBrightness ?: -1f }
+    var adjustment by remember(item.uriKey) { mutableStateOf<Pair<VideoAdjustmentSide, Float>?>(null) }
+    var brightnessAdjusted by remember(item.uriKey) { mutableStateOf(false) }
+    fun restoreWindowBrightness() {
+        if (!brightnessAdjusted) return
+        activity?.window?.let { window ->
+            val params = window.attributes
+            params.screenBrightness = originalBrightness
+            window.attributes = params
+        }
+        brightnessAdjusted = false
+    }
+    val edgePx = with(LocalDensity.current) { 28.dp.toPx() }
+    // Inactive pager pages may remain composed; disposal alone is too late to restore.
+    LaunchedEffect(active, brightnessAdjusted) {
+        if (!active && brightnessAdjusted) restoreWindowBrightness()
+    }
+    DisposableEffect(activity, item.uriKey) {
+        onDispose { restoreWindowBrightness() }
+    }
+    LaunchedEffect(adjustment) {
+        if (adjustment != null) {
+            delay(900L)
+            adjustment = null
+        }
+    }
 
-    if (spherical) {
-        AndroidView(
-            factory = { ctx ->
-                FrameLayout(ctx).apply {
-                    val surface = ZoomableSphericalView(ctx)
-                    sphericalView = surface
-                    surface.setUseSensorRotation(active)
-                    surface.setTapCallbacks({ latestSingleTap() }, { latestDoubleTap() })
-                    player.setVideoFrameMetadataListener(surface.videoFrameMetadataListener)
-                    player.setCameraMotionListener(surface.cameraMotionListener)
-                    surface.addVideoSurfaceListener(object : ZoomableSphericalView.VideoSurfaceListener {
-                        override fun onVideoSurfaceCreated(videoSurface: android.view.Surface) { player.setVideoSurface(videoSurface) }
-                        override fun onVideoSurfaceDestroyed(videoSurface: android.view.Surface) { player.clearVideoSurface(videoSurface) }
-                    })
-                    addView(surface, FrameLayout.LayoutParams(-1, -1))
-                    val controls = PlayerControlView(ctx).apply { this.player = player; showTimeoutMs = 0 }
-                    addView(controls, FrameLayout.LayoutParams(-1, -2, android.view.Gravity.BOTTOM).apply {
-                        bottomMargin = if (ctx.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE) 0 else 12
-                    })
-                    if (active && lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) surface.onResume() else surface.onPause()
+    val videoModifier = Modifier.fillMaxSize()
+        .semantics {
+            this[ViewerVideoReady] = firstFrameRendered
+            this[ViewerCurrentUri] = player.currentMediaItem?.localConfiguration?.uri?.toString().orEmpty()
+        }.testTag("viewer-video")
+
+    Box(
+        videoModifier.pointerInput(active, item.uriKey) {
+            awaitEachGesture {
+                val down = awaitFirstDown(requireUnconsumed = false)
+                if (!active) return@awaitEachGesture
+                val side = videoGestureSide(down.position.x, down.position.y,
+                    size.width.toFloat(), size.height.toFloat(), edgePx)
+                    ?: return@awaitEachGesture
+                var initialLevel = when (side) {
+                    VideoAdjustmentSide.VOLUME ->
+                        audio.getStreamVolume(AudioManager.STREAM_MUSIC).toFloat() / maxVolume
+                    VideoAdjustmentSide.BRIGHTNESS ->
+                        activity?.window?.attributes?.screenBrightness?.takeIf { it >= 0f } ?: .5f
                 }
-            },
-            update = { frame ->
-                val surface = frame.getChildAt(0) as ZoomableSphericalView
-                surface.setUseSensorRotation(active)
-                val controls = frame.getChildAt(1) as PlayerControlView
-                if (controlsVisible) controls.show() else controls.hide()
-                val scale = frame.resources.displayMetrics.density
-                controls.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_progress)?.translationY =
-                    if (frame.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE) 9f * scale else 0f
-                val timeShift = if (frame.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT) -10f * scale else 0f
-                controls.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_position)?.translationY = timeShift
-                controls.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_duration)?.translationY = timeShift
-            },
-            modifier = videoModifier,
-        )
-    } else {
-        AndroidView(
-            factory = { ctx ->
-                PlayerView(ctx).apply {
-                    this.player = player
-                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                    controllerShowTimeoutMs = 0
-                    controllerAutoShow = false
-                    controllerHideOnTouch = false
-                    setOnTouchListener { _, event -> gestureDetector.onTouchEvent(event); true }
+                initialLevel = initialLevel.coerceIn(0f, 1f)
+                var vertical = false
+                while (true) {
+                    val event = awaitPointerEvent()
+                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                    if (!change.pressed) break
+                    if (change.isConsumed && !vertical) break
+                    val dx = change.position.x - down.position.x
+                    val dy = change.position.y - down.position.y
+                    if (!vertical && isUnambiguousVertical(dx, dy, viewConfiguration.touchSlop))
+                        vertical = true
+                    if (!vertical && abs(dx) > viewConfiguration.touchSlop && abs(dx) > abs(dy))
+                        break // HorizontalPager retains horizontal file swiping.
+                    if (vertical) {
+                        val fraction = videoAdjustmentFraction(initialLevel, dy, size.height.toFloat())
+                        if (side == VideoAdjustmentSide.VOLUME) {
+                            audio.setStreamVolume(AudioManager.STREAM_MUSIC,
+                                (fraction * maxVolume).roundToInt().coerceIn(0, maxVolume), 0)
+                        } else {
+                            activity?.window?.let { window ->
+                                val params = window.attributes
+                                params.screenBrightness = fraction.coerceAtLeast(.01f)
+                                window.attributes = params
+                                brightnessAdjusted = true
+                            }
+                        }
+                        adjustment = side to fraction
+                        change.consume()
+                    }
                 }
-            },
-            update = { view ->
-                if (view.player !== player) view.player = player
-                if (controlsVisible) view.showController() else view.hideController()
-                val scale = view.resources.displayMetrics.density
-                view.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_progress)?.translationY =
-                    if (view.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE) 9f * scale else 0f
-                val timeShift = if (view.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT) -10f * scale else 0f
-                view.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_position)?.translationY = timeShift
-                view.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_duration)?.translationY = timeShift
-            },
-            modifier = videoModifier,
+            }
+        },
+    ) {
+        if (spherical) {
+            AndroidView(
+                factory = { ctx ->
+                    ZoomableSphericalView(ctx).apply {
+                        sphericalView = this
+                        setUseSensorRotation(active)
+                        setTapCallbacks({ latestSingleTap() }, { latestDoubleTap() })
+                        player.setVideoFrameMetadataListener(videoFrameMetadataListener)
+                        player.setCameraMotionListener(cameraMotionListener)
+                        addVideoSurfaceListener(object : ZoomableSphericalView.VideoSurfaceListener {
+                            override fun onVideoSurfaceCreated(videoSurface: android.view.Surface) {
+                                player.setVideoSurface(videoSurface)
+                            }
+                            override fun onVideoSurfaceDestroyed(videoSurface: android.view.Surface) {
+                                player.clearVideoSurface(videoSurface)
+                            }
+                        })
+                        if (active && lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) onResume()
+                    }
+                },
+                update = { view -> view.setUseSensorRotation(active) },
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else {
+            ContentFrame(player, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
+            Box(
+                Modifier.fillMaxSize().pointerInput(item.uriKey) {
+                    detectTapGestures(
+                        onTap = { latestSingleTap() },
+                        onDoubleTap = { latestDoubleTap() },
+                    )
+                },
+            )
+        }
+
+        UnifiedVideoChrome(
+            player = player, filename = item.name,
+            visible = controlsVisible, topBar = topBar,
         )
+
+        adjustment?.let { (side, amount) ->
+            VideoAdjustmentIndicator(
+                side = side, value = amount,
+                modifier = Modifier.align(if (side == VideoAdjustmentSide.BRIGHTNESS) Alignment.CenterStart else Alignment.CenterEnd)
+                    .padding(horizontal = 26.dp),
+            )
+        }
     }
 
 }
@@ -615,6 +618,7 @@ internal fun TiledZoomableImage(
     cleanupMode: Boolean,
     onTrash: () -> Unit,
     active: Boolean = true,
+    zoomSecondPower: Float = .85f,
 ) {
     val context = LocalContext.current
     var imageFailed by remember(item.uri, item.dateModifiedMillis, item.sizeBytes) { mutableStateOf(false) }
@@ -653,6 +657,8 @@ internal fun TiledZoomableImage(
     var maximum by remember(item.uri) { mutableFloatStateOf(8f) }
 
     val zoomableState = rememberZoomableState(
+        // Preserve Telephoto's default elastic overzoom animation, confirmed desirable on S23.
+        // 800% is the stable ceiling; a brief ~1120% while stretching is intentional.
         zoomSpec = ZoomSpec(maxZoomFactor = maximum),
     )
     val imageState = rememberZoomableImageState(zoomableState)
@@ -667,7 +673,7 @@ internal fun TiledZoomableImage(
 
 
     var previousTapTarget by remember(item.uri) { mutableFloatStateOf(0f) }
-    val doubleClick = remember(item.id, cleanupMode) {
+    val doubleClick = remember(item.id, cleanupMode, zoomSecondPower) {
         DoubleClickToZoomListener { _, centroid ->
             val state = zoomableState
             if (cleanupMode) {
@@ -683,7 +689,7 @@ internal fun TiledZoomableImage(
             val current = if (state.isAnimationRunning && previousTapTarget > 0f) {
                 previousTapTarget
             } else maxOf(transformation.scale.scaleX, transformation.scale.scaleY)
-            val target = nextDoubleTapZoom(current, fit, maxOf(8f, fit * 8f), smallImage = fit * 2f >= 1f)
+            val target = nextRasterDoubleTapZoom(current, fit, maxOf(8f, fit * 8f), smallImage = fit * 2f >= 1f)
             previousTapTarget = target
             if (target <= fit * 1.001f) state.resetZoom(animationSpec = tween(260))
             else state.zoomTo(zoomFactor = target, centroid = centroid, animationSpec = tween(260))
@@ -724,7 +730,13 @@ internal fun TiledZoomableImage(
         )
         if (imageFailed && cachedPreview == null) Text("Не удалось открыть изображение. Формат может не поддерживаться декодером устройства.", color = Color.White, modifier = Modifier.padding(24.dp))
         if (needsFullSource && !fullDecoded) {
-            if (fullError == null && active) CircularProgressIndicator(Modifier.align(Alignment.BottomCenter).padding(24.dp))
+            if (fullError == null && active) {
+                if (item.kind == MediaKind.RAW) {
+                    RawOpeningIndicator(Modifier.align(Alignment.Center))
+                } else {
+                    CircularProgressIndicator(Modifier.align(Alignment.Center).padding(24.dp))
+                }
+            }
             fullError?.let { Text("Не удалось загрузить полный размер: $it", color = Color.White, modifier = Modifier.align(Alignment.BottomCenter).padding(24.dp)) }
         }
     }

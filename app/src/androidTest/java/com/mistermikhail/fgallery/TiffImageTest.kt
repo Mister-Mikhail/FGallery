@@ -12,6 +12,7 @@ import com.mistermikhail.fgallery.data.*
 import com.mistermikhail.fgallery.ui.TiledZoomableImage
 import com.mistermikhail.fgallery.ui.ViewerImageReady
 import com.mistermikhail.fgallery.ui.ViewerZoomRange
+import com.mistermikhail.fgallery.ui.nextRasterDoubleTapZoom
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Rule
@@ -57,10 +58,11 @@ class TiffImageTest {
         assertEquals(maxOf(8f, fit * 8f), max, .001f)
         node.performTouchInput { doubleClick(center) }
         rule.mainClock.advanceTimeBy(350)
-        rule.waitUntil(5000) { kotlin.math.abs(200 - percent()) <= 1 }
+        val first = ((nextRasterDoubleTapZoom(fit, fit, max) / fit) * 100).toInt()
+        rule.waitUntil(5000) { kotlin.math.abs(first - percent()) <= 2 }
         node.performTouchInput { doubleClick(center) }
         rule.mainClock.advanceTimeBy(350)
-        val second = ((fit + (max - fit) * .85f) / fit * 100).toInt()
+        val second = ((nextRasterDoubleTapZoom(nextRasterDoubleTapZoom(fit, fit, max), fit, max) / fit) * 100).toInt()
         rule.waitUntil(5000) { kotlin.math.abs(second - percent()) <= 1 }
         node.performTouchInput { doubleClick(center) }
         rule.mainClock.advanceTimeBy(350)

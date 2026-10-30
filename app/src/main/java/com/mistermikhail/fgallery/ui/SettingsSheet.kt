@@ -11,11 +11,13 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Switch
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -26,13 +28,24 @@ fun SettingsSheet(
     quickExifEnabled: Boolean,
     onQuickExifChanged: (Boolean) -> Unit,
     onCheckForUpdates: () -> Unit,
+    zoomSecondPower: Float,
+    onZoomSecondPowerChanged: (Float) -> Unit,
     confirmMove: Boolean,
+    mediaAccessStatus: String,
+    allFilesGranted: Boolean,
+    onMediaAccess: () -> Unit,
+    onFilesAccess: () -> Unit,
     confirmRename: Boolean,
     onConfirmMoveChanged: (Boolean) -> Unit,
     onConfirmRenameChanged: (Boolean) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val context = LocalContext.current
+    val installedVersion = runCatching {
+        val info = context.packageManager.getPackageInfo(context.packageName, 0)
+        "Версия ${info.versionName} · сборка ${info.longVersionCode}"
+    }.getOrDefault("Версия не определена")
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -79,9 +92,52 @@ fun SettingsSheet(
                 )
             }
 
-            SettingSwitch("Подтверждать перемещение", "Выключено по умолчанию", confirmMove, onConfirmMoveChanged)
+            Text("Доступы", style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Фото и видео")
+                    Text("Статус: $mediaAccessStatus", style = MaterialTheme.typography.bodySmall)
+                }
+                TextButton(onClick = onMediaAccess) { Text("Настроить") }
+            }
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Доступ ко всем файлам")
+                    Text(if (allFilesGranted) "Статус: выдан" else "Статус: не выдан",
+                        style = MaterialTheme.typography.bodySmall)
+                }
+                TextButton(onClick = onFilesAccess) { Text("Настроить") }
+            }
+                        SettingSwitch("Подтверждать перемещение", "Выключено по умолчанию", confirmMove, onConfirmMoveChanged)
             SettingSwitch("Подтверждать переименование", "", confirmRename, onConfirmRenameChanged)
+            Text(
+                text = "Тест · масштаб PDF/SVG",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(top = 12.dp),
+            )
+            Text(
+                text = "Для больших фотографий и RAW: 50% → 160% по индикатору, независимо от формата. Параметр p ниже относится только к PDF/SVG.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = .72f),
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                for (percentage in listOf(80, 85, 90)) {
+                    FilterChip(
+                        selected = kotlin.math.abs(zoomSecondPower - percentage / 100f) < .005f,
+                        onClick = { onZoomSecondPowerChanged(percentage / 100f) },
+                        label = { Text("$percentage%") },
+                    )
+                }
+            }
             TextButton(onClick = onCheckForUpdates) { Text("Проверить обновления") }
+            Text(
+                text = installedVersion,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.52f),
+                modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = 10.dp, bottom = 4.dp),
+            )
 
         }
     }

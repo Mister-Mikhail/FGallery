@@ -15,8 +15,8 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         minSdk = 29
         targetSdk = 35
-        versionCode = 11
-        versionName = "0.2.9"
+        versionCode = 23
+        versionName = "0.3.0"
         externalNativeBuild { cmake { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64") } }
     }
 
@@ -97,6 +97,7 @@ dependencies {
     implementation("androidx.exifinterface:exifinterface:1.3.7")
     implementation("androidx.media3:media3-exoplayer:1.9.3")
     implementation("androidx.media3:media3-ui:1.9.3")
+    implementation("androidx.media3:media3-ui-compose:1.9.3")
     implementation("androidx.media3:media3-transformer:1.9.3")
     implementation("androidx.media3:media3-effect:1.9.3")
 
