@@ -40,3 +40,8 @@ The latest direct test report from the user takes precedence over old notes, PR 
 - New code branch: `feature/fgallery-0.3.0-stage1` from 0.2.9 SHA `7a9e290ac3642861274332464c17adbd92ba44fd`. Stage 1 / 0.3.0 is under development; no acceptance on physical Samsung S23 yet. Do not close earlier FG-01…FG-09 blockers without new direct user verification.
 - In particular **previous linear .85 zoom**, video **standard Media3 PlayerView controls** and **emoji 🧹** are superseded by TZ v1 §2 / Stage 1. Legacy mentions above are historical; new criteria: logarithmic 0.80/0.85/0.90 diagnostic zoom, unified Compose video chrome, proper Material CleaningServices icon and Cleanup-on confirmation, LibRaw full RAW dimensions.
 - TZ v1 stages 2+ are deferred until 0.3.0 stage 1 user-device verification. Release/store, license, editor, commercial protection remain **undecided** where marked so in TZ.
+
+## User-confirmed functionality freeze (2026-10-30)
+- A user-confirmed working function is **accepted and frozen**: do not redesign or re-implement it in later tasks unless the user reports a new concrete fault or explicitly requests a change. Automated non-mutating regression tests are still appropriate.
+- The most recent direct Samsung Galaxy S23/Android 16 result outranks historical screenshots, old task lists, emulator output and an assistant's implementation claims. Keep separate acceptance statuses per function rather than closing entire subsystems.
+- Before making changes to any adjacent code, identify protected behavior, keep the diff narrowly scoped, and run targeted regression checks. In particular preserve approved zoom, Cleanup UX, RAW display dimensions, OPEN RAW indicator and video-player testing hold.
