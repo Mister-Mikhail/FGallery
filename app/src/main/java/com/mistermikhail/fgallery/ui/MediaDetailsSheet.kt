@@ -25,6 +25,10 @@ import androidx.compose.ui.unit.dp
 import com.mistermikhail.fgallery.data.MediaDetails
 import com.mistermikhail.fgallery.data.MediaDetailsRepository
 import com.mistermikhail.fgallery.data.MediaItem
+import com.mistermikhail.fgallery.data.MediaKind
+import com.mistermikhail.fgallery.data.FullResolutionFiles
+import com.mistermikhail.fgallery.data.RawEmbeddedJpeg
+import android.graphics.BitmapFactory
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -62,6 +66,31 @@ fun MediaDetailsSheet(
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(bottom = 14.dp),
             )
+            if (item.kind == MediaKind.RAW) {
+                val displayed = remember(item.uri, item.dateModifiedMillis, item.sizeBytes) {
+                    val full = FullResolutionFiles.cached(context, item)
+                    val camera = RawEmbeddedJpeg.cached(context, item)
+                    val source = full ?: camera
+                    val dimensions = source?.let { file ->
+                        val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                        BitmapFactory.decodeFile(file.path, opts)
+                        if (opts.outWidth > 0 && opts.outHeight > 0)
+                            "${opts.outWidth}×${opts.outHeight}" else null
+                    }
+                    when {
+                        full != null -> "Показано: проявка RAW (LibRaw)"
+                        camera != null -> "Показано: JPEG камеры"
+                        else -> "Показано: превью RAW"
+                    } + (dimensions?.let { ", $it" } ?: "")
+                }
+                Text(
+                    text = displayed,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f),
+                    modifier = Modifier.padding(bottom = 10.dp),
+                )
+            }
+
 
             val loaded = details
             if (loaded == null) {

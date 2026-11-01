@@ -174,8 +174,10 @@ object ThumbnailCache {
         MediaKind.SVG -> VisualDocuments.svgPreview(context, item.uri, edge)
         MediaKind.IMAGE, MediaKind.RAW ->
             if (TiffImages.isTiff(item.name, item.mimeType)) TiffImages.decode(context, item.uri, edge)
-            else runCatching { context.contentResolver.loadThumbnail(item.uri, Size(edge, edge), null) }
-                .getOrNull() ?: embeddedPreview(context, item) ?: if (item.kind == MediaKind.IMAGE) sampled(context, item, edge) else null
+            else (if (item.kind == MediaKind.RAW) RawEmbeddedJpeg.preview(context, item, edge) else null)
+                ?: runCatching { context.contentResolver.loadThumbnail(item.uri, Size(edge, edge), null) }
+                    .getOrNull() ?: embeddedPreview(context, item)
+                    ?: if (item.kind == MediaKind.IMAGE) sampled(context, item, edge) else null
     }
 
     }

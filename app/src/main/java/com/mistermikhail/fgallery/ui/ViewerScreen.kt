@@ -135,6 +135,8 @@ fun ViewerScreen(
     var showDetails by remember { mutableStateOf(false) }
     var renameTarget by remember { mutableStateOf<MediaItem?>(null) }
     var videoMenuExpanded by remember { mutableStateOf(false) }
+    var rawMenuExpanded by remember { mutableStateOf(false) }
+    var developRequested by remember { mutableStateOf<Set<String>>(emptySet()) }
     var videoPlaying by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
@@ -240,6 +242,7 @@ fun ViewerScreen(
                     onTrash = { onTrash(item) },
                     active = activePage,
                     zoomSecondPower = zoomSecondPower,
+                    developRequested = item.uriKey in developRequested,
                 )
             }
         }
@@ -318,6 +321,25 @@ fun ViewerScreen(
                                     contentDescription = "Переместить",
                                     tint = Color.White,
                                 )
+                            }
+                            if (!recycleBinMode && currentItem.kind == MediaKind.RAW) {
+                                Box {
+                                    IconButton(onClick = { rawMenuExpanded = true }) {
+                                        Icon(Icons.Outlined.Menu, contentDescription = "Действия с RAW", tint = Color.White)
+                                    }
+                                    DropdownMenu(
+                                        expanded = rawMenuExpanded,
+                                        onDismissRequest = { rawMenuExpanded = false },
+                                    ) {
+                                        DropdownMenuItem(
+                                            text = { Text("Проявить RAW") },
+                                            onClick = {
+                                                developRequested = developRequested + currentItem.uriKey
+                                                rawMenuExpanded = false
+                                            },
+                                        )
+                                    }
+                                }
                             }
                             IconButton(onClick = { showDetails = true }) {
                                 Icon(
@@ -619,19 +641,50 @@ internal fun TiledZoomableImage(
     onTrash: () -> Unit,
     active: Boolean = true,
     zoomSecondPower: Float = .85f,
+    developRequested: Boolean = false,
 ) {
     val context = LocalContext.current
     var imageFailed by remember(item.uri, item.dateModifiedMillis, item.sizeBytes) { mutableStateOf(false) }
     var fullSource by remember(item.uri, item.dateModifiedMillis, item.sizeBytes) { mutableStateOf(com.mistermikhail.fgallery.data.FullResolutionFiles.cached(context, item)) }
     var fullDecoded by remember(item.uri, item.dateModifiedMillis, item.sizeBytes) { mutableStateOf(false) }
+    // Early camera JPEG keeps the viewer responsive while LibRaw decodes.
+    var cameraSource by remember(item.uri, item.dateModifiedMillis, item.sizeBytes) {
+        mutableStateOf(
+            if (item.kind == MediaKind.RAW)
+                com.mistermikhail.fgallery.data.RawEmbeddedJpeg.cached(context, item)
+            else null,
+        )
+    }
     var fullError by remember(item.uri, item.dateModifiedMillis, item.sizeBytes) { mutableStateOf<String?>(null) }
+    var cameraFullEnough by remember(item.uri, item.dateModifiedMillis, item.sizeBytes) { mutableStateOf(false) }
     val needsFullSource = item.kind == MediaKind.RAW || com.mistermikhail.fgallery.data.TiffImages.isTiff(item.name, item.mimeType)
     var cachedPreview by remember(item.uri, item.dateModifiedMillis, item.sizeBytes) {
         mutableStateOf(ThumbnailCache.cached(context, item))
     }
-    LaunchedEffect(item.uri, item.dateModifiedMillis, item.sizeBytes, active) {
+    LaunchedEffect(item.uri, item.dateModifiedMillis, item.sizeBytes, active, developRequested) {
         if (needsFullSource && active && fullSource == null) {
             try {
+                if (item.kind == MediaKind.RAW && cameraSource == null) {
+                    // Safe optional acceleration. Unrecognized RAW continues
+                    // through the existing full-resolution LibRaw decoder.
+                    cameraSource = runCatching {
+                        com.mistermikhail.fgallery.data.RawEmbeddedJpeg.extract(context, item)
+                    }.getOrNull()
+                }
+                // Full-size camera JPEG needs no automatic RAW development.
+                // For small previews (notably 100MP 3FR) keep the former
+                // background LibRaw path and switch seamlessly when ready.
+                cameraSource?.let { jpeg ->
+                    if (item.width > 0 && item.height > 0) {
+                        val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                        android.graphics.BitmapFactory.decodeFile(jpeg.path, bounds)
+                        val longest = maxOf(item.width, item.height)
+                        val shortest = minOf(item.width, item.height)
+                        cameraFullEnough = longest > 0 && shortest > 0 &&
+                            maxOf(bounds.outWidth, bounds.outHeight) >= longest * 0.9 &&
+                            minOf(bounds.outWidth, bounds.outHeight) >= shortest * 0.9
+                    }
+                }
                 if (cachedPreview == null) cachedPreview = ThumbnailCache.ensure(context, item)
                 if (cachedPreview == null && item.kind == MediaKind.RAW) {
                     cachedPreview = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
@@ -648,7 +701,9 @@ internal fun TiledZoomableImage(
                         }
                     }
                 }
-                fullSource = com.mistermikhail.fgallery.data.FullResolutionFiles.prepare(context, item)
+                if (!cameraFullEnough || developRequested || item.kind != MediaKind.RAW) {
+                    fullSource = com.mistermikhail.fgallery.data.FullResolutionFiles.prepare(context, item)
+                }
                 imageFailed = false
             } catch (e: kotlinx.coroutines.CancellationException) { throw e }
             catch (e: Exception) { fullError = e.localizedMessage ?: "Не удалось прочитать исходные данные" }
@@ -681,7 +736,7 @@ internal fun TiledZoomableImage(
                 return@DoubleClickToZoomListener
             }
 
-            if ((needsFullSource && !fullDecoded) || !imageState.isImageDisplayed || !state.contentTransformation.isSpecified) return@DoubleClickToZoomListener
+            if ((needsFullSource && !fullDecoded && cameraSource == null) || !imageState.isImageDisplayed || !state.contentTransformation.isSpecified) return@DoubleClickToZoomListener
             val transformation = state.contentTransformation
             val fit = maxOf(transformation.scaleMetadata.initialScale.scaleX, transformation.scaleMetadata.initialScale.scaleY)
             // Second double taps must not be silently discarded while the first zoom
@@ -710,7 +765,7 @@ internal fun TiledZoomableImage(
         }
 
         ZoomableAsyncImage(
-            model = coil3.request.ImageRequest.Builder(context).data(fullSource ?: if (needsFullSource) cachedPreview else if (imageFailed && cachedPreview != null) cachedPreview else item.uri)
+            model = coil3.request.ImageRequest.Builder(context).data(fullSource ?: cameraSource ?: if (needsFullSource) cachedPreview else if (imageFailed && cachedPreview != null) cachedPreview else item.uri)
                 .memoryCacheKey("${item.uri}/${item.dateModifiedMillis}/${if (fullSource != null) "full" else if (imageFailed || needsFullSource) "fallback" else "source"}")
                 .listener(onError = { _, _ -> imageFailed = true }, onSuccess = { request, _ -> if (fullSource != null && request.data == fullSource) fullDecoded = true })
                 .build(),
@@ -725,11 +780,11 @@ internal fun TiledZoomableImage(
                 val initial = zoomableState.contentTransformation.scaleMetadata.initialScale
                 val fit = maxOf(initial.scaleX, initial.scaleY)
                 this[ViewerZoomRange] = fit to maxOf(8f, fit * 8f)
-                this[ViewerImageReady] = imageState.isImageDisplayed && (!needsFullSource || fullDecoded)
+                this[ViewerImageReady] = imageState.isImageDisplayed && (!needsFullSource || fullDecoded || cameraSource != null)
             }.testTag("viewer-image"),
         )
         if (imageFailed && cachedPreview == null) Text("Не удалось открыть изображение. Формат может не поддерживаться декодером устройства.", color = Color.White, modifier = Modifier.padding(24.dp))
-        if (needsFullSource && !fullDecoded) {
+        if (needsFullSource && !fullDecoded && !(cameraFullEnough && !developRequested)) {
             if (fullError == null && active) {
                 if (item.kind == MediaKind.RAW) {
                     RawOpeningIndicator(Modifier.align(Alignment.Center))
