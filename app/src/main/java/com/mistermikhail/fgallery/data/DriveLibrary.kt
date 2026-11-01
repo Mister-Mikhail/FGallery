@@ -43,7 +43,7 @@ object DriveLibrary {
     ): List<MediaItem> {
         val cached = prior.associateBy { it.sourcePath }
         val rel = dir.relativeTo(root.directory ?: dir).invariantSeparatorsPath
-            .let { if (it == ".") "" else "$it/" }
+            .let { if (it.isBlank() || it == ".") "" else "$it/" }
         return entries.mapNotNull { file ->
             if (!file.isFile || file.path in known) return@mapNotNull null
             val old = cached[file.path]
@@ -85,7 +85,7 @@ object DriveLibrary {
                     ))
                 } else {
                     val rel = dir.relativeTo(directory).invariantSeparatorsPath
-                        .let { if (it == ".") "" else "$it/" }
+                        .let { if (it.isBlank() || it == ".") "" else "$it/" }
                     for (file in entries) {
                         currentCoroutineContext().ensureActive()
                         if (file.isFile && file.path !in known) {
