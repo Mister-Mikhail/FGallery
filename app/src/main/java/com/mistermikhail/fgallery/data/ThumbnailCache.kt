@@ -32,6 +32,11 @@ object ThumbnailCache {
     private val generationLocks = ConcurrentHashMap<String, Mutex>()
     private val foregroundDecoders = Semaphore(3)
     private val backgroundDecoders = Semaphore(1)
+    private val userBusy = AtomicBoolean(false)
+    fun setUserBusy(busy: Boolean) {
+        userBusy.set(busy)
+        lastForegroundRequest.set(System.currentTimeMillis())
+    }
     private val foregroundDemand = AtomicInteger()
     private val lastForegroundRequest = AtomicLong()
     private val migrationStarted = AtomicBoolean()
@@ -88,7 +93,7 @@ object ThumbnailCache {
             // Wait BEFORE acquiring the per-file mutex: otherwise a pending
             // visible request for the same file could deadlock behind background.
             if (background) {
-                while (foregroundDemand.get() > 0 ||
+                while (userBusy.get() || foregroundDemand.get() > 0 ||
                     System.currentTimeMillis() - lastForegroundRequest.get() < 1_500L) {
                     currentCoroutineContext().ensureActive()
                     delay(80L)
