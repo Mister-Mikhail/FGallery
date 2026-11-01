@@ -42,14 +42,9 @@ class MediaRepository(private val context: Context) {
                     old.mediaStoreVersion != currentVersion ||
                     currentGeneration < old.mediaStoreGeneration -> queryVolume(volume, false)
                 currentGeneration == old.mediaStoreGeneration -> {
-                    // A provider can remove/soft-trash an item without a
-                    // useful modified-row delta. Reconcile cheap IDs even
-                    // when the generation counter has not advanced.
-                    val ids = runCatching { currentIds(volume) }.getOrNull()
-                        ?: return@flatMap queryVolume(volume, false)
-                    indexed.filter { item ->
-                        runCatching { ContentUris.parseId(item.uri) }.getOrNull() in ids
-                    }
+                    // Some providers do not advance generation for metadata edits.
+                    // Re-query to avoid retaining stale names, paths and sizes.
+                    queryVolume(volume, false)
                 }
                 else -> {
                     val changed = queryVolume(volume, false, old.mediaStoreGeneration)
