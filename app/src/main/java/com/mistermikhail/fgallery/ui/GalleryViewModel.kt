@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.mistermikhail.fgallery.data.LibrarySnapshot
+import com.mistermikhail.fgallery.data.CatalogStore
 import com.mistermikhail.fgallery.data.DriveLibrary
 import com.mistermikhail.fgallery.data.DriveRecycleBin
 import com.mistermikhail.fgallery.data.DocumentLibrary
@@ -255,7 +256,9 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
         snapshotRestored = true
         refreshJob = viewModelScope.launch(Dispatchers.IO) {
             if (restoreSnapshot && _uiState.value.allItems.isEmpty()) {
-                LibrarySnapshot.load(getApplication(), _uiState.value.hasPermission)?.let { saved ->
+                (runCatching {
+                    CatalogStore.restore(getApplication(), _uiState.value.hasPermission)
+                }.getOrNull() ?: LibrarySnapshot.load(getApplication(), _uiState.value.hasPermission))?.let { saved ->
                     withContext(Dispatchers.Main) {
                         _uiState.update { derive(it.copy(allItems = saved.items, physicalBinUris = saved.bin)) }
                     }
@@ -283,7 +286,10 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
                 }
             }
 
-            runCatching { LibrarySnapshot.save(getApplication(), LibrarySnapshot.Value(items, recycled.mapTo(hashSetOf()) { it.uriKey }, _uiState.value.hasPermission)) }
+            val snapshot = LibrarySnapshot.Value(items, recycled.mapTo(hashSetOf()) { it.uriKey }, _uiState.value.hasPermission)
+            // Keep JSON as fallback throughout the unaccepted Room migration.
+            runCatching { LibrarySnapshot.save(getApplication(), snapshot) }
+            runCatching { CatalogStore.persist(getApplication(), snapshot) }
             thumbnailJob?.cancel()
             val albumCovers = items
                 .groupBy { it.album }
