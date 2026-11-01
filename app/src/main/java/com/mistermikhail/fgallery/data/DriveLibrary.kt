@@ -96,6 +96,16 @@ object DriveLibrary {
         }.getOrNull()
     }
 
+    /** Avoid SAF providers that expose the same document through multiple
+     * parents (or accidentally report a directory as its own child).
+     * Document IDs are only unique within their provider authority.
+     */
+    internal fun markSafDocumentVisited(
+        authority: String?,
+        documentId: String,
+        seen: MutableSet<String>,
+    ): Boolean = seen.add("${authority.orEmpty()}\u0000$documentId")
+
     internal suspend fun load(
         context: Context, indexed: List<MediaItem>,
         priorFiles: List<MediaItem> = emptyList(),
@@ -148,6 +158,7 @@ object DriveLibrary {
             it.sourcePath.takeIf(String::isNotBlank)
         }
         for (root in StorageAccess.granted(context)) {
+            val visitedSafDocuments = hashSetOf<String>()
             // Resolve the physical mount once per SAF root, not once per file.
             // Large galleries can have thousands of document rows.
             val mountedVolume = StorageAccess.mounted(context).firstOrNull { it.id == root.id }
@@ -155,7 +166,9 @@ object DriveLibrary {
             suspend fun visit(target: String, relative: String) {
                 currentCoroutineContext().ensureActive()
                 val uri = Uri.parse(target)
-                val children = DocumentsContract.buildChildDocumentsUriUsingTree(uri, DocumentsContract.getDocumentId(uri))
+                val documentId = DocumentsContract.getDocumentId(uri)
+                if (!markSafDocumentVisited(uri.authority, documentId, visitedSafDocuments)) return
+                val children = DocumentsContract.buildChildDocumentsUriUsingTree(uri, documentId)
                 val rows = mutableListOf<Triple<String, String, String>>()
                 // Null cursor means provider failure, never an empty folder.
                 val cursor = context.contentResolver.query(children, arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID,
@@ -164,6 +177,7 @@ object DriveLibrary {
                     ?: error("SAF не вернул список файлов: $target")
                 cursor.use { c ->
                     while (c.moveToNext()) {
+                        currentCoroutineContext().ensureActive()
                         val name = c.getString(1).orEmpty(); if (name.startsWith('.') || name == "Android") continue
                         val id = c.getString(0); val mime = c.getString(2)
                         val child = DocumentsContract.buildDocumentUriUsingTree(uri, id)
