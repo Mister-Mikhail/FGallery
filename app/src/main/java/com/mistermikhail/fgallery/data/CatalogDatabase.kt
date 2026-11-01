@@ -116,15 +116,25 @@ internal interface CatalogDao {
         folders: List<CatalogFolderRow>,
         volumes: List<CatalogVolumeRow>,
     ) {
+        // A disconnected USB/SD volume must retain its catalogue and folder
+        // metadata. Only its connected flag changes. Otherwise a refresh while
+        // unplugged erases the cache and the next mount has no history to reuse.
+        // Once reconnected, absent rows can be removed by the fresh scan.
+        val disconnectedIds = volumes.asSequence().filterNot { it.connected }
+            .mapTo(hashSetOf()) { it.storageId }
         val oldMedia = allMedia().associateBy { it.uri }
-        val current = media.associateBy { it.uri }
+        val current = media.associateBy { it.uri }.toMutableMap()
+        oldMedia.values.filter { it.storageId in disconnectedIds }
+            .forEach { current.putIfAbsent(it.uri, it) }
         oldMedia.keys.filterNot { it in current }.chunked(400).forEach { deleteMedia(it) }
-        upsertMedia(media.filter { oldMedia[it.uri] != it })
+        upsertMedia(current.values.filter { oldMedia[it.uri] != it })
 
         val oldFolders = allFolders().associateBy { it.key }
-        val currentFolders = folders.associateBy { it.key }
+        val currentFolders = folders.associateBy { it.key }.toMutableMap()
+        oldFolders.values.filter { it.storageId in disconnectedIds }
+            .forEach { currentFolders.putIfAbsent(it.key, it) }
         oldFolders.keys.filterNot { it in currentFolders }.chunked(400).forEach { deleteFolders(it) }
-        upsertFolders(folders.filter { oldFolders[it.key] != it })
+        upsertFolders(currentFolders.values.filter { oldFolders[it.key] != it })
 
         val oldVolumes = allVolumes().associateBy { it.storageId }
         val currentVolumes = volumes.associateBy { it.storageId }
