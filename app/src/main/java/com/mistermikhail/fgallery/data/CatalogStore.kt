@@ -36,7 +36,12 @@ internal object CatalogStore {
             val preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             if (!preferences.contains(PERMISSION_KEY) ||
                 preferences.getBoolean(PERMISSION_KEY, false) != hasPermission) return@withContext null
-            val rows = CatalogDatabase.get(context).catalog().allMedia()
+            val dao = CatalogDatabase.get(context).catalog()
+            // Keep disconnected-drive rows on disk, but do not show inaccessible
+            // photos in the active gallery until the volume is mounted/scanned.
+            val disconnectedIds = dao.allVolumes().asSequence()
+                .filterNot { it.connected }.mapTo(hashSetOf()) { it.storageId }
+            val rows = dao.allMedia().filterNot { it.storageId in disconnectedIds }
             if (rows.isEmpty()) return@withContext null
             val items = rows.mapNotNull { row ->
                 runCatching {
