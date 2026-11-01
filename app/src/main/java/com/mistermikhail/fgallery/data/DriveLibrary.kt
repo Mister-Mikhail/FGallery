@@ -107,6 +107,9 @@ object DriveLibrary {
             visit(directory)
         }
         for (root in StorageAccess.granted(context)) {
+            // Resolve the physical mount once per SAF root, not once per file.
+            // Large galleries can have thousands of document rows.
+            val mountedRoot = StorageAccess.mounted(context).firstOrNull { it.id == root.id }?.directory
             suspend fun visit(target: String, relative: String) {
                 currentCoroutineContext().ensureActive()
                 val uri = Uri.parse(target)
@@ -122,8 +125,7 @@ object DriveLibrary {
                         val name = c.getString(1).orEmpty(); if (name.startsWith('.') || name == "Android") continue
                         val id = c.getString(0); val mime = c.getString(2)
                         val child = DocumentsContract.buildDocumentUriUsingTree(uri, id)
-                        val mounted = StorageAccess.mounted(context).firstOrNull { it.id == root.id }?.directory
-                        val path = mounted?.let { File(it, id.substringAfter(':', "")).path }
+                        val path = mountedRoot?.let { File(it, id.substringAfter(':', "")).path }
                         if (mime == DocumentsContract.Document.MIME_TYPE_DIR) rows.add(Triple(child.toString(), name, mime))
                         else if (path == null || path !in known) item(child, name, mime, c.getLong(3), c.getLong(4), root, target, relative)?.let { item ->
                             if (path == null || result.none { it.sourcePath == path }) result.add(item.copy(sourcePath = path.orEmpty()))
@@ -139,7 +141,7 @@ object DriveLibrary {
                 // Persisted SAF grants survive USB removal. An offline volume
                 // keeps its Room rows; a mounted provider failure aborts the
                 // scan instead of deleting its catalogue records.
-                if (StorageAccess.mounted(context).any { it.id == root.id }) throw e
+                if (mountedRoot != null) throw e
             }
         }
         result
