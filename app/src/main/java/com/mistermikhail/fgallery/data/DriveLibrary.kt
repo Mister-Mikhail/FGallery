@@ -46,10 +46,11 @@ object DriveLibrary {
         dir: File,
     ): List<MediaItem> {
         val cached = prior.associateBy { it.sourcePath }
+        val canonicalRoot = (root.directory ?: dir).canonicalPath
         val rel = dir.relativeTo(root.directory ?: dir).invariantSeparatorsPath
             .let { if (it.isBlank() || it == ".") "" else "$it/" }
         return entries.mapNotNull { file ->
-            if (!file.isFile || file.path in known) return@mapNotNull null
+            if (!isPhysicalFileInsideRoot(canonicalRoot, file) || file.path in known) return@mapNotNull null
             val old = cached[file.path]
             val size = file.length()
             val modified = file.lastModified()
@@ -111,6 +112,16 @@ object DriveLibrary {
         }.getOrDefault(false)
     }
 
+    /** A symlinked file may escape a mounted USB/SD root even when its
+     * containing directory is safe. Never index a target on another volume.
+     * The root path is resolved once per scan, not once per media file. */
+    internal fun isPhysicalFileInsideRoot(canonicalRoot: String, candidate: File): Boolean {
+        if (!candidate.isFile) return false
+        return runCatching {
+            candidate.canonicalPath.startsWith(canonicalRoot + File.separator)
+        }.getOrDefault(false)
+    }
+
     /** Avoid SAF providers that expose the same document through multiple
      * parents (or accidentally report a directory as its own child).
      * Document IDs are only unique within their provider authority.
@@ -133,6 +144,7 @@ object DriveLibrary {
         val previousFolders = knownFolders.associateBy { it.key }
         if (StorageFolders.hasFileAccess()) for (root in StorageAccess.mounted(context)) {
             val directory = root.directory ?: continue
+            val canonicalRoot = directory.canonicalPath
             val visitedPhysicalDirectories = hashSetOf<String>()
             suspend fun visit(dir: File) {
                 currentCoroutineContext().ensureActive()
@@ -155,7 +167,7 @@ object DriveLibrary {
                         .let { if (it.isBlank() || it == ".") "" else "$it/" }
                     for (file in entries) {
                         currentCoroutineContext().ensureActive()
-                        if (file.isFile && file.path !in known) {
+                        if (isPhysicalFileInsideRoot(canonicalRoot, file) && file.path !in known) {
                             item(Uri.fromFile(file), file.name, mime(file.name),
                                 file.length(), file.lastModified(), root, dir.path, rel)?.let(result::add)
                         }
