@@ -68,6 +68,7 @@ data class GalleryUiState(
 
 class GalleryViewModel(application: Application) : AndroidViewModel(application) {
     private val driveBin = DriveRecycleBin(application)
+    private var lastJsonBackupMillis: Long = 0L
     private var thumbnailJob: kotlinx.coroutines.Job? = null
     private var albumWarmJob: kotlinx.coroutines.Job? = null
     private var refreshJob: kotlinx.coroutines.Job? = null
@@ -296,9 +297,16 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
             }
 
             val snapshot = LibrarySnapshot.Value(items, recycled.mapTo(hashSetOf()) { it.uriKey }, _uiState.value.hasPermission)
-            // Keep JSON as fallback throughout the unaccepted Room migration.
-            runCatching { LibrarySnapshot.save(getApplication(), snapshot) }
-            runCatching { CatalogStore.persist(getApplication(), snapshot, started) }
+            val roomStored = runCatching {
+                CatalogStore.persist(getApplication(), snapshot, started)
+            }.isSuccess
+            // JSON remains a rollback source, but not a large synchronous
+            // rewrite after every MediaStore observer notification.
+            val now = System.currentTimeMillis()
+            if (!roomStored || restoreSnapshot || now - lastJsonBackupMillis >= 5 * 60 * 1000L) {
+                runCatching { LibrarySnapshot.save(getApplication(), snapshot) }
+                lastJsonBackupMillis = now
+            } else LibrarySnapshot.remember(snapshot)
             thumbnailJob?.cancel()
             val albumCovers = items
                 .groupBy { it.album }
