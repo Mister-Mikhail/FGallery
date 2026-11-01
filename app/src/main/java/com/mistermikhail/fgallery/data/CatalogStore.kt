@@ -74,15 +74,28 @@ internal object CatalogStore {
         CatalogDatabase.get(context).catalog().allVolumes().associateBy { it.storageId }
     }
 
+    /** MediaStore can omit an empty USB/SD volume even while it is mounted.
+     * Keep mounted volumes in the checkpoint inventory so an empty but
+     * connected drive is never mistaken for an unplugged one.
+     */
+    internal fun scanStartVolumeIds(
+        mediaStoreIds: Set<String>,
+        mountedIds: Set<String>,
+    ): Set<String> = mediaStoreIds + mountedIds
+
     suspend fun captureScanStart(context: Context): Map<String, CatalogVolumeRow> =
         withContext(Dispatchers.IO) {
-            runCatching { MediaStore.getExternalVolumeNames(context) }.getOrDefault(emptySet()).associateWith { volume ->
+            val indexed = runCatching { MediaStore.getExternalVolumeNames(context) }
+                .getOrDefault(emptySet())
+            val mounted = StorageAccess.mounted(context).associateBy { it.id }
+            scanStartVolumeIds(indexed, mounted.keys).associateWith { volume ->
                 CatalogVolumeRow(
                     storageId = volume,
-                    displayName = volume,
-                    mediaStoreGeneration = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
+                    displayName = mounted[volume]?.name ?: volume,
+                    mediaStoreGeneration = if (volume in indexed && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
                         runCatching { MediaStore.getGeneration(context, volume) }.getOrDefault(0L) else 0L,
-                    mediaStoreVersion = runCatching { MediaStore.getVersion(context, volume) }.getOrDefault(""),
+                    mediaStoreVersion = if (volume in indexed)
+                        runCatching { MediaStore.getVersion(context, volume) }.getOrDefault("") else "",
                     lastScannedMillis = System.currentTimeMillis(),
                     connected = true,
                 )
