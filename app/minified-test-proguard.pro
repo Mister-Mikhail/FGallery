@@ -47,3 +47,10 @@
 # minifiedTest HOST ONLY. Production release remains fully R8-minified.
 # This supersedes the piecemeal rules above (Snapshot, LayoutInfo, RootForTest).
 -keep class androidx.compose.** { *; }
+
+# CatalogDatabaseTest is in a separate AndroidTest APK and directly calls
+# Room.inMemoryDatabaseBuilder(), which production code never calls. R8
+# cannot see that binary reference and strips the static factory method.
+# Preserve only Room's test-facing factory API on minifiedTest; do not
+# disable R8 for release or keep the whole Room runtime.
+-keep class androidx.room.Room { *; }
