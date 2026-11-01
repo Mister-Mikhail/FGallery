@@ -36,3 +36,7 @@
 # These rules apply ONLY to minifiedTest, not the distributed release APK.
 -keep class androidx.compose.ui.node.** { *; }
 -keep class androidx.compose.ui.semantics.** { *; }
+
+# Compose UI tests invoke LayoutInfo, ImageBitmapKt and other UI ABI
+# from their separate APK; keep the whole Compose UI namespace here only.
+-keep class androidx.compose.ui.** { *; }
