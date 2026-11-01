@@ -415,3 +415,7 @@ Observed from the user: **visually the pinch after second tap adds only ≈5–8
 ### 2026-11-01 — user defers current device QA, authorizes all Stage1–5 development
 - **Current pending P0/P1 test cases are NOT waived or resolved.** User asks us to continue implementation through Stage 5 (0.4.0), then validate together on S23/Android16. Avoid asking for interim screenshots or APK tests. Retain move collision/undo/SAF, permissions, download, updates, crop safety and external open-with cases in common acceptance pack.
 - Any fresh CI failures must still be fixed before preparing next stage. Avoid known user-accepted UX changes. Roadmap: `docs/BATCH_QA_ROADMAP_2026-11-01.md`.
+
+
+### 2026-11-01 — Combined QA deferred, stage code still under validation
+- User asks one combined Samsung S23 test only after Stage5; **no unresolved file bugs are automatically closed**. Stages 2–5 PR #11–#14 in progress, CI awaiting final green status. Preserve original media, no unsafe delete/overwrite, maintain accepted UX. See `docs/PROJECT_STATUS.md` and `docs/BATCH_QA_ROADMAP_2026-11-01.md`.
