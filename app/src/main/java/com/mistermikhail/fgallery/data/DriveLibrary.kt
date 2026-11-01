@@ -69,6 +69,33 @@ object DriveLibrary {
         seenPaths: MutableSet<String>,
     ): Boolean = path == null || (path !in indexedPaths && seenPaths.add(path))
 
+    /**
+     * Only the Android external-storage documents provider can be mapped to
+     * an actual mounted file. Never treat arbitrary SAF document IDs as paths:
+     * doing so could associate a cloud/USB document with an unrelated local
+     * file and send file operations to the wrong original.
+     */
+    internal fun trustedSafPhysicalPath(
+        mountedRoot: File?,
+        documentUri: Uri,
+        documentId: String,
+        volumeId: String,
+    ): String? {
+        if (mountedRoot == null ||
+            documentUri.authority != "com.android.externalstorage.documents" ||
+            ':' !in documentId) return null
+        val documentVolume = documentId.substringBefore(':').let {
+            if (it.equals("primary", ignoreCase = true)) "external_primary"
+            else it.lowercase(java.util.Locale.ROOT)
+        }
+        if (documentVolume != volumeId.lowercase(java.util.Locale.ROOT)) return null
+        return runCatching {
+            val root = mountedRoot.canonicalFile
+            val child = File(root, documentId.substringAfter(':')).canonicalFile
+            child.path.takeIf { it.startsWith(root.path + File.separator) }
+        }.getOrNull()
+    }
+
     internal suspend fun load(
         context: Context, indexed: List<MediaItem>,
         priorFiles: List<MediaItem> = emptyList(),
@@ -140,7 +167,7 @@ object DriveLibrary {
                         val name = c.getString(1).orEmpty(); if (name.startsWith('.') || name == "Android") continue
                         val id = c.getString(0); val mime = c.getString(2)
                         val child = DocumentsContract.buildDocumentUriUsingTree(uri, id)
-                        val path = mountedRoot?.let { File(it, id.substringAfter(':', "")).path }
+                        val path = trustedSafPhysicalPath(mountedRoot, child, id, root.id)
                         if (mime == DocumentsContract.Document.MIME_TYPE_DIR) rows.add(Triple(child.toString(), name, mime))
                         else if (path == null || path !in known) item(child, name, mime, c.getLong(3), c.getLong(4), root, target, relative)?.let { item ->
                             if (shouldIncludeSafPhysicalPath(path, known, seenPhysicalPaths)) {
