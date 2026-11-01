@@ -45,6 +45,7 @@ internal data class CatalogMediaRow(
     val fullHash: String? = null,
     val perceptualHash: String? = null,
     val exifCamera: String? = null,
+    val recycled: Boolean = false,
 )
 
 @Entity(tableName = "catalog_folders", indices = [Index(value = ["storageId"])])
