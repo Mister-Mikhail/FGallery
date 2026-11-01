@@ -3,6 +3,7 @@ package com.mistermikhail.fgallery.data
 import android.content.ContentResolver
 import android.content.ContentUris
 import android.content.Context
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
@@ -14,6 +15,59 @@ class MediaRepository(private val context: Context) {
     suspend fun loadMedia(): List<MediaItem> = withContext(Dispatchers.IO) {
         queryMedia(trashedOnly = false)
     }
+
+    /**
+     * Incremental MediaStore scan (Android 11+). A generation snapshot is
+     * captured BEFORE the previous scan, so changes that arrive mid-scan are
+     * included again and never silently skipped. API29/limited access falls
+     * back to the complete indexed query.
+     */
+    suspend fun loadIncremental(
+        previous: List<MediaItem>,
+        savedVolumes: Map<String, CatalogVolumeRow>,
+    ): List<MediaItem> = withContext(Dispatchers.IO) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R || !StorageFolders.hasFileAccess() ||
+            savedVolumes.isEmpty()) return@withContext queryMedia(trashedOnly = false)
+        MediaStore.getExternalVolumeNames(context).flatMap { volume ->
+            val old = savedVolumes[volume]
+            val currentVersion = runCatching { MediaStore.getVersion(context, volume) }.getOrNull()
+            val currentGeneration = runCatching { MediaStore.getGeneration(context, volume) }.getOrNull()
+            val indexed = previous.filter {
+                it.storageId == volume && it.uri.authority == MediaStore.AUTHORITY
+            }
+            when {
+                old == null || old.mediaStoreGeneration <= 0L ||
+                    currentVersion == null || currentGeneration == null ||
+                    old.mediaStoreVersion != currentVersion ||
+                    currentGeneration < old.mediaStoreGeneration -> queryVolume(volume, false)
+                currentGeneration == old.mediaStoreGeneration -> indexed
+                else -> {
+                    val changed = queryVolume(volume, false, old.mediaStoreGeneration)
+                    val ids = runCatching { currentIds(volume) }.getOrNull()
+                        ?: return@flatMap queryVolume(volume, false)
+                    (indexed.filter { item -> runCatching { ContentUris.parseId(item.uri) }.getOrNull() in ids } +
+                        changed).distinctBy { it.uriKey }.let { result ->
+                            // Changed records replace outdated metadata for the same URI.
+                            val delta = changed.associateBy { it.uriKey }
+                            result.map { delta[it.uriKey] ?: it }
+                        }
+                }
+            }
+        }
+    }
+
+    private fun currentIds(volume: String): Set<Long> {
+        val ids = HashSet<Long>()
+        context.contentResolver.query(
+            MediaStore.Files.getContentUri(volume),
+            arrayOf(MediaStore.Files.FileColumns._ID), null, null, null,
+        )?.use { cursor ->
+            val col = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns._ID)
+            while (cursor.moveToNext()) ids.add(cursor.getLong(col))
+        } ?: error("Не удалось проверить удалённые MediaStore ID")
+        return ids
+    }
+
 
     suspend fun loadTrash(): List<MediaItem> = withContext(Dispatchers.IO) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
@@ -27,7 +81,7 @@ class MediaRepository(private val context: Context) {
         runCatching { queryVolume(volume, trashedOnly) }.getOrDefault(emptyList())
     }
 
-    private fun queryVolume(volume: String, trashedOnly: Boolean): List<MediaItem> {
+    private fun queryVolume(volume: String, trashedOnly: Boolean, since: Long? = null): List<MediaItem> {
         val resolver = context.contentResolver
         val collection = MediaStore.Files.getContentUri(volume)
         val projection = arrayOf(
@@ -46,13 +100,16 @@ class MediaRepository(private val context: Context) {
             MediaStore.Video.VideoColumns.DURATION,
             MediaStore.Images.ImageColumns.BUCKET_DISPLAY_NAME,
         )
-        val selection =
+        val mediaSelection =
             "${MediaStore.Files.FileColumns.MEDIA_TYPE}=? OR ${MediaStore.Files.FileColumns.MEDIA_TYPE}=?" +
                 if (StorageFolders.hasFileAccess()) (RAW_EXTENSIONS + listOf(".tif", ".tiff")).joinToString("", prefix = "") { " OR LOWER(${MediaStore.MediaColumns.DISPLAY_NAME}) LIKE ?" } else ""
+        val selection = "($mediaSelection)" +
+            if (since != null) " AND ${MediaStore.MediaColumns.GENERATION_MODIFIED} > ?" else ""
         val args = arrayOf(
             MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString(),
             MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString(),
-        ) + if (StorageFolders.hasFileAccess()) (RAW_EXTENSIONS + listOf(".tif", ".tiff")).map { "%$it" }.toTypedArray() else emptyArray()
+        ) + (if (StorageFolders.hasFileAccess()) (RAW_EXTENSIONS + listOf(".tif", ".tiff")).map { "%$it" }.toTypedArray() else emptyArray()) +
+            (if (since != null) arrayOf(since.toString()) else emptyArray())
         val sort =
             "${MediaStore.MediaColumns.DATE_TAKEN} DESC, ${MediaStore.MediaColumns.DATE_ADDED} DESC"
 
