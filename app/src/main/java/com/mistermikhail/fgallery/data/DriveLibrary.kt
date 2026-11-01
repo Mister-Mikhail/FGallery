@@ -109,7 +109,8 @@ object DriveLibrary {
         for (root in StorageAccess.granted(context)) {
             // Resolve the physical mount once per SAF root, not once per file.
             // Large galleries can have thousands of document rows.
-            val mountedRoot = StorageAccess.mounted(context).firstOrNull { it.id == root.id }?.directory
+            val mountedVolume = StorageAccess.mounted(context).firstOrNull { it.id == root.id }
+            val mountedRoot = mountedVolume?.directory
             suspend fun visit(target: String, relative: String) {
                 currentCoroutineContext().ensureActive()
                 val uri = Uri.parse(target)
@@ -141,7 +142,7 @@ object DriveLibrary {
                 // Persisted SAF grants survive USB removal. An offline volume
                 // keeps its Room rows; a mounted provider failure aborts the
                 // scan instead of deleting its catalogue records.
-                if (mountedRoot != null) throw e
+                if (mountedVolume != null) throw e
             }
         }
         result
