@@ -52,7 +52,7 @@ class RecycleBinViewerTest {
             rule.waitUntil(15000) { runCatching { image.fetchSemanticsNode().config[ViewerImageReady] }.getOrDefault(false) }
             image.performTouchInput { doubleClick(center) }
             rule.waitForIdle()
-            image.assert(SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription, "Zoom 200%"))
+            image.assert(SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription, "Zoom 250%"))
             image.performTouchInput { doubleClick(center) }
             rule.waitForIdle()
             image.performTouchInput { advanceEventTime(400); click(center) }

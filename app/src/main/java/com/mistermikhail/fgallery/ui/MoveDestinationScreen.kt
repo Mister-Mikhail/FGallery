@@ -4,6 +4,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.CreateNewFolder
+import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -46,6 +48,7 @@ fun MoveDestinationScreen(
     selectedAlbum: AlbumSummary?,
     onQueryChanged: (String) -> Unit,
     onSelectAlbum: (AlbumSummary) -> Unit,
+    onOpenAlbum: (AlbumSummary) -> Unit,
     onBackFromAlbum: () -> Unit,
     onCancel: () -> Unit,
     onMoveHere: (AlbumSummary) -> Unit,
@@ -183,6 +186,7 @@ fun MoveDestinationScreen(
                                 .clip(RoundedCornerShape(8.dp))
                                 .combinedClickable(
                                     onClick = { onSelectAlbum(album) },
+                                    onLongClick = { onOpenAlbum(album) },
                                 ),
                         ) {
                             AsyncImage(
@@ -199,14 +203,16 @@ fun MoveDestinationScreen(
                                 style = MaterialTheme.typography.labelSmall,
                                 modifier = Modifier.padding(horizontal = 8.dp),
                             )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
                                 album.name,
                                 maxLines = 1,
-                                modifier = Modifier.padding(
-                                    horizontal = 8.dp,
-                                    vertical = 6.dp,
-                                ),
+                                modifier = Modifier.weight(1f).padding(horizontal = 8.dp, vertical = 6.dp),
                             )
+                            IconButton(onClick = { onOpenAlbum(album) }) {
+                                Icon(Icons.Outlined.ChevronRight, contentDescription = "Открыть папку ${album.name}")
+                            }
+                            }
                         }
                     }
                 }

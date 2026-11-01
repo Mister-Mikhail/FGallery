@@ -77,13 +77,13 @@ fun AppUpdateHost(checkRequests: Int) {
     update?.let { candidate ->
         AlertDialog(
             onDismissRequest = { if (downloading) downloadJob?.cancel() else { repository.decline(candidate); update = null } },
-            title = { Text(if (downloading) "Загрузка обновления" else "FGallery ${candidate.version}") },
+            title = { Text(if (downloading) "Загрузка обновления" else "FGallery ${candidate.version} · сборка ${candidate.versionCode}") },
             text = {
                 if (downloading) Column {
                     if (candidate.size > 0) LinearProgressIndicator(progress = { (downloaded.toFloat() / candidate.size).coerceIn(0f, 1f) })
                     else LinearProgressIndicator()
                     Text("${downloaded / (1024 * 1024)} МБ${if (candidate.size > 0) " / ${candidate.size / (1024 * 1024)} МБ" else ""}")
-                } else Text("Доступно обновление приложения.")
+                } else Text(if (candidate.tag.startsWith("qa-")) "Доступна новая тестовая сборка FGallery. Настройки и файлы сохранятся." else "Доступно обновление приложения.")
             },
             confirmButton = {
                 if (!downloading) TextButton(onClick = {

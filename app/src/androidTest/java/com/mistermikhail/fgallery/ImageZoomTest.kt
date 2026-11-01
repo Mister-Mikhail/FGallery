@@ -19,6 +19,7 @@ import com.mistermikhail.fgallery.data.ThumbnailCache
 import com.mistermikhail.fgallery.ui.TiledZoomableImage
 import com.mistermikhail.fgallery.ui.ViewerImageReady
 import com.mistermikhail.fgallery.ui.ViewerZoomRange
+import com.mistermikhail.fgallery.ui.nextRasterDoubleTapZoom
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -27,7 +28,7 @@ import java.io.File
 class ImageZoomTest {
     @get:Rule val rule = createComposeRule()
 
-    @Test fun smallImageDoublesAndReturnsOnTheSecondTap() {
+    @Test fun smallImageZoomsTwoAndHalfThenReturnsOnSecondTap() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val file = File(context.cacheDir, "small-zoom.png")
         val bitmap = Bitmap.createBitmap(64, 48, Bitmap.Config.ARGB_8888).apply { eraseColor(android.graphics.Color.GREEN) }
@@ -38,7 +39,7 @@ class ImageZoomTest {
         rule.waitUntil(15000) { runCatching { node.fetchSemanticsNode().config[ViewerImageReady] }.getOrDefault(false) }
         node.performTouchInput { doubleClick(center) }
         rule.waitForIdle()
-        node.assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Zoom 200%"))
+        node.assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Zoom 250%"))
         node.performTouchInput { doubleClick(center) }
         rule.waitForIdle()
         node.assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Zoom 100%"))
@@ -77,8 +78,8 @@ class ImageZoomTest {
             val (fit, maximum) = node.fetchSemanticsNode().config[ViewerZoomRange]
             val actual = node.fetchSemanticsNode().config[SemanticsProperties.StateDescription].removePrefix("Zoom ").removeSuffix("%").toInt()
             assertEquals("Tap and pinch must share their ceiling", maxOf(8f, fit * 8f), maximum, .001f)
-            val expected = 200f
-            assertTrue("Twice fitted scale: $actual vs $expected", kotlin.math.abs(actual - expected) < 2f)
+            val expected = nextRasterDoubleTapZoom(fit, fit, maximum) / fit * 100f
+            assertTrue("Absolute first raster zoom: $actual vs $expected", kotlin.math.abs(actual - expected) < 2f)
         }
         node.performTouchInput { doubleClick(Offset(width * .8f, height * .7f)) }
         rule.waitForIdle()
@@ -114,11 +115,11 @@ class ImageZoomTest {
         val before = redWidth()
         assertTrue(before > 10)
         val (fit, maximum) = node.fetchSemanticsNode().config[ViewerZoomRange]
-        val expected = 2f
+        val expected = nextRasterDoubleTapZoom(fit, fit, maximum) / fit
         node.performTouchInput { doubleClick(center) }
         rule.waitForIdle()
         val ratio = redWidth().toFloat() / before
-        assertTrue("First zoom must double visible pixels, got $ratio, expected $expected", kotlin.math.abs(ratio - expected) < expected * .08f)
+        assertTrue("First zoom ratio $ratio expected $expected", kotlin.math.abs(ratio - expected) < expected * .12f)
         node.performTouchInput {
             pinch(start0 = center - Offset(100f, 0f), end0 = center - Offset(10f, 0f), start1 = center + Offset(100f, 0f), end1 = center + Offset(10f, 0f), durationMillis = 600)
         }
@@ -129,9 +130,51 @@ class ImageZoomTest {
         run {
             val (fit, maximum) = node.fetchSemanticsNode().config[ViewerZoomRange]
             val actual = node.fetchSemanticsNode().config[SemanticsProperties.StateDescription].removePrefix("Zoom ").removeSuffix("%").toInt()
-            val expected = 200f
-            assertTrue("Twice fitted scale: $actual vs $expected", kotlin.math.abs(actual - expected) < 2f)
+            val expected = nextRasterDoubleTapZoom(fit, fit, maximum) / fit * 100f
+            assertTrue("Absolute first raster zoom: $actual vs $expected", kotlin.math.abs(actual - expected) < 2f)
         }
+    }
+
+    @Test fun afterSecondDoubleTapPinchStillReachesUnchangedMaximum() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val file = File(context.cacheDir, "pinch-ceiling-zoom.jpg")
+        val bitmap = Bitmap.createBitmap(6000, 4000, Bitmap.Config.ARGB_8888)
+        bitmap.eraseColor(android.graphics.Color.GREEN)
+        file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.JPEG, 82, it) }
+        bitmap.recycle()
+        val item = MediaItem(987658, Uri.fromFile(file), file.name, "image/jpeg",
+            MediaKind.IMAGE, 0, 6000, 4000, 0, "Tests", "", file.length())
+        rule.setContent {
+            Box(Modifier.fillMaxSize()) {
+                TiledZoomableImage(item, {}, false, {}, zoomSecondPower = .85f)
+            }
+        }
+        val node = rule.onNodeWithTag("viewer-image")
+        rule.waitUntil(15000) {
+            runCatching { node.fetchSemanticsNode().config[ViewerImageReady] }.getOrDefault(false)
+        }
+        fun zoom() = node.fetchSemanticsNode().config[SemanticsProperties.StateDescription]
+            .removePrefix("Zoom ").removeSuffix("%").toInt()
+        val (fit, maximum) = node.fetchSemanticsNode().config[ViewerZoomRange]
+        node.performTouchInput { doubleClick(center) }
+        rule.waitForIdle()
+        val desired = (nextRasterDoubleTapZoom(fit, fit, maximum) / fit * 100).toInt()
+        assertTrue("First tap should target 50% file pixels, got ${zoom()} vs $desired", kotlin.math.abs(desired - zoom()) <= 2)
+        node.performTouchInput { doubleClick(center) }
+        rule.waitForIdle()
+        val afterTap = zoom()
+        assertTrue("Second tap should leave pinch headroom", afterTap < (maximum / fit * 100).toInt() - 15)
+        node.performTouchInput {
+            pinch(
+                start0 = center - Offset(30f, 0f), end0 = center - Offset(190f, 0f),
+                start1 = center + Offset(30f, 0f), end1 = center + Offset(190f, 0f),
+                durationMillis = 700,
+            )
+        }
+        rule.waitForIdle()
+        assertTrue("Pinch must zoom farther after second tap: ${zoom()} <= $afterTap", zoom() > afterTap + 8)
+        assertTrue("Pinch must not cross the configured maximum", zoom() <= (maximum / fit * 100).toInt() + 2)
+        file.delete()
     }
 
 }

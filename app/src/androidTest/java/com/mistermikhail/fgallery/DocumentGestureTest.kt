@@ -48,7 +48,7 @@ class DocumentGestureTest {
         page.assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Zoom 200%"))
         page.performTouchInput { doubleClick(center) }
         rule.waitForIdle()
-        page.assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Zoom 695%"))
+        page.assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Zoom 585%"))
         page.performTouchInput { doubleClick(center) }
         rule.waitForIdle()
         page.assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Zoom 100%"))

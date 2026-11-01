@@ -50,15 +50,19 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
+import androidx.core.app.ActivityCompat
 import com.mistermikhail.fgallery.data.MediaItem
 import com.mistermikhail.fgallery.ui.AlbumSummary
 import com.mistermikhail.fgallery.ui.GalleryScreen
 import com.mistermikhail.fgallery.ui.MoveDestinationScreen
+import com.mistermikhail.fgallery.ui.AccessOnboarding
+import com.mistermikhail.fgallery.ui.AccessWizardStep
 import com.mistermikhail.fgallery.ui.GalleryViewModel
 import com.mistermikhail.fgallery.ui.RecycleBinScreen
 import com.mistermikhail.fgallery.ui.ViewerScreen
@@ -68,6 +72,14 @@ import com.mistermikhail.fgallery.data.EditedMediaStore
 import com.mistermikhail.fgallery.data.DriveLibrary
 import com.mistermikhail.fgallery.data.StorageAccess
 import com.mistermikhail.fgallery.data.StorageFolder
+import com.mistermikhail.fgallery.data.MoveNamePlanner
+import java.io.File
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarResult
+import androidx.compose.ui.Alignment
+import kotlinx.coroutines.withTimeoutOrNull
 import com.mistermikhail.fgallery.data.DocumentLibrary
 import com.mistermikhail.fgallery.ui.VideoCropDialog
 import kotlinx.coroutines.Dispatchers
@@ -79,7 +91,14 @@ private data class PendingTreeMove(
     val copiedUris: List<Uri>,
 )
 
-private class PartialMoveException(val remaining: List<MediaItem>, cause: Exception) : Exception(cause.localizedMessage, cause)
+private data class CompletedMove(
+    val source: MediaItem,
+    val destination: Uri,
+    val destinationName: String,
+    val originalParent: String,
+)
+
+private class PartialMoveException(val remaining: List<MediaItem>, val names: Map<String, String>, cause: Exception) : Exception(cause.localizedMessage, cause)
 private class PartialRenameException(val remaining: List<Pair<MediaItem, String>>, cause: Exception) : Exception(cause.localizedMessage, cause)
 
 private sealed interface PendingWriteOperation {
@@ -94,6 +113,8 @@ private sealed interface PendingWriteOperation {
     data class Move(
         val items: List<MediaItem>,
         val relativePath: String,
+        val plannedNames: Map<String, String> = emptyMap(),
+        val completed: List<CompletedMove> = emptyList(),
     ) : PendingWriteOperation
 }
 
@@ -113,6 +134,10 @@ class MainActivity : ComponentActivity() {
         val state by viewModel.uiState.collectAsState()
         var selectedItem by remember { mutableStateOf<MediaItem?>(null) }
         var cleanupMode by remember { mutableStateOf(false) }
+        val zoomTestPrefs = remember { getSharedPreferences("fgallery_zoom_test", MODE_PRIVATE) }
+        var zoomSecondPower by remember {
+            mutableFloatStateOf(zoomTestPrefs.getFloat("second_tap_power", .85f).coerceIn(.80f, .90f))
+        }
         var selectedIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
         var selectionAnchor by remember { mutableStateOf<Long?>(null) }
         var pendingWrite by remember { mutableStateOf<PendingWriteOperation?>(null) }
@@ -125,8 +150,13 @@ class MainActivity : ComponentActivity() {
         var pendingCropItem by remember { mutableStateOf<MediaItem?>(null) }
         var pendingCropSave by remember { mutableStateOf<Pair<MediaItem, Uri>?>(null) }
         var cropPreview by remember { mutableStateOf<Pair<String, Uri>?>(null) }
-        var firstLaunchAccess by remember { mutableStateOf(false) }
+        var accessWizardStep by remember { mutableStateOf<AccessWizardStep?>(null) }
+        var accessRequestInFlight by remember { mutableStateOf(false) }
+        var mediaSettingsNeeded by remember { mutableStateOf(false) }
         var pendingAccessWrite by remember { mutableStateOf<PendingWriteOperation?>(null) }
+        var accessNeededAction by remember { mutableStateOf<(() -> Unit)?>(null) }
+        var accessNeededReason by remember { mutableStateOf("") }
+        var resumeAfterFileGrant by remember { mutableStateOf<(() -> Unit)?>(null) }
         var waitingAccessWrite by remember { mutableStateOf<PendingWriteOperation?>(null) }
         var createFolderVisible by remember { mutableStateOf(false) }
         var createFolderPath by remember { mutableStateOf("Новая папка") }
@@ -139,6 +169,7 @@ class MainActivity : ComponentActivity() {
         var updateChecks by remember { mutableStateOf(0) }
         var videoCropItem by remember { mutableStateOf<MediaItem?>(null) }
         val uiScope = rememberCoroutineScope()
+        val moveSnackbar = remember { SnackbarHostState() }
         val extraFolders by produceState<List<StorageFolder>>(emptyList(), pendingMoveItems.isNotEmpty(), folderRevision) {
             if (pendingMoveItems.isNotEmpty()) value = withContext(Dispatchers.IO) { DriveLibrary.folders(this@MainActivity) }
         }
@@ -221,9 +252,31 @@ class MainActivity : ComponentActivity() {
             ActivityResultContracts.RequestMultiplePermissions(),
         ) {
             viewModel.onPermissionChanged(hasMediaPermission())
+            folderRevision++
+            if (accessWizardStep == AccessWizardStep.MEDIA) {
+                accessRequestInFlight = false
+                accessWizardStep = AccessWizardStep.ALL_FILES
+            }
         }
 
-        suspend fun executeWrite(operation: PendingWriteOperation) {
+        fun requestMediaAccess() {
+            val prefs = getSharedPreferences("fgallery_onboarding", MODE_PRIVATE)
+            val blocked = prefs.getBoolean("media_requested", false) &&
+                !hasMediaPermission() &&
+                requiredPermissions().all { permission ->
+                    ContextCompat.checkSelfPermission(this@MainActivity, permission) !=
+                        PackageManager.PERMISSION_GRANTED &&
+                        !ActivityCompat.shouldShowRequestPermissionRationale(this@MainActivity, permission)
+                }
+            if (blocked) {
+                mediaSettingsNeeded = true
+            } else {
+                prefs.edit().putBoolean("media_requested", true).apply()
+                permissionLauncher.launch(visualPermissionRequest())
+            }
+        }
+
+        suspend fun executeWrite(operation: PendingWriteOperation, moved: MutableList<CompletedMove>) {
             when (operation) {
                 is PendingWriteOperation.Replace -> EditedMediaStore(this@MainActivity).replace(operation.item, operation.editedUri, operation.mime, operation.extension)
                 is PendingWriteOperation.Rename -> {
@@ -255,26 +308,76 @@ class MainActivity : ComponentActivity() {
                     val qualified = rawPath.startsWith("/") || rawPath.startsWith("content://")
                     val path = if (qualified) rawPath else rawPath.replace('\\', '/').trim('/') + "/"
                     require(path.isNotBlank() && path != "/") { "Недопустимая папка" }
+
+                    // Reserve names for the batch, so same-frame RAW+JPEG share a suffix.
+                    val roots = StorageAccess.mounted(this@MainActivity)
+                    fun destinationOf(item: MediaItem): String {
+                        if (qualified) return path
+                        val sourceFile = StorageAccess.file(this@MainActivity, item)
+                        val root = roots.firstOrNull { root ->
+                            sourceFile != null && root.directory != null &&
+                                sourceFile.canonicalPath.startsWith(root.directory.canonicalPath + "/")
+                        }?.directory ?: Environment.getExternalStorageDirectory()
+                        return File(root, path).canonicalPath
+                    }
+                    // A destination already containing the source is a no-op;
+                    // its own existing filename must not force an artificial "_2".
+                    fun alreadyInDestination(item: MediaItem): Boolean {
+                        val source = StorageAccess.file(this@MainActivity, item) ?: return false
+                        val destination = destinationOf(item)
+                        return !destination.startsWith("content://") &&
+                            source.parentFile?.canonicalPath == File(destination).canonicalPath
+                    }
+                    val movableItems = operation.items.filterNot(::alreadyInDestination)
+                    val groups = movableItems.groupBy(::destinationOf)
+                    val planned = operation.plannedNames.toMutableMap()
+                    groups.forEach { (destination, items) ->
+                        val unplanned = items.filterNot { planned.containsKey(it.uriKey) }
+                        if (unplanned.isNotEmpty()) {
+                            val names = StorageAccess.children(this@MainActivity, destination).map { it.first } +
+                                planned.values
+                            val resolved = MoveNamePlanner.plan(unplanned.map { it.name }, names)
+                            unplanned.zip(resolved).forEach { (item, name) -> planned[item.uriKey] = name }
+                        }
+                    }
                     var firstFailure: Exception? = null
                     val remaining = mutableListOf<MediaItem>()
                     for (item in operation.items) {
                         try {
-                            if (qualified) { StorageAccess.move(this@MainActivity, item, path); continue }
-                            if (item.relativePath == path) continue
-                            if (StorageFolders.hasFileAccess()) {
-                                StorageFolders.move(this@MainActivity, item, path)
-                                continue
+                            if (alreadyInDestination(item) || (!qualified && item.relativePath == path)) continue
+                            val name = planned[item.uriKey] ?: item.name
+                            val oldParent = StorageAccess.file(this@MainActivity, item)?.parent
+                                ?: StorageAccess.parent(this@MainActivity, item)
+                            val destination = destinationOf(item)
+                            val result = if (qualified) {
+                                StorageAccess.move(this@MainActivity, item, destination, name)
+                            } else if (StorageFolders.hasFileAccess()) {
+                                StorageFolders.move(this@MainActivity, item, path, name)
+                            } else {
+                                val values = ContentValues().apply {
+                                    put(MediaStore.MediaColumns.RELATIVE_PATH, path)
+                                    put(MediaStore.MediaColumns.DISPLAY_NAME, name)
+                                }
+                                check(contentResolver.update(item.uri, values, null, null) == 1) {
+                                    "Файл ${item.name} не перемещён"
+                                }
+                                val actual = contentResolver.query(item.uri,
+                                    arrayOf(MediaStore.MediaColumns.RELATIVE_PATH, MediaStore.MediaColumns.DISPLAY_NAME),
+                                    null, null, null)?.use {
+                                    if (it.moveToFirst()) it.getString(0) to it.getString(1) else null
+                                }
+                                check(actual?.first == path && actual.second?.equals(name, ignoreCase = true) == true) {
+                                    "Android не подтвердил имя или папку перемещённого файла"
+                                }
+                                item.uri
                             }
-                            val values = ContentValues().apply { put(MediaStore.MediaColumns.RELATIVE_PATH, path) }
-                            // Use the exact URI Android granted, never the Files alias.
-                            check(contentResolver.update(item.uri, values, null, null) == 1) { "Файл ${item.name} не перемещён" }
-                            val actual = contentResolver.query(item.uri, arrayOf(MediaStore.MediaColumns.RELATIVE_PATH), null, null, null)?.use {
-                                if (it.moveToFirst()) it.getString(0) else null
-                            }
-                            check(actual == path) { "Папка ${item.name} не изменилась" }
-                        } catch (e: Exception) { remaining += item; if (firstFailure == null) firstFailure = e }
+                            moved += CompletedMove(item, result, name, oldParent)
+                        } catch (e: Exception) {
+                            remaining += item
+                            if (firstFailure == null) firstFailure = e
+                        }
                     }
-                    firstFailure?.let { throw PartialMoveException(remaining, it) }
+                    firstFailure?.let { throw PartialMoveException(remaining, planned, it) }
                 }
             }
         }
@@ -286,8 +389,42 @@ class MainActivity : ComponentActivity() {
             is PendingWriteOperation.Replace -> listOf(operation.item.uri)
         }
 
-        suspend fun performWrite(operation: PendingWriteOperation): Exception? = withContext(Dispatchers.IO) {
-            try { executeWrite(operation); null } catch (e: Exception) { e }
+        suspend fun performWrite(operation: PendingWriteOperation): Pair<Exception?, List<CompletedMove>> = withContext(Dispatchers.IO) {
+            val moved = mutableListOf<CompletedMove>()
+            val error = try { executeWrite(operation, moved); null } catch (e: Exception) { e }
+            error to moved.toList()
+        }
+
+        fun offerMoveUndo(records: List<CompletedMove>, label: String) {
+            if (records.isEmpty()) return
+            uiScope.launch {
+                val destinationName = (if (label.startsWith("content://")) Uri.parse(label).lastPathSegment
+                    else label)?.trimEnd('/')?.substringAfterLast('/')?.substringAfterLast(':')
+                    ?.ifBlank { "папку" } ?: "папку"
+                val result = withTimeoutOrNull(5_000L) {
+                    moveSnackbar.showSnackbar("Перемещено в $destinationName", actionLabel = "Отменить",
+                        withDismissAction = false, duration = SnackbarDuration.Indefinite)
+                }
+                if (result == SnackbarResult.ActionPerformed) {
+                    operationBusy = true
+                    operationMessage = "Отмена перемещения"
+                    val error = withContext(Dispatchers.IO) {
+                        runCatching {
+                            records.asReversed().forEach { record ->
+                                val movedItem = record.source.copy(uri = record.destination,
+                                    name = record.destinationName, folderTarget = record.destination.toString(),
+                                    sourcePath = "")
+                                StorageAccess.move(this@MainActivity, movedItem,
+                                    record.originalParent, record.source.name)
+                            }
+                        }.exceptionOrNull()
+                    }
+                    operationBusy = false
+                    viewModel.refresh()
+                    notify(if (error == null) "Перемещение отменено" else
+                        "Не удалось вернуть все файлы: ${error.localizedMessage}")
+                }
+            }
         }
 
         fun retainFailedMove(failure: Exception?) {
@@ -311,7 +448,7 @@ class MainActivity : ComponentActivity() {
                 notify("Операция отменена. Выбор файлов сохранён.")
             } else uiScope.launch {
                 operationBusy = true
-                val failure = performWrite(operation)
+                val (failure, moved) = performWrite(operation)
                 retainFailedMove(failure)
                 operationBusy = false
                 if (failure == null) {
@@ -320,7 +457,8 @@ class MainActivity : ComponentActivity() {
                         uiScope.launch { kotlinx.coroutines.delay(450); cropPreview = null }
                     }
                     finishOperation()
-                    notify("Готово")
+                    if (operation is PendingWriteOperation.Move) offerMoveUndo(operation.completed + moved, operation.relativePath)
+                    else notify("Готово")
                 } else {
                     cropPreview = null
                     viewModel.refresh()
@@ -336,7 +474,7 @@ class MainActivity : ComponentActivity() {
                         // A grant can cover only the first 2000 MediaStore URIs.
                         // Prompt for the next remaining group without moving completed files again.
                         val remainingOperation = when {
-                            failure is PartialMoveException && operation is PendingWriteOperation.Move -> operation.copy(items = failure.remaining)
+                            failure is PartialMoveException && operation is PendingWriteOperation.Move -> operation.copy(items = failure.remaining, plannedNames = failure.names, completed = operation.completed + moved)
                             failure is PartialRenameException && operation is PendingWriteOperation.RenameBatch -> operation.copy(plan = failure.remaining)
                             else -> operation
                         }
@@ -368,10 +506,13 @@ class MainActivity : ComponentActivity() {
                 is PendingWriteOperation.Replace -> false // Explicit overwrite dialog already accepted.
             }
             if (!skipConfirmation && needsConfirmation) { pendingWriteConfirmation = operation; return }
-            if (operation is PendingWriteOperation.Move && !operation.relativePath.startsWith("content://") && Build.VERSION.SDK_INT >= 30 && !StorageFolders.hasFileAccess()) {
+            if (operation is PendingWriteOperation.Move && !StorageFolders.hasFileAccess() &&
+                !operation.relativePath.startsWith("content://")) {
                 pendingAccessWrite = operation
                 return
             }
+            // Without all-files access, offer a single explained permission request.
+            // Do not replace it with a recurring Android per-file write dialog.
             operationMessage = when (operation) {
                 is PendingWriteOperation.Move -> "Перемещение в ${operation.relativePath}"
                 is PendingWriteOperation.Rename -> "Переименование"
@@ -380,7 +521,7 @@ class MainActivity : ComponentActivity() {
             }
             operationBusy = true
             uiScope.launch {
-                val failure = performWrite(operation)
+                val (failure, moved) = performWrite(operation)
                 retainFailedMove(failure)
                 operationBusy = false
                 if (failure == null) {
@@ -388,7 +529,8 @@ class MainActivity : ComponentActivity() {
                     if (operation is PendingWriteOperation.Replace) {
                         uiScope.launch { kotlinx.coroutines.delay(450); cropPreview = null }
                     }
-                    notify("Готово")
+                    if (operation is PendingWriteOperation.Move) offerMoveUndo(operation.completed + moved, operation.relativePath)
+                    else notify("Готово")
                     return@launch
                 }
                 val security = when (failure) {
@@ -400,7 +542,7 @@ class MainActivity : ComponentActivity() {
                     // Never repeat files that already moved successfully before a partial failure.
                     // Android limits each MediaStore permission request to 2000 items.
                     val retry = when {
-                        failure is PartialMoveException && operation is PendingWriteOperation.Move -> operation.copy(items = failure.remaining)
+                        failure is PartialMoveException && operation is PendingWriteOperation.Move -> operation.copy(items = failure.remaining, plannedNames = failure.names, completed = operation.completed + moved)
                         failure is PartialRenameException && operation is PendingWriteOperation.RenameBatch -> operation.copy(plan = failure.remaining)
                         else -> operation
                     }
@@ -431,6 +573,18 @@ class MainActivity : ComponentActivity() {
         val fileAccessLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
             folderRevision++
             viewModel.onPermissionChanged(hasMediaPermission())
+            if (accessWizardStep == AccessWizardStep.ALL_FILES) {
+                accessRequestInFlight = false
+                accessWizardStep = null
+                getSharedPreferences("fgallery_onboarding", MODE_PRIVATE)
+                    .edit().putBoolean("access_wizard_completed", true).apply()
+            }
+            val action = resumeAfterFileGrant
+            resumeAfterFileGrant = null
+            if (action != null) {
+                if (StorageFolders.hasFileAccess()) action()
+                else notify("Доступ не выдан. Действие не выполнено.")
+            }
             val operation = waitingAccessWrite
             waitingAccessWrite = null
             if (operation != null && StorageFolders.hasFileAccess()) requestWrite(operation, skipConfirmation = true)
@@ -442,6 +596,7 @@ class MainActivity : ComponentActivity() {
                 fileAccessLauncher.launch(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:$packageName")))
             }.onFailure {
                 waitingAccessWrite = null
+                accessRequestInFlight = false
                 notify("Не удалось открыть настройки доступа. Откройте их в настройках Android для FGallery.")
             }
         }
@@ -693,6 +848,15 @@ class MainActivity : ComponentActivity() {
 
         fun requestTrash(items: List<MediaItem>, keepViewerOpen: Boolean = false) {
             if (items.isEmpty() || operationBusy) return
+            if (!StorageFolders.hasFileAccess()) {
+                accessNeededReason = "Для корзины на каждом накопителе нужен доступ ко всем файлам. " +
+                    "Без него выбранные файлы останутся на месте."
+                accessNeededAction = {
+                    if (cleanupMode) performTrash(items, keepViewerOpen)
+                    else pendingTrash = items to keepViewerOpen
+                }
+                return
+            }
             if (cleanupMode) performTrash(items, keepViewerOpen)
             else pendingTrash = items to keepViewerOpen
         }
@@ -753,13 +917,14 @@ class MainActivity : ComponentActivity() {
         LaunchedEffect(Unit) {
             viewModel.onPermissionChanged(hasMediaPermission())
             val onboarding = getSharedPreferences("fgallery_onboarding", MODE_PRIVATE)
-            if (!onboarding.getBoolean("file_access_shown", false) && !hasMediaPermission()) {
-                onboarding.edit().putBoolean("file_access_shown", true).apply()
-                if (Build.VERSION.SDK_INT >= 30) firstLaunchAccess = true
-                else permissionLauncher.launch(requiredPermissions())
-            } else if (!onboarding.getBoolean("file_access_shown", false) && !StorageFolders.hasFileAccess() && Build.VERSION.SDK_INT >= 30) {
-                onboarding.edit().putBoolean("file_access_shown", true).apply()
-                firstLaunchAccess = true
+            if (!onboarding.getBoolean("access_wizard_completed", false)) {
+                // Do not unexpectedly re-run onboarding for existing installations.
+                if (onboarding.getBoolean("file_access_shown", false)) {
+                    onboarding.edit().putBoolean("access_wizard_completed", true).apply()
+                } else {
+                    onboarding.edit().putBoolean("file_access_shown", true).apply()
+                    accessWizardStep = AccessWizardStep.MEDIA
+                }
             }
         }
 
@@ -884,7 +1049,11 @@ class MainActivity : ComponentActivity() {
                     query = moveQuery,
                     selectedAlbum = moveDestinationAlbum,
                     onQueryChanged = { moveQuery = it },
-                    onSelectAlbum = { moveDestinationAlbum = it },
+                    onSelectAlbum = { album ->
+                        requestWrite(PendingWriteOperation.Move(pendingMoveItems,
+                            album.cover.folderTarget.ifBlank { album.cover.relativePath }))
+                    },
+                    onOpenAlbum = { moveDestinationAlbum = it },
                     onBackFromAlbum = { moveDestinationAlbum = null },
                     onCancel = {
                         pendingMoveItems = emptyList()
@@ -901,8 +1070,12 @@ class MainActivity : ComponentActivity() {
                     },
                     onChooseOtherFolder = { folderPickerLauncher.launch(null) },
                     onCreateFolder = {
-                        if (StorageFolders.hasFileAccess() || moveDestinationAlbum?.cover?.folderTarget?.startsWith("content://") == true) createFolderVisible = true
-                        else openFileAccessSettings()
+                        if (StorageFolders.hasFileAccess() || moveDestinationAlbum?.cover?.folderTarget?.startsWith("content://") == true)
+                            createFolderVisible = true
+                        else {
+                            accessNeededReason = "Создание папки в выбранном накопителе требует полного доступа к файлам."
+                            accessNeededAction = { createFolderVisible = true }
+                        }
                     },
                 )
             } else if (state.recycleBinVisible) {
@@ -931,9 +1104,8 @@ class MainActivity : ComponentActivity() {
             } else {
                 GalleryScreen(
                     state = state,
-                    onRequestPermission = {
-                        permissionLauncher.launch(requiredPermissions())
-                    },
+                    onRequestPermission = ::requestMediaAccess,
+                    limitedMediaAccess = hasLimitedMediaPermission(),
                     onRefresh = viewModel::refresh,
                     onAddStorage = { storagePickerLauncher.launch(null) },
                     onImportDocuments = { documentsLauncher.launch(arrayOf("application/pdf", "image/svg+xml", "image/tiff", "image/x-tiff")) },
@@ -965,6 +1137,11 @@ class MainActivity : ComponentActivity() {
                     onHideSettings = viewModel::hideSettings,
                     onQuickExifChanged = viewModel::setQuickExifEnabled,
                     onCheckForUpdates = { updateChecks++ },
+                    zoomSecondPower = zoomSecondPower,
+                    onZoomSecondPowerChanged = { chosen ->
+                        zoomSecondPower = chosen
+                        zoomTestPrefs.edit().putFloat("second_tap_power", chosen).apply()
+                    },
                     onConfirmMoveChanged = viewModel::setConfirmMove,
                     onConfirmRenameChanged = viewModel::setConfirmRename,
                     livePreviewEnabled = current == null && pendingMoveItems.isEmpty(),
@@ -1039,6 +1216,7 @@ class MainActivity : ComponentActivity() {
                         onTrash = { requestTrash(listOf(it), keepViewerOpen = true) },
                         onRestore = { restoreFromRecycleBin(listOf(it)) },
                         editedPreviewUri = cropPreview?.takeIf { it.first == animatedItem.uriKey }?.second,
+                        zoomSecondPower = zoomSecondPower,
                         quickExifEnabled = state.quickExifEnabled,
                         cleanupMode = cleanupMode,
                         onShare = ::shareMedia,
@@ -1055,12 +1233,61 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
-        if (firstLaunchAccess) AlertDialog(
-            onDismissRequest = { firstLaunchAccess = false },
-            title = { Text("Доступ к файлам для FGallery") },
-            text = { Text("Чтобы видеть фото, видео, RAW, PDF и SVG во всех доступных папках, создавать папки и перемещать файлы без повторных подтверждений, разрешите доступ ко всем файлам на следующем экране Android.") },
-            confirmButton = { TextButton(onClick = { firstLaunchAccess = false; openFileAccessSettings() }) { Text("Разрешить доступ") } },
-            dismissButton = { TextButton(onClick = { firstLaunchAccess = false; permissionLauncher.launch(requiredPermissions()) }) { Text("Только фото и видео") } },
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
+            SnackbarHost(moveSnackbar, modifier = Modifier.navigationBarsPadding())
+        }
+        accessWizardStep?.takeIf { !accessRequestInFlight }?.let { step ->
+            AccessOnboarding(
+                step = step,
+                onGrant = {
+                    accessRequestInFlight = true
+                    if (step == AccessWizardStep.MEDIA) {
+                        getSharedPreferences("fgallery_onboarding", MODE_PRIVATE)
+                            .edit().putBoolean("media_requested", true).apply()
+                        permissionLauncher.launch(visualPermissionRequest())
+                    } else {
+                        openFileAccessSettings()
+                    }
+                },
+                onLater = {
+                    if (step == AccessWizardStep.MEDIA) accessWizardStep = AccessWizardStep.ALL_FILES
+                    else {
+                        accessWizardStep = null
+                        getSharedPreferences("fgallery_onboarding", MODE_PRIVATE)
+                            .edit().putBoolean("access_wizard_completed", true).apply()
+                    }
+                },
+            )
+        }
+        accessNeededAction?.let { action ->
+            AlertDialog(
+                onDismissRequest = { accessNeededAction = null },
+                title = { Text("Нужен доступ к файлам") },
+                text = { Text(accessNeededReason) },
+                confirmButton = {
+                    TextButton(onClick = {
+                        accessNeededAction = null
+                        resumeAfterFileGrant = action
+                        openFileAccessSettings()
+                    }) { Text("Открыть настройки") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { accessNeededAction = null }) { Text("Позже") }
+                },
+            )
+        }
+        if (mediaSettingsNeeded) AlertDialog(
+            onDismissRequest = { mediaSettingsNeeded = false },
+            title = { Text("Доступ к фото и видео") },
+            text = { Text("Android больше не показывает запрос доступа. Открой настройки FGallery → Разрешения → Фото и видео и выбери «Разрешить ко всем».") },
+            confirmButton = {
+                TextButton(onClick = {
+                    mediaSettingsNeeded = false
+                    fileAccessLauncher.launch(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                        Uri.parse("package:$packageName")))
+                }) { Text("Открыть настройки") }
+            },
+            dismissButton = { TextButton(onClick = { mediaSettingsNeeded = false }) { Text("Позже") } },
         )
         pendingAccessWrite?.let { operation ->
             AlertDialog(
@@ -1183,11 +1410,25 @@ class MainActivity : ComponentActivity() {
             arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE)
         }
 
+    private fun visualPermissionRequest(): Array<String> =
+        if (Build.VERSION.SDK_INT >= 34)
+            requiredPermissions() + Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED
+        else requiredPermissions()
+
+    private fun fullMediaPermission(): Boolean = requiredPermissions().all {
+        ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun hasLimitedMediaPermission(): Boolean =
+        !StorageFolders.hasFileAccess() && !fullMediaPermission() && (
+            (Build.VERSION.SDK_INT >= 34 &&
+                ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) ==
+                    PackageManager.PERMISSION_GRANTED) ||
+            requiredPermissions().any {
+                ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
+            }
+        )
+
     private fun hasMediaPermission(): Boolean =
-        StorageFolders.hasFileAccess() || requiredPermissions().all {
-            ContextCompat.checkSelfPermission(
-                this,
-                it,
-            ) == PackageManager.PERMISSION_GRANTED
-        }
+        StorageFolders.hasFileAccess() || fullMediaPermission() || hasLimitedMediaPermission()
 }
