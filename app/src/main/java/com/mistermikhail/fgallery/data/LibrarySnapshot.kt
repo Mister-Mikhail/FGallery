@@ -39,6 +39,8 @@ internal object LibrarySnapshot {
         temp.writeText(JSONObject().put("permission", value.permission).put("items", rows).put("bin", JSONArray(value.bin.toList())).toString())
         check(temp.renameTo(File(context.filesDir, "library_snapshot_v1.json")))
     }
+    /** Keep a recent in-process fallback without rewriting JSON on each event. */
+    internal fun remember(value: Value) { memory = value }
     internal fun forgetMemory() { memory = null }
     internal fun removeItems(uris: Set<String>) {
         memory = memory?.let { it.copy(items = it.items.filterNot { item -> item.uriKey in uris }) }
