@@ -28,7 +28,7 @@ class MediaRepository(private val context: Context) {
         forceFull: Boolean = false,
     ): List<MediaItem> = withContext(Dispatchers.IO) {
         if (forceFull || Build.VERSION.SDK_INT < Build.VERSION_CODES.R || !StorageFolders.hasFileAccess() ||
-            savedVolumes.isEmpty()) return@withContext queryMedia(trashedOnly = false)
+            savedVolumes.isEmpty()) return@withContext queryMediaStrict()
         MediaStore.getExternalVolumeNames(context).flatMap { volume ->
             val old = savedVolumes[volume]
             val currentVersion = runCatching { MediaStore.getVersion(context, volume) }.getOrNull()
@@ -87,6 +87,12 @@ class MediaRepository(private val context: Context) {
         runCatching { queryVolume(volume, trashedOnly) }.getOrDefault(emptyList())
     }
 
+    /** Unlike the best-effort trash listing, catalogue reconciliation must
+     * fail atomically if any volume query fails. Otherwise a transient null
+     * cursor can delete that volume's saved rows and advance its checkpoint. */
+    private fun queryMediaStrict(): List<MediaItem> =
+        MediaStore.getExternalVolumeNames(context).flatMap { volume -> queryVolume(volume, false) }
+
     private fun queryVolume(volume: String, trashedOnly: Boolean, since: Long? = null): List<MediaItem> {
         val resolver = context.contentResolver
         val collection = MediaStore.Files.getContentUri(volume)
@@ -135,8 +141,11 @@ class MediaRepository(private val context: Context) {
             resolver.query(collection, projection, selection, args, sort)
         }
 
+        // A null cursor is a provider/query failure, not an empty volume.
+        // Do not silently replace the existing catalogue with zero rows.
+        val checkedCursor = cursor ?: error("MediaStore query returned null for $volume")
         return buildList {
-            cursor?.use {
+            checkedCursor.use {
                 val dataC = it.getColumnIndexOrThrow(MediaStore.MediaColumns.DATA)
                 val root = StorageAccess.mounted(context).firstOrNull { r -> r.id == volume }
                     ?: StorageRoot(volume, volume, "")
