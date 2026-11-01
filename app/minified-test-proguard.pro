@@ -15,3 +15,6 @@
 # Compose UI testing calls platform APIs from a distinct, non-minified test APK.
 # Preserve their exact methods and synthetic bridges in minifiedTest only.
 -keep class androidx.compose.ui.platform.** { *; }
+
+# Test source references public/internal Compose entrypoints and Kotlin bridges.
+-keep class com.mistermikhail.fgallery.ui.** { *; }
