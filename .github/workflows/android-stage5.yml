@@ -95,10 +95,11 @@ jobs:
           path: app/build/reports/androidTests/connected/
 
   publish-qa:
-    # Ordinary pushes only test/build and upload run artifacts. An immutable
+    # Ordinary pushes only test/build. Explicit [publish-qa] commit publishes once.
+    # An immutable
     # QA tag is created ONCE, explicitly, after the consolidated test pack is
     # ready; otherwise every fix after build28 fails against the old QA tag.
-    if: github.event_name == 'workflow_dispatch' && inputs.publish_qa == true && github.ref == 'refs/heads/feature/fgallery-0.4.0-stage5-catalog'
+    if: (github.event_name == 'workflow_dispatch' && inputs.publish_qa == true || github.event_name == 'push' && contains(github.event.head_commit.message, '[publish-qa]')) && github.ref == 'refs/heads/feature/fgallery-0.4.0-integration'
     needs: [r8-build, r8-device-tests]
     runs-on: ubuntu-latest
     permissions:
