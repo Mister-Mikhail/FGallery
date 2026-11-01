@@ -190,6 +190,14 @@ fun GalleryScreen(
         }
     }
 
+    LaunchedEffect(mediaGridScrolling) {
+        // Prevent background file decode from stealing I/O from active scrolling.
+        ThumbnailCache.setUserBusy(mediaGridScrolling)
+    }
+    DisposableEffect(Unit) {
+        onDispose { ThumbnailCache.setUserBusy(false) }
+    }
+
     val effectiveLiveVideoId = if (livePreviewEnabled) activeLiveVideoId else null
 
     val latestVisibleVideoIds by rememberUpdatedState(visibleVideoIds)
