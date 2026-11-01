@@ -16,8 +16,12 @@ object DriveLibrary {
         name.endsWith(".pdf", true) || mime == "application/pdf" -> MediaKind.PDF
         name.endsWith(".svg", true) || mime == "image/svg+xml" -> MediaKind.SVG
         name.substringAfterLast('.', "").lowercase() in setOf("dng", "cr2", "cr3", "nef", "nrw", "arw", "sr2", "srf", "orf", "rw2", "raf", "pef", "raw", "3fr", "fff", "iiq") -> MediaKind.RAW
-        mime?.startsWith("video/") == true -> MediaKind.VIDEO
-        mime?.startsWith("image/") == true || TiffImages.isTiff(name) -> MediaKind.IMAGE
+        mime?.startsWith("video/") == true ||
+            name.substringAfterLast('.', "").lowercase() in setOf("mp4", "m4v", "mov", "mkv", "webm", "3gp", "avi") -> MediaKind.VIDEO
+        mime?.startsWith("image/") == true || TiffImages.isTiff(name) ||
+            name.substringAfterLast('.', "").lowercase() in setOf(
+                "jpg", "jpeg", "png", "gif", "webp", "heic", "heif", "avif", "bmp",
+            ) -> MediaKind.IMAGE
         else -> null
     }
     fun mime(name: String): String? = MimeTypeMap.getSingleton().getMimeTypeFromExtension(name.substringAfterLast('.', "").lowercase())
