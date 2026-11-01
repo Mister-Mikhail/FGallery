@@ -45,7 +45,7 @@ object ThumbnailCache {
 
     internal fun posterFormat(item: MediaItem): Bitmap.CompressFormat =
         // Preserve alpha in vector, PNG/WEBP and animated GIF posters.
-        if (item.kind == MediaKind.SVG || item.kind == MediaKind.PDF ||
+        if (item.kind == MediaKind.RAW || item.kind == MediaKind.SVG || item.kind == MediaKind.PDF ||
             item.name.endsWith(".png", true) || item.name.endsWith(".webp", true) ||
             item.name.endsWith(".gif", true)) Bitmap.CompressFormat.PNG
         else Bitmap.CompressFormat.JPEG
