@@ -126,6 +126,7 @@ dependencies {
     androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
     androidTestImplementation("androidx.compose.ui:ui-test-junit4:1.9.3")
     debugImplementation("androidx.compose.ui:ui-test-manifest:1.9.3")
+    add("minifiedTestImplementation", "androidx.compose.ui:ui-test-manifest:1.9.3")
     implementation("me.saket.telephoto:zoomable-image-coil3:0.15.1")
     implementation("com.vanniktech:android-image-cropper:4.7.0")
     implementation("androidx.exifinterface:exifinterface:1.3.7")
