@@ -913,17 +913,19 @@ private fun MediaPreview(
     livePreview: Boolean,
 ) {
     val context = LocalContext.current
-    val cachedModel by produceState<java.io.File?>(remember(item.uri, item.dateModifiedMillis, item.sizeBytes) { ThumbnailCache.cached(context, item) }, item.uri, item.dateModifiedMillis, item.sizeBytes) {
-        if (value == null) value = ThumbnailCache.ensure(context, item)
+    // Coil now owns generation and cancellation; no competing Compose
+    // produceState request decodes this original a second time.
+    val cachedModel = remember(item.uri, item.dateModifiedMillis, item.sizeBytes) {
+        ThumbnailCache.cached(context, item)
     }
     var previewFailed by remember(item.uri) { mutableStateOf(false) }
     // Coil must decode for the actual tile bounds, not an unconditional 960px square.
     var tileSize by remember(item.uri) { mutableStateOf(IntSize(400, 400)) }
     var liveFailed by remember(item.uri) { mutableStateOf(false) }
+    val highQuality = maxOf(tileSize.width, tileSize.height) > 480
     val request = ImageRequest.Builder(context)
-        .data(cachedModel ?: item.uri.takeIf { item.kind == MediaKind.IMAGE && !com.mistermikhail.fgallery.data.TiffImages.isTiff(item.name, item.mimeType) })
-        .memoryCacheKey("tile/${ThumbnailCache.key(item)}")
-        .placeholderMemoryCacheKey("tile/${ThumbnailCache.key(item)}")
+        .data(com.mistermikhail.fgallery.data.GalleryThumb(item, highQuality))
+        .memoryCacheKey("gallery/v4/${ThumbnailCache.key(item)}/${if (highQuality) "hq" else "micro"}")
         .size(tileSize.width.coerceAtLeast(1), tileSize.height.coerceAtLeast(1)).build()
     Box(modifier.onSizeChanged { if (it != tileSize) tileSize = it }
         .background(MaterialTheme.colorScheme.surfaceVariant)) {
