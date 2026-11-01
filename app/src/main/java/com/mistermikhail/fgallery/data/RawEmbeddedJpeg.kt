@@ -42,6 +42,11 @@ internal object RawEmbeddedJpeg {
      * Writes only under app cache; never opens the RAW for writing.
      * Ensures orientation is embedded as JPEG EXIF metadata.
      */
+    fun cached(context: Context, item: MediaItem): File? =
+        File(File(context.cacheDir, "camera_raw_jpeg_v1"),
+            "${StorageAccess.stableId(ThumbnailCache.key(item))}.jpg")
+            .takeIf { it.isFile && it.length() > 0L }
+
     suspend fun extract(context: Context, item: MediaItem): File? = withContext(Dispatchers.IO) {
         val dir = File(context.cacheDir, "camera_raw_jpeg_v1").apply { mkdirs() }
         val target = File(dir, "${StorageAccess.stableId(ThumbnailCache.key(item))}.jpg")
