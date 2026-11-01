@@ -11,3 +11,7 @@
 # Preserve ONLY in minifiedTest, never in the distributed R8 release.
 -keep class com.mistermikhail.fgallery.data.** { *; }
 -keep class androidx.compose.ui.platform.ViewRootForTest** { *; }
+
+# Compose UI testing calls platform APIs from a distinct, non-minified test APK.
+# Preserve their exact methods and synthetic bridges in minifiedTest only.
+-keep class androidx.compose.ui.platform.** { *; }
