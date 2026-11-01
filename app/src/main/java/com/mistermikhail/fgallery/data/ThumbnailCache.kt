@@ -85,16 +85,18 @@ object ThumbnailCache {
             lastForegroundRequest.set(System.currentTimeMillis())
         }
         try {
+            // Wait BEFORE acquiring the per-file mutex: otherwise a pending
+            // visible request for the same file could deadlock behind background.
+            if (background) {
+                while (foregroundDemand.get() > 0 ||
+                    System.currentTimeMillis() - lastForegroundRequest.get() < 1_500L) {
+                    currentCoroutineContext().ensureActive()
+                    delay(80L)
+                }
+            }
             val semaphore = if (background) backgroundDecoders else foregroundDecoders
             generationLocks.getOrPut(target.path) { Mutex() }.withLock {
                 if (target.isFile && target.length() > 0L) return@withLock target
-                if (background) {
-                    while (foregroundDemand.get() > 0 ||
-                        System.currentTimeMillis() - lastForegroundRequest.get() < 1_500L) {
-                        currentCoroutineContext().ensureActive()
-                        delay(80L)
-                    }
-                }
                 semaphore.withPermit {
                     if (target.isFile && target.length() > 0L) return@withPermit target
                     target.parentFile?.mkdirs()
