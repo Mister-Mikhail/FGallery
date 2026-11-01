@@ -45,3 +45,8 @@ The latest direct test report from the user takes precedence over old notes, PR 
 - A user-confirmed working function is **accepted and frozen**: do not redesign or re-implement it in later tasks unless the user reports a new concrete fault or explicitly requests a change. Automated non-mutating regression tests are still appropriate.
 - The most recent direct Samsung Galaxy S23/Android 16 result outranks historical screenshots, old task lists, emulator output and an assistant's implementation claims. Keep separate acceptance statuses per function rather than closing entire subsystems.
 - Before making changes to any adjacent code, identify protected behavior, keep the diff narrowly scoped, and run targeted regression checks. In particular preserve approved zoom, Cleanup UX, RAW display dimensions, OPEN RAW indicator and video-player testing hold.
+
+## Explicit updated development order, 2026-11-01
+- User authorizes implementing **Stages 1–5 inclusive** of approved `docs/FGallery_TZ_v1.md` without interim device-test interruptions. `docs/BATCH_QA_ROADMAP_2026-11-01.md` defines the consolidated Samsung Galaxy S23/Android16 final acceptance plan.
+- Each stage still requires separate version, exact SHA, CI/unit/instrumented checks and honest status. This user instruction supersedes older “stop before Stage 2 without S23 acceptance” workflow restrictions; it does not authorize claiming unverified fixes complete or merging PRs.
+- Do not modify explicitly user-approved zoom/Cleanup, RAW dimensions, or OPEN RAW animation; leave video player unchanged until new report. Stage 6, DWG, stores and editor remain out of scope.
