@@ -78,10 +78,12 @@ internal fun PdfViewer(item: MediaItem, onTap: () -> Unit, onDoubleTap: (() -> U
     }
     val pdf = document
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        when {
-            error != null -> Text(error!!, color = Color.White, modifier = Modifier.padding(24.dp))
-            pdf == null -> CircularProgressIndicator()
-            else -> LazyColumn(Modifier.fillMaxSize().testTag("pdf-pages"), contentPadding = PaddingValues(vertical = 64.dp)) {
+        // Initialize LazyColumn's Android prefetch scheduler during the initial
+        // UI-thread composition, not during a later PDF-load recomposition.
+        // Compose test clocks can deliver that recomposition on an IO worker,
+        // where Choreographer.getInstance() throws (no thread Looper).
+        LazyColumn(Modifier.fillMaxSize().testTag("pdf-pages"), contentPadding = PaddingValues(vertical = 64.dp)) {
+            if (pdf != null && error == null) {
                 items((0 until pdf.pageCount).toList(), key = { it }) { index ->
                     var failed by remember { mutableStateOf(false) }
                     val bitmap by produceState<Bitmap?>(null, item.uri, index) {
@@ -100,6 +102,10 @@ internal fun PdfViewer(item: MediaItem, onTap: () -> Unit, onDoubleTap: (() -> U
                     }
                 }
             }
+        }
+        when {
+            error != null -> Text(error!!, color = Color.White, modifier = Modifier.padding(24.dp))
+            pdf == null -> CircularProgressIndicator()
         }
     }
 }
