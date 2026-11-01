@@ -414,3 +414,11 @@ Observed from the user: **visually the pinch after second tap adds only ≈5–8
 
 ### 2026-11-01 — Combined QA deferred, stage code still under validation
 - User asks one combined Samsung S23 test only after Stage5; **no unresolved file bugs are automatically closed**. Stages 2–5 PR #11–#14 in progress, CI awaiting final green status. Preserve original media, no unsafe delete/overwrite, maintain accepted UX. See `docs/PROJECT_STATUS.md` and `docs/BATCH_QA_ROADMAP_2026-11-01.md`.
+
+
+### 2026-11-01 — CI blockers discovered on 0.3.1–0.4.0 (follow-up)
+- Stage2 PR #11 Android CI `41278277820`: **build success, minified instrumentation FAIL (instrumentation process crash)**. Further diagnosis required; do not call stage complete.
+- Stage3 PR #12 Android CI `41278530210`: **build success, minified instrumentation FAIL (instrumentation process crash)**. May share Stage2 test-host/R8 issue; requires logcat and rerun.
+- Stage4 PR #13 Android CI `41278532488`: **build failure** in `RawEmbeddedJpegTest.kt:45`: test expected rejection of TIFF offset 250 with size4 in a 256-byte file, but the range was within bounds. Corrected fixture offset to 254 in commit `4cec5d1a67633f43728b623a3936ac322f74dada`; new run `41289313217` started, unverified. Its minified instrumentation also previously crashed.
+- Stage5 PR #14 Android CI `41278666989`: **build failure** in KSP Room `JsonDecodingException: Expected start of object, had EOF` during `:app:kspReleaseKotlin`, plus `MediaRepository.loadIncremental` accidentally exposed internal type `CatalogVolumeRow`. API visibility corrected in `71362261064d428a654dc568abfdf0ec32c1b155`. Stage4 test fixture corrected in parent code as `69554294c82444fe14c00d0104aa58ac4329d273`. KSP failure **NOT FIXED**; new run `41289319873` started. No verified APK.
+- **Priority P0 CI gate**; statuses are technical development test blockers, not S23-reported regressions. User requested a consolidated S23 QA only after implementing stages1–5. Never merge or issue a user-test release while these are unresolved.
