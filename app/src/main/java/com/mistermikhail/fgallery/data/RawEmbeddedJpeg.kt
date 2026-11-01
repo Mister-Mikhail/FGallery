@@ -68,11 +68,11 @@ internal object RawEmbeddedJpeg {
             else -> return null
         }
         val top = ByteBuffer.wrap(header).order(order)
-        if (top.getShort(2).toInt() and 0xffff != 42) return null
+        if ((top.getShort(2).toInt() and 0xffff) != 42) return null
         val ifd = unsignedInt(top.getInt(4))
         if (ifd > length - 2) return null
         val countBytes = read(channel, ifd, 2) ?: return null
-        val count = ByteBuffer.wrap(countBytes).order(order).short.toInt() and 0xffff
+        val count = ByteBuffer.wrap(countBytes).order(order).getShort().toInt() and 0xffff
         if (count > 4_096 || ifd + 2L + count * 12L > length) return null
         val entries = read(channel, ifd + 2L, count * 12) ?: return null
 
@@ -102,8 +102,8 @@ internal object RawEmbeddedJpeg {
                 0x0202 -> jpegSize = value
             }
         }
-        val start = jpegStart ?: if (compression == 7L) stripStart else null ?: return null
-        val size = jpegSize ?: if (compression == 7L) stripSize else null ?: return null
+        val start = (jpegStart ?: if (compression == 7L) stripStart else null) ?: return null
+        val size = (jpegSize ?: if (compression == 7L) stripSize else null) ?: return null
         // Prevent gigantic allocations from malformed TIFF offsets.
         if (start < 8L || size < 4L || size > 32L * 1024 * 1024 ||
             start > length || size > length - start) return null
