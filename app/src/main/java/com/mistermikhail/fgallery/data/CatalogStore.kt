@@ -44,6 +44,10 @@ internal object CatalogStore {
             )
         }
 
+    suspend fun priorFolders(context: Context): List<CatalogFolderRow> = withContext(Dispatchers.IO) {
+        CatalogDatabase.get(context).catalog().allFolders()
+    }
+
     suspend fun priorVolumes(context: Context): Map<String, CatalogVolumeRow> = withContext(Dispatchers.IO) {
         CatalogDatabase.get(context).catalog().allVolumes().associateBy { it.storageId }
     }
