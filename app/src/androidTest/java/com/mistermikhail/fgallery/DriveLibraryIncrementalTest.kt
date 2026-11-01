@@ -34,6 +34,26 @@ class DriveLibraryIncrementalTest {
         assertEquals(2, seen.size)
     }
 
+    @Test fun safTraversalStopsProviderCyclesWithoutCollidingAcrossAuthorities() {
+        val seen = hashSetOf<String>()
+        assertTrue(DriveLibrary.markSafDocumentVisited(
+            "com.android.externalstorage.documents", "primary:DCIM", seen,
+        ))
+        assertTrue(DriveLibrary.markSafDocumentVisited(
+            "com.android.externalstorage.documents", "primary:DCIM/sub", seen,
+        ))
+        // A provider can return an ancestor or itself as a child.
+        assertFalse(DriveLibrary.markSafDocumentVisited(
+            "com.android.externalstorage.documents", "primary:DCIM", seen,
+        ))
+        // IDs are provider-scoped: an unrelated SAF provider can use the
+        // same document ID without being incorrectly suppressed.
+        assertTrue(DriveLibrary.markSafDocumentVisited(
+            "example.cloud.provider", "primary:DCIM", seen,
+        ))
+        assertEquals(3, seen.size)
+    }
+
     @Test fun safPathMappingRejectsOpaqueProvidersWrongVolumesAndTraversal() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val root = File(context.cacheDir, "saf-mapping-root").apply { mkdirs() }
