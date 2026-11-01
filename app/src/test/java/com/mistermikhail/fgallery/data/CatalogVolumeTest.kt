@@ -5,6 +5,23 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CatalogVolumeTest {
+    @Test fun mountedUsbWithoutMediaStoreRowsRemainsInScanInventory() {
+        val ids = CatalogStore.scanStartVolumeIds(
+            mediaStoreIds = setOf("external_primary"),
+            mountedIds = setOf("external_primary", "ABCD-1234"),
+        )
+        assertEquals(setOf("external_primary", "ABCD-1234"), ids)
+        assertTrue("ABCD-1234" in ids)
+    }
+
+    @Test fun disconnectedUsbIsNotInventedByScanInventory() {
+        val ids = CatalogStore.scanStartVolumeIds(
+            mediaStoreIds = setOf("external_primary"),
+            mountedIds = setOf("external_primary"),
+        )
+        assertEquals(setOf("external_primary"), ids)
+    }
+
     @Test fun mountedEmptyVolumeStaysConnectedWithItsGeneration() {
         val atStart = CatalogVolumeRow(
             storageId = "external_primary",
