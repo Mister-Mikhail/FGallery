@@ -55,6 +55,9 @@ android {
         isMinifyEnabled = true
         isShrinkResources = true
         matchingFallbacks += listOf("release", "debug")
+        // AndroidJUnitRunner and its Kotlin-based TestStorage run in the host
+        // process; keep their Kotlin runtime calls in the minified test APK.
+        proguardFiles("minified-test-proguard.pro")
         proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
     }
     // Share debug-only test fixtures with minified instrumentation, but do NOT
