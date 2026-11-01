@@ -18,7 +18,13 @@ object MediaRename {
             val target = File(source.parentFile, newName)
             check(!target.exists()) { "Файл $newName уже существует" }
             if (StorageFolders.hasFileAccess() || (source.canWrite() && source.path.startsWith(context.filesDir.path))) {
-                check(source.renameTo(target)) { "Не удалось переименовать ${item.name}" }
+                // File.renameTo can overwrite a target created after exists().
+                // NIO move without REPLACE_EXISTING prevents that race.
+                try {
+                    java.nio.file.Files.move(source.toPath(), target.toPath())
+                } catch (e: java.nio.file.FileAlreadyExistsException) {
+                    throw IllegalStateException("Файл $newName уже существует", e)
+                }
                 MediaScannerConnection.scanFile(context, arrayOf(source.path, target.path), null, null)
                 return
             }
