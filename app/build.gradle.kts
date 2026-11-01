@@ -4,6 +4,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("androidx.baselineprofile")
 }
 
 android {
@@ -15,8 +16,8 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         minSdk = 29
         targetSdk = 35
-        versionCode = 24
-        versionName = "0.3.0"
+        versionCode = 25
+        versionName = "0.3.1"
         externalNativeBuild { cmake { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64") } }
     }
 
@@ -39,6 +40,24 @@ android {
     buildTypes.getByName("debug") {
         signingConfig = signingConfigs.getByName("debug")
     }
+
+    buildTypes.getByName("release") {
+        // Test-only signing key keeps Android update compatibility.
+        signingConfig = signingConfigs.getByName("debug")
+        isMinifyEnabled = true
+        isShrinkResources = true
+        proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+    }
+    buildTypes.create("minifiedTest") {
+        initWith(buildTypes.getByName("debug"))
+        signingConfig = signingConfigs.getByName("debug")
+        isDebuggable = true
+        isMinifyEnabled = true
+        isShrinkResources = true
+        matchingFallbacks += listOf("release", "debug")
+        proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+    }
+    testBuildType = "minifiedTest"
 
     splits {
         abi {
@@ -65,6 +84,8 @@ android {
 kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }
 
 dependencies {
+    baselineProfile(project(":baselineprofile"))
+    implementation("androidx.profileinstaller:profileinstaller:1.4.1")
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.documentfile:documentfile:1.0.1")
     implementation("androidx.activity:activity-compose:1.10.0")
@@ -102,4 +123,9 @@ dependencies {
     implementation("androidx.media3:media3-effect:1.9.3")
 
     debugImplementation("androidx.compose.ui:ui-tooling:1.9.3")
+}
+
+baselineProfile {
+    automaticGenerationDuringBuild = false
+    saveInSrc = true
 }
