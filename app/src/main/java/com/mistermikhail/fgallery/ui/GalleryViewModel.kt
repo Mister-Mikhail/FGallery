@@ -272,6 +272,7 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
             val fullSafetyScan = forceFull || CatalogStore.fullScanDue(getApplication())
             // Capture generations BEFORE scanning, so mid-scan changes cannot vanish.
             val started = runCatching { CatalogStore.captureScanStart(getApplication()) }.getOrDefault(emptyMap())
+            var scanSucceeded = true
             val normal = try {
                 val prior = runCatching { CatalogStore.priorVolumes(getApplication()) }.getOrDefault(emptyMap())
                 val media = if (_uiState.value.hasPermission)
@@ -284,7 +285,13 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
                     if (fullSafetyScan) emptyList() else _uiState.value.allItems,
                     folderSnapshot,
                 )).distinctBy { it.uriKey }
-            } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { _uiState.value.allItems.filterNot { it.uriKey in _uiState.value.physicalBinUris } }
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) {
+                // Preserve the last good Room/JSON checkpoint if a provider
+                // fails. A failed scan must never be committed as an empty
+                // library or advance MediaStore generation counters.
+                scanSucceeded = false
+                _uiState.value.allItems.filterNot { it.uriKey in _uiState.value.physicalBinUris }
+            }
             val recycled = driveBin.load()
             val items = normal + recycled
 
@@ -301,17 +308,19 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
             }
 
             val snapshot = LibrarySnapshot.Value(items, recycled.mapTo(hashSetOf()) { it.uriKey }, _uiState.value.hasPermission)
-            val roomStored = runCatching {
+            val roomStored = scanSucceeded && runCatching {
                 CatalogStore.persist(getApplication(), snapshot, started)
             }.isSuccess
             if (roomStored && fullSafetyScan) CatalogStore.recordFullScan(getApplication())
-            // JSON remains a rollback source, but not a large synchronous
-            // rewrite after every MediaStore observer notification.
-            val now = System.currentTimeMillis()
-            if (!roomStored || restoreSnapshot || now - lastJsonBackupMillis >= 5 * 60 * 1000L) {
-                runCatching { LibrarySnapshot.save(getApplication(), snapshot) }
-                lastJsonBackupMillis = now
-            } else LibrarySnapshot.remember(snapshot)
+            // A failed scan must not replace the previous JSON fallback either.
+            // Leave the last good checkpoint intact for the next retry.
+            if (scanSucceeded) {
+                val now = System.currentTimeMillis()
+                if (!roomStored || restoreSnapshot || now - lastJsonBackupMillis >= 5 * 60 * 1000L) {
+                    runCatching { LibrarySnapshot.save(getApplication(), snapshot) }
+                    lastJsonBackupMillis = now
+                } else LibrarySnapshot.remember(snapshot)
+            }
             thumbnailJob?.cancel()
             val albumCovers = items
                 .groupBy { it.album }
