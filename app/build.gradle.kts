@@ -57,6 +57,12 @@ android {
         matchingFallbacks += listOf("release", "debug")
         proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
     }
+    // Share debug-only test fixtures with minified instrumentation, but do NOT
+    // package them in the distributed release APK.
+    sourceSets.getByName("minifiedTest") {
+        java.srcDir("src/debug/java")
+        manifest.srcFile("src/debug/AndroidManifest.xml")
+    }
     testBuildType = "minifiedTest"
 
     splits {
