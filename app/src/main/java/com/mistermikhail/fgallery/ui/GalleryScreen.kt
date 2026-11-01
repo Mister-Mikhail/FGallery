@@ -908,13 +908,16 @@ private fun MediaPreview(
         if (value == null) value = ThumbnailCache.ensure(context, item)
     }
     var previewFailed by remember(item.uri) { mutableStateOf(false) }
+    // Coil must decode for the actual tile bounds, not an unconditional 960px square.
+    var tileSize by remember(item.uri) { mutableStateOf(IntSize(400, 400)) }
     var liveFailed by remember(item.uri) { mutableStateOf(false) }
     val request = ImageRequest.Builder(context)
         .data(cachedModel ?: item.uri.takeIf { item.kind == MediaKind.IMAGE && !com.mistermikhail.fgallery.data.TiffImages.isTiff(item.name, item.mimeType) })
         .memoryCacheKey("tile/${ThumbnailCache.key(item)}")
         .placeholderMemoryCacheKey("tile/${ThumbnailCache.key(item)}")
-        .size(960, 960).build()
-    Box(modifier.background(MaterialTheme.colorScheme.surfaceVariant)) {
+        .size(tileSize.width.coerceAtLeast(1), tileSize.height.coerceAtLeast(1)).build()
+    Box(modifier.onSizeChanged { if (it != tileSize) tileSize = it }
+        .background(MaterialTheme.colorScheme.surfaceVariant)) {
         AsyncImage(request, item.name, contentScale = ContentScale.Crop,
             onError = { previewFailed = true }, modifier = Modifier.fillMaxSize())
         if (item.kind == MediaKind.IMAGE &&
