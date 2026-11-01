@@ -92,28 +92,7 @@ internal object CatalogStore {
     suspend fun persist(context: Context, snapshot: LibrarySnapshot.Value,
         atScanStart: Map<String, CatalogVolumeRow> = emptyMap()) = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
-        val media = snapshot.items.map { item ->
-            CatalogMediaRow(
-                uri = item.uriKey,
-                mediaId = item.id,
-                name = item.name,
-                mimeType = item.mimeType,
-                kind = item.kind.name,
-                dateTakenMillis = item.dateTakenMillis,
-                width = item.width,
-                height = item.height,
-                durationMillis = item.durationMillis,
-                album = item.album,
-                relativePath = item.relativePath,
-                sizeBytes = item.sizeBytes,
-                dateModifiedMillis = item.dateModifiedMillis,
-                storageId = item.storageId,
-                storageName = item.storageName,
-                folderTarget = item.folderTarget,
-                sourcePath = item.sourcePath,
-                recycled = item.uriKey in snapshot.bin,
-            )
-        }
+        val media = snapshot.items.map { item -> toRow(item, item.uriKey in snapshot.bin) }
         val folders = snapshot.items
             .groupBy { it.storageId to it.folderTarget.ifBlank { it.relativePath } }
             .map { (folder, _) ->
@@ -169,7 +148,38 @@ internal object CatalogStore {
         )
     }
 
+    private fun toRow(item: MediaItem, recycled: Boolean): CatalogMediaRow =
+        CatalogMediaRow(
+            uri = item.uriKey,
+            mediaId = item.id,
+            name = item.name,
+            mimeType = item.mimeType,
+            kind = item.kind.name,
+            dateTakenMillis = item.dateTakenMillis,
+            width = item.width,
+            height = item.height,
+            durationMillis = item.durationMillis,
+            album = item.album,
+            relativePath = item.relativePath,
+            sizeBytes = item.sizeBytes,
+            dateModifiedMillis = item.dateModifiedMillis,
+            storageId = item.storageId,
+            storageName = item.storageName,
+            folderTarget = item.folderTarget,
+            sourcePath = item.sourcePath,
+            recycled = recycled,
+        )
+
+    /** Keep Room current immediately after a successful app-owned file creation.
+     * The next MediaStore/SAF reconciliation remains authoritative. */
+    suspend fun upsertItems(context: Context, items: List<MediaItem>) = withContext(Dispatchers.IO) {
+        if (items.isNotEmpty()) CatalogDatabase.get(context).catalog()
+            .applyMediaChanges(items.map { toRow(it, false) }, emptyList())
+    }
+
+    /** Remove old URI identities after a completed move or permanent deletion. */
     suspend fun removeUris(context: Context, uris: Set<String>) = withContext(Dispatchers.IO) {
-        if (uris.isNotEmpty()) CatalogDatabase.get(context).catalog().deleteMedia(uris.toList())
+        if (uris.isNotEmpty()) CatalogDatabase.get(context).catalog()
+            .applyMediaChanges(emptyList(), uris)
     }
 }
