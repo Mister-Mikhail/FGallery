@@ -3,10 +3,10 @@ name: FGallery Stage 5 Room catalogue integration
 on:
   push:
     branches:
-      - feature/fgallery-0.4.0-stage5-catalog
+      - feature/fgallery-0.4.0-integration
   pull_request:
     branches:
-      - feature/fgallery-0.3.3-stage4-raw
+      - feature/fgallery-0.4.0-integration
   workflow_dispatch:
     inputs:
       publish_qa:
