@@ -266,8 +266,13 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
             }
             _uiState.update { it.copy(isLoading = it.allItems.isEmpty()) }
 
+            // Snapshot generation counters before the scan so any change
+            // occurring during a scan is included again on the next pass.
+            val started = runCatching { CatalogStore.captureScanStart(getApplication()) }.getOrDefault(emptyMap())
             val normal = try {
-                val media = if (_uiState.value.hasPermission) repository.loadMedia() else emptyList()
+                val prior = runCatching { CatalogStore.priorVolumes(getApplication()) }.getOrDefault(emptyMap())
+                val media = if (_uiState.value.hasPermission)
+                    repository.loadIncremental(_uiState.value.allItems, prior) else emptyList()
                 val documents = DocumentLibrary(getApplication()).load()
                 (media + documents + DriveLibrary.load(getApplication(), media + documents)).distinctBy { it.uriKey }
             } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { _uiState.value.allItems.filterNot { it.uriKey in _uiState.value.physicalBinUris } }
@@ -289,7 +294,7 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
             val snapshot = LibrarySnapshot.Value(items, recycled.mapTo(hashSetOf()) { it.uriKey }, _uiState.value.hasPermission)
             // Keep JSON as fallback throughout the unaccepted Room migration.
             runCatching { LibrarySnapshot.save(getApplication(), snapshot) }
-            runCatching { CatalogStore.persist(getApplication(), snapshot) }
+            runCatching { CatalogStore.persist(getApplication(), snapshot, started) }
             thumbnailJob?.cancel()
             val albumCovers = items
                 .groupBy { it.album }
