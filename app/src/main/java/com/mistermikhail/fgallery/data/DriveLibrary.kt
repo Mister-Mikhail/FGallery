@@ -28,17 +28,50 @@ object DriveLibrary {
             if (root.id == "external_primary") folder else "${root.name} · $folder", relative, size, modified,
             root.id, root.name, parent, if (uri.scheme == "file") uri.path.orEmpty() else "")
     }
-    suspend fun load(context: Context, indexed: List<MediaItem>): List<MediaItem> = withContext(Dispatchers.IO) {
+    suspend fun load(
+        context: Context, indexed: List<MediaItem>,
+        priorFiles: List<MediaItem> = emptyList(),
+        knownFolders: List<CatalogFolderRow> = emptyList(),
+    ): List<MediaItem> = withContext(Dispatchers.IO) {
         val known = indexed.mapNotNull { StorageAccess.file(context, it)?.path }.toHashSet()
         val result = mutableListOf<MediaItem>()
+        val previous = priorFiles.filter { it.uri.scheme == "file" && it.sourcePath.isNotBlank() }
+            .groupBy { it.folderTarget }
+        val previousFolders = knownFolders.associateBy { it.key }
         if (StorageFolders.hasFileAccess()) for (root in StorageAccess.mounted(context)) {
-            root.directory?.walkTopDown()?.onEnter { it.name != "Android" && !it.name.startsWith('.') }?.forEach { file ->
+            val directory = root.directory ?: continue
+            suspend fun visit(dir: File) {
                 currentCoroutineContext().ensureActive()
-                if (file.isFile && file.path !in known) {
-                    item(Uri.fromFile(file), file.name, mime(file.name), file.length(), file.lastModified(), root, file.parent.orEmpty(),
-                        file.parentFile?.relativeTo(root.directory).toString().trim('/').let { if (it == ".") "" else "$it/" })?.let(result::add)
+                if (!dir.isDirectory || dir.name.startsWith('.') || dir.name == "Android") return
+                val entries = dir.listFiles() ?: return
+                val folderKey = "${root.id}/${dir.absolutePath}"
+                // Folder timestamps are hints only; other apps may overwrite
+                // same-name files without changing them. A full-scan safety
+                // pass runs periodically and on explicit user refresh.
+                val cached = previousFolders[folderKey]
+                if (cached != null && cached.lastModifiedMillis > 0 &&
+                    cached.lastModifiedMillis == dir.lastModified()) {
+                    result.addAll(previous[dir.absolutePath].orEmpty().filter {
+                        it.sourcePath !in known && File(it.sourcePath).isFile
+                    })
+                } else {
+                    val rel = dir.relativeTo(directory).invariantSeparatorsPath
+                        .let { if (it == ".") "" else "$it/" }
+                    for (file in entries) {
+                        currentCoroutineContext().ensureActive()
+                        if (file.isFile && file.path !in known) {
+                            item(Uri.fromFile(file), file.name, mime(file.name),
+                                file.length(), file.lastModified(), root, dir.path, rel)?.let(result::add)
+                        }
+                    }
+                }
+                // ALWAYS traverse child directories, even when parent metadata
+                // did not change (FAT/exFAT timestamps are not reliable).
+                for (child in entries) {
+                    if (child.isDirectory) visit(child)
                 }
             }
+            visit(directory)
         }
         for (root in StorageAccess.granted(context)) {
             suspend fun visit(target: String, relative: String) {
