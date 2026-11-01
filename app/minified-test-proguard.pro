@@ -30,3 +30,9 @@
 # Test build ONLY: the release APK still receives normal R8 shrinking.
 -keep class androidx.compose.runtime.** { *; }
 -keep class androidx.compose.foundation.lazy.** { *; }
+
+# Compose UI instrumentation lives in a separate APK; RootForTest and
+# semantics methods are otherwise optimized away from the host app.
+# These rules apply ONLY to minifiedTest, not the distributed release APK.
+-keep class androidx.compose.ui.node.** { *; }
+-keep class androidx.compose.ui.semantics.** { *; }
