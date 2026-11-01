@@ -22,7 +22,7 @@ class MediaRepository(private val context: Context) {
      * included again and never silently skipped. API29/limited access falls
      * back to the complete indexed query.
      */
-    suspend fun loadIncremental(
+    internal suspend fun loadIncremental(
         previous: List<MediaItem>,
         savedVolumes: Map<String, CatalogVolumeRow>,
     ): List<MediaItem> = withContext(Dispatchers.IO) {
