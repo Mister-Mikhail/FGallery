@@ -41,8 +41,11 @@ internal object CatalogStore {
             // photos in the active gallery until the volume is mounted/scanned.
             val disconnectedIds = dao.allVolumes().asSequence()
                 .filterNot { it.connected }.mapTo(hashSetOf()) { it.storageId }
-            val rows = dao.allMedia().filterNot { it.storageId in disconnectedIds }
-            if (rows.isEmpty()) return@withContext null
+            val allRows = dao.allMedia()
+            if (allRows.isEmpty()) return@withContext null // Unmigrated DB: try JSON backup.
+            // If all cached items are offline, return an intentionally empty
+            // visible snapshot; falling back to old JSON would resurrect them.
+            val rows = allRows.filterNot { it.storageId in disconnectedIds }
             val items = rows.mapNotNull { row ->
                 runCatching {
                     MediaItem(
