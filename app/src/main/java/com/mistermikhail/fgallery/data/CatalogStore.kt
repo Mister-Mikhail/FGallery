@@ -18,6 +18,18 @@ import java.io.File
 internal object CatalogStore {
     private const val PREFS = "fgallery_catalog_status"
     private const val PERMISSION_KEY = "permission_at_last_scan"
+    private const val LAST_FULL_SCAN = "last_full_safety_scan"
+
+    fun fullScanDue(context: Context): Boolean {
+        val previous = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getLong(LAST_FULL_SCAN, 0L)
+        return System.currentTimeMillis() - previous >= 24L * 60L * 60L * 1000L
+    }
+
+    fun recordFullScan(context: Context) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putLong(LAST_FULL_SCAN, System.currentTimeMillis()).apply()
+    }
 
     suspend fun restore(context: Context, hasPermission: Boolean): LibrarySnapshot.Value? =
         withContext(Dispatchers.IO) {
