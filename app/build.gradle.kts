@@ -6,6 +6,7 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
     id("androidx.baselineprofile")
     id("com.google.devtools.ksp")
+    id("androidx.room")
 }
 
 android {
@@ -144,6 +145,8 @@ baselineProfile {
     saveInSrc = true
 }
 
-ksp {
-    arg("room.schemaLocation", layout.projectDirectory.dir("schemas").asFile.absolutePath)
+// Room plugin supplies variant-isolated schema locations to each KSP task.
+// A single shared schemaLocation caused partial JSON reads during concurrent builds.
+room {
+    schemaDirectory("$projectDir/schemas")
 }
