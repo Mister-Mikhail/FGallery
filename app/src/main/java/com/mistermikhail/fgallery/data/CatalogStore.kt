@@ -119,17 +119,11 @@ internal object CatalogStore {
             }
         // Capture MediaStore counters *before* scanning, never afterward:
         // otherwise a file changed mid-scan could be silently missed.
-        val activeVolumes = snapshot.items.groupBy { it.storageId }.map { (id, items) ->
-            val start = atScanStart[id]
-            CatalogVolumeRow(
-                storageId = id,
-                displayName = items.first().storageName,
-                mediaStoreGeneration = start?.mediaStoreGeneration ?: 0L,
-                mediaStoreVersion = start?.mediaStoreVersion.orEmpty(),
-                lastScannedMillis = now,
-                connected = true,
-            )
-        }
+        val activeVolumes = activeVolumeRows(
+            snapshot.items.associate { it.storageId to it.storageName },
+            atScanStart,
+            now,
+        )
         val activeIds = activeVolumes.mapTo(hashSetOf()) { it.storageId }
         // Keep track of disconnected volumes rather than silently forgetting
         // their identities when a USB drive is unplugged.
@@ -141,6 +135,28 @@ internal object CatalogStore {
         CatalogDatabase.get(context).catalog().synchronizeSnapshot(media, folders, volumes)
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putBoolean(PERMISSION_KEY, snapshot.permission).apply()
+    }
+
+    /**
+     * A mounted, empty MediaStore volume is still connected. Previously volumes
+     * were derived only from discovered files; deleting the last photo made a
+     * mounted volume look disconnected and lost its generation checkpoint.
+     * Keep the scan-start inventory even when it has zero matching media.
+     */
+    internal fun activeVolumeRows(
+        namesFromMedia: Map<String, String>,
+        atScanStart: Map<String, CatalogVolumeRow>,
+        now: Long,
+    ): List<CatalogVolumeRow> = (atScanStart.keys + namesFromMedia.keys).map { id ->
+        val start = atScanStart[id]
+        CatalogVolumeRow(
+            storageId = id,
+            displayName = namesFromMedia[id] ?: start?.displayName ?: id,
+            mediaStoreGeneration = start?.mediaStoreGeneration ?: 0L,
+            mediaStoreVersion = start?.mediaStoreVersion.orEmpty(),
+            lastScannedMillis = now,
+            connected = true,
+        )
     }
 
     suspend fun removeUris(context: Context, uris: Set<String>) = withContext(Dispatchers.IO) {
