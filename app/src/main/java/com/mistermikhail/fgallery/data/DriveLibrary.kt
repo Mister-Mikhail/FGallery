@@ -28,6 +28,34 @@ object DriveLibrary {
             if (root.id == "external_primary") folder else "${root.name} · $folder", relative, size, modified,
             root.id, root.name, parent, if (uri.scheme == "file") uri.path.orEmpty() else "")
     }
+    /**
+     * A folder's mtime is only a hint (notably on FAT/exFAT). Even when it is
+     * unchanged, inspect the already-enumerated immediate children: a new file,
+     * rename or overwrite can otherwise be missing until the daily full scan.
+     * Reuse unchanged catalogue rows without opening or decoding media bytes.
+     */
+    internal fun reconcileUnchangedFolder(
+        entries: Array<File>,
+        known: Set<String>,
+        prior: List<MediaItem>,
+        root: StorageRoot,
+        dir: File,
+    ): List<MediaItem> {
+        val cached = prior.associateBy { it.sourcePath }
+        val rel = dir.relativeTo(root.directory ?: dir).invariantSeparatorsPath
+            .let { if (it == ".") "" else "$it/" }
+        return entries.mapNotNull { file ->
+            if (!file.isFile || file.path in known) return@mapNotNull null
+            val old = cached[file.path]
+            val size = file.length()
+            val modified = file.lastModified()
+            if (old != null && old.name == file.name &&
+                old.sizeBytes == size && old.dateModifiedMillis == modified) old
+            else item(Uri.fromFile(file), file.name, mime(file.name),
+                size, modified, root, dir.path, rel)
+        }
+    }
+
     internal suspend fun load(
         context: Context, indexed: List<MediaItem>,
         priorFiles: List<MediaItem> = emptyList(),
@@ -43,7 +71,8 @@ object DriveLibrary {
             suspend fun visit(dir: File) {
                 currentCoroutineContext().ensureActive()
                 if (!dir.isDirectory || dir.name.startsWith('.') || dir.name == "Android") return
-                val entries = dir.listFiles() ?: return
+                // An unreadable mounted folder is a failed scan, not an empty one.
+                val entries = dir.listFiles() ?: error("Не удалось прочитать папку: ${dir.path}")
                 val folderKey = "${root.id}/${dir.absolutePath}"
                 // Folder timestamps are hints only; other apps may overwrite
                 // same-name files without changing them. A full-scan safety
@@ -51,9 +80,9 @@ object DriveLibrary {
                 val cached = previousFolders[folderKey]
                 if (cached != null && cached.lastModifiedMillis > 0 &&
                     cached.lastModifiedMillis == dir.lastModified()) {
-                    result.addAll(previous[dir.absolutePath].orEmpty().filter {
-                        it.sourcePath !in known && File(it.sourcePath).isFile
-                    })
+                    result.addAll(reconcileUnchangedFolder(
+                        entries, known, previous[dir.absolutePath].orEmpty(), root, dir,
+                    ))
                 } else {
                     val rel = dir.relativeTo(directory).invariantSeparatorsPath
                         .let { if (it == ".") "" else "$it/" }
@@ -79,9 +108,12 @@ object DriveLibrary {
                 val uri = Uri.parse(target)
                 val children = DocumentsContract.buildChildDocumentsUriUsingTree(uri, DocumentsContract.getDocumentId(uri))
                 val rows = mutableListOf<Triple<String, String, String>>()
-                context.contentResolver.query(children, arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                // Null cursor means provider failure, never an empty folder.
+                val cursor = context.contentResolver.query(children, arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID,
                     DocumentsContract.Document.COLUMN_DISPLAY_NAME, DocumentsContract.Document.COLUMN_MIME_TYPE,
-                    DocumentsContract.Document.COLUMN_SIZE, DocumentsContract.Document.COLUMN_LAST_MODIFIED), null, null, null)?.use { c ->
+                    DocumentsContract.Document.COLUMN_SIZE, DocumentsContract.Document.COLUMN_LAST_MODIFIED), null, null, null)
+                    ?: error("SAF не вернул список файлов: $target")
+                cursor.use { c ->
                     while (c.moveToNext()) {
                         val name = c.getString(1).orEmpty(); if (name.startsWith('.') || name == "Android") continue
                         val id = c.getString(0); val mime = c.getString(2)
@@ -97,7 +129,14 @@ object DriveLibrary {
                 for ((child, name, _) in rows) visit(child, "$relative$name/")
             }
             // A disconnected root stays registered; it is skipped until the drive returns.
-            try { visit(root.target, "") } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { }
+            try { visit(root.target, "") }
+            catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (e: Exception) {
+                // Persisted SAF grants survive USB removal. An offline volume
+                // keeps its Room rows; a mounted provider failure aborts the
+                // scan instead of deleting its catalogue records.
+                if (StorageAccess.mounted(context).any { it.id == root.id }) throw e
+            }
         }
         result
     }
