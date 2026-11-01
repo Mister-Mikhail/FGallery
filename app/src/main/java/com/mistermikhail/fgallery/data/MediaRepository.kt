@@ -25,8 +25,9 @@ class MediaRepository(private val context: Context) {
     internal suspend fun loadIncremental(
         previous: List<MediaItem>,
         savedVolumes: Map<String, CatalogVolumeRow>,
+        forceFull: Boolean = false,
     ): List<MediaItem> = withContext(Dispatchers.IO) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R || !StorageFolders.hasFileAccess() ||
+        if (forceFull || Build.VERSION.SDK_INT < Build.VERSION_CODES.R || !StorageFolders.hasFileAccess() ||
             savedVolumes.isEmpty()) return@withContext queryMedia(trashedOnly = false)
         MediaStore.getExternalVolumeNames(context).flatMap { volume ->
             val old = savedVolumes[volume]
