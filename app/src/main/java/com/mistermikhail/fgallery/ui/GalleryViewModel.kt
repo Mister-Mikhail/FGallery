@@ -238,6 +238,11 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
             ))
         }
         viewModelScope.launch {
+            // A successful edit is visible in the durable catalogue before
+            // Android's asynchronous MediaStore scanner notices the new URI.
+            try { CatalogStore.upsertItems(getApplication(), listOf(copy)) }
+            catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (_: Exception) { /* A full scan below remains the fallback. */ }
             delay(900L) // Allow MediaStore.scanFile to include the copy before reconciling the catalogue.
             refresh()
         }
@@ -410,6 +415,9 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
     suspend fun moveToRecycleBin(items: List<MediaItem>) {
         try {
             driveBin.trash(items)
+            // The move completed; drop the original identities from Room now.
+            // A catalogue write failure must never undo or misreport a physical move.
+            runCatching { CatalogStore.removeUris(getApplication(), items.mapTo(hashSetOf()) { it.uriKey }) }
             kotlinx.coroutines.withContext(Dispatchers.Main) {
                 refreshJob?.cancel()
                 val removed = items.mapTo(hashSetOf()) { it.uriKey }
@@ -430,6 +438,7 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             driveBin.deleted(uris)
             settingsRepository.removeFromRecycleBin(uris)
+            runCatching { CatalogStore.removeUris(getApplication(), uris.toSet()) }
             refresh()
         }
     }
