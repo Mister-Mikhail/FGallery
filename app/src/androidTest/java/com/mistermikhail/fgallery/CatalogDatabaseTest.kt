@@ -124,4 +124,51 @@ class CatalogDatabaseTest {
         } finally { db.close() }
     }
 
+    @Test fun appOwnedRenameMoveAndRestoreKeepUnrelatedCatalogueRows() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val db = Room.inMemoryDatabaseBuilder(context, CatalogDatabase::class.java).build()
+        try {
+            val source = CatalogMediaRow(
+                uri = "content://media/external_primary/images/media/21",
+                mediaId = 21L, name = "original.jpg", mimeType = "image/jpeg",
+                kind = "IMAGE", dateTakenMillis = 1L, width = 100, height = 100,
+                durationMillis = 0L, album = "Camera", relativePath = "DCIM/Camera/",
+                sizeBytes = 40L, dateModifiedMillis = 1L,
+                storageId = "external_primary", storageName = "Phone",
+                folderTarget = "/phone/DCIM/Camera",
+                sourcePath = "/phone/DCIM/Camera/original.jpg",
+            )
+            val untouched = source.copy(uri = "content://media/external_primary/images/media/22",
+                mediaId = 22L, name = "other.jpg")
+            val dao = db.catalog()
+            dao.upsertMedia(listOf(source, untouched))
+
+            // MediaStore may retain the same URI on rename.
+            val renamed = source.copy(name = "renamed.jpg",
+                sourcePath = "/phone/DCIM/Camera/renamed.jpg")
+            dao.applyMediaChanges(listOf(renamed), emptyList())
+            assertEquals(renamed, dao.allMedia().single { it.uri == source.uri })
+
+            // SAF/cross-volume moves may allocate a new URI. Delete only the
+            // old identity after the physical operation has succeeded.
+            val moved = renamed.copy(
+                uri = "content://media/usb/images/media/81", mediaId = 81L,
+                storageId = "usb", storageName = "USB", album = "USB · Trip",
+                relativePath = "Trip/", folderTarget = "/usb/Trip",
+                sourcePath = "/usb/Trip/renamed.jpg",
+            )
+            dao.applyMediaChanges(listOf(moved), listOf(source.uri))
+            assertEquals(setOf(moved.uri, untouched.uri), dao.allMedia().map { it.uri }.toSet())
+
+            // Restore can allocate yet another URI. No old URI or unrelated
+            // file is deleted by the catalogue mutation.
+            val restored = source.copy(
+                uri = "content://media/external_primary/images/media/91", mediaId = 91L,
+            )
+            dao.applyMediaChanges(listOf(restored), listOf(moved.uri))
+            assertEquals(setOf(restored.uri, untouched.uri), dao.allMedia().map { it.uri }.toSet())
+            assertEquals(untouched, dao.allMedia().single { it.uri == untouched.uri })
+        } finally { db.close() }
+    }
+
 }
