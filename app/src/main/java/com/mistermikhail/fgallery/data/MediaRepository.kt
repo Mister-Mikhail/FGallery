@@ -41,7 +41,16 @@ class MediaRepository(private val context: Context) {
                     currentVersion == null || currentGeneration == null ||
                     old.mediaStoreVersion != currentVersion ||
                     currentGeneration < old.mediaStoreGeneration -> queryVolume(volume, false)
-                currentGeneration == old.mediaStoreGeneration -> indexed
+                currentGeneration == old.mediaStoreGeneration -> {
+                    // A provider can remove/soft-trash an item without a
+                    // useful modified-row delta. Reconcile cheap IDs even
+                    // when the generation counter has not advanced.
+                    val ids = runCatching { currentIds(volume) }.getOrNull()
+                        ?: return@flatMap queryVolume(volume, false)
+                    indexed.filter { item ->
+                        runCatching { ContentUris.parseId(item.uri) }.getOrNull() in ids
+                    }
+                }
                 else -> {
                     val changed = queryVolume(volume, false, old.mediaStoreGeneration)
                     val ids = runCatching { currentIds(volume) }.getOrNull()
