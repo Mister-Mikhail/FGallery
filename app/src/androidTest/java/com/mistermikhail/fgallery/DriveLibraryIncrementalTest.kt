@@ -15,6 +15,25 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class DriveLibraryIncrementalTest {
+    @Test fun safDeduplicationIsLinearAndPreservesOpaqueDocumentUris() {
+        val indexed = setOf("/storage/emulated/0/DCIM/indexed.jpg")
+        val seen = hashSetOf("/storage/emulated/0/DCIM/direct.jpg")
+        assertFalse(DriveLibrary.shouldIncludeSafPhysicalPath(
+            "/storage/emulated/0/DCIM/indexed.jpg", indexed, seen,
+        ))
+        assertFalse(DriveLibrary.shouldIncludeSafPhysicalPath(
+            "/storage/emulated/0/DCIM/direct.jpg", indexed, seen,
+        ))
+        val newPath = "/storage/usb/DCIM/unique.iiq"
+        assertTrue(DriveLibrary.shouldIncludeSafPhysicalPath(newPath, indexed, seen))
+        assertFalse(DriveLibrary.shouldIncludeSafPhysicalPath(newPath, indexed, seen))
+        // An opaque provider cannot be matched to a physical path; its
+        // document URI remains the unique catalogue identity.
+        assertTrue(DriveLibrary.shouldIncludeSafPhysicalPath(null, indexed, seen))
+        assertTrue(DriveLibrary.shouldIncludeSafPhysicalPath(null, indexed, seen))
+        assertEquals(2, seen.size)
+    }
+
     @Test fun unchangedFolderTimestampStillDetectsNewOverwrittenAndDeletedRawFiles() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val dir = File(context.cacheDir, "fgallery-folder-delta-${System.nanoTime()}")
