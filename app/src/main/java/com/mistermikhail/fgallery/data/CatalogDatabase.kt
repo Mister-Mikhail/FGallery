@@ -90,6 +90,14 @@ internal interface CatalogDao {
     @Query("DELETE FROM catalog_media WHERE uri IN (:uris)")
     suspend fun deleteMedia(uris: List<String>)
 
+    /** Apply an app-owned file operation immediately, independently of the next scan.
+     * Preserve unrelated rows and split deletes to stay under SQLite bind limits. */
+    @Transaction
+    suspend fun applyMediaChanges(upserts: List<CatalogMediaRow>, removedUris: Collection<String>) {
+        removedUris.chunked(400).forEach { deleteMedia(it) }
+        if (upserts.isNotEmpty()) upsertMedia(upserts)
+    }
+
     @Query("DELETE FROM catalog_media")
     suspend fun clearMedia()
 
