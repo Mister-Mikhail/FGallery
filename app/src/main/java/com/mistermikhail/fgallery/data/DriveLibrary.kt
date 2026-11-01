@@ -60,6 +60,15 @@ object DriveLibrary {
         }
     }
 
+    /** Null physical paths belong to opaque SAF providers: keep those URI
+     * identities, while known MediaStore and already-discovered physical
+     * paths are never inserted twice. */
+    internal fun shouldIncludeSafPhysicalPath(
+        path: String?,
+        indexedPaths: Set<String>,
+        seenPaths: MutableSet<String>,
+    ): Boolean = path == null || (path !in indexedPaths && seenPaths.add(path))
+
     internal suspend fun load(
         context: Context, indexed: List<MediaItem>,
         priorFiles: List<MediaItem> = emptyList(),
@@ -106,6 +115,11 @@ object DriveLibrary {
             }
             visit(directory)
         }
+        // Hash-based physical-path de-duplication avoids an O(N²) search
+        // through all discovered media for each SAF entry on large USB drives.
+        val seenPhysicalPaths = result.mapNotNullTo(hashSetOf()) {
+            it.sourcePath.takeIf(String::isNotBlank)
+        }
         for (root in StorageAccess.granted(context)) {
             // Resolve the physical mount once per SAF root, not once per file.
             // Large galleries can have thousands of document rows.
@@ -129,7 +143,9 @@ object DriveLibrary {
                         val path = mountedRoot?.let { File(it, id.substringAfter(':', "")).path }
                         if (mime == DocumentsContract.Document.MIME_TYPE_DIR) rows.add(Triple(child.toString(), name, mime))
                         else if (path == null || path !in known) item(child, name, mime, c.getLong(3), c.getLong(4), root, target, relative)?.let { item ->
-                            if (path == null || result.none { it.sourcePath == path }) result.add(item.copy(sourcePath = path.orEmpty()))
+                            if (shouldIncludeSafPhysicalPath(path, known, seenPhysicalPaths)) {
+                                result.add(item.copy(sourcePath = path.orEmpty()))
+                            }
                         }
                     }
                 }
