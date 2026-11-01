@@ -99,6 +99,39 @@ internal interface CatalogDao {
     @Query("DELETE FROM catalog_volumes")
     suspend fun clearVolumes()
 
+    @Query("DELETE FROM catalog_folders WHERE key IN (:keys)")
+    suspend fun deleteFolders(keys: List<String>)
+
+    @Query("DELETE FROM catalog_volumes WHERE storageId IN (:ids)")
+    suspend fun deleteVolumes(ids: List<String>)
+
+    /**
+     * Small-delta writes, still in one transaction. Never rewrite every media
+     * row after every ContentObserver event. Deletes are chunked for SQLite's
+     * bind-parameter limit.
+     */
+    @Transaction
+    suspend fun synchronizeSnapshot(
+        media: List<CatalogMediaRow>,
+        folders: List<CatalogFolderRow>,
+        volumes: List<CatalogVolumeRow>,
+    ) {
+        val oldMedia = allMedia().associateBy { it.uri }
+        val current = media.associateBy { it.uri }
+        oldMedia.keys.filterNot { it in current }.chunked(400).forEach { deleteMedia(it) }
+        upsertMedia(media.filter { oldMedia[it.uri] != it })
+
+        val oldFolders = allFolders().associateBy { it.key }
+        val currentFolders = folders.associateBy { it.key }
+        oldFolders.keys.filterNot { it in currentFolders }.chunked(400).forEach { deleteFolders(it) }
+        upsertFolders(folders.filter { oldFolders[it.key] != it })
+
+        val oldVolumes = allVolumes().associateBy { it.storageId }
+        val currentVolumes = volumes.associateBy { it.storageId }
+        oldVolumes.keys.filterNot { it in currentVolumes }.chunked(400).forEach { deleteVolumes(it) }
+        upsertVolumes(volumes.filter { oldVolumes[it.storageId] != it })
+    }
+
     @Transaction
     suspend fun replaceSnapshot(
         media: List<CatalogMediaRow>,
