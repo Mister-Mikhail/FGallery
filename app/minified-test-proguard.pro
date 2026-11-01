@@ -40,3 +40,10 @@
 # Compose UI tests invoke LayoutInfo, ImageBitmapKt and other UI ABI
 # from their separate APK; keep the whole Compose UI namespace here only.
 -keep class androidx.compose.ui.** { *; }
+
+# AndroidTest is compiled and installed as a separate, UNMINIFIED APK.
+# It calls public and Kotlin default-argument Compose APIs through a binary
+# boundary invisible to the app's R8 analysis. Keep those APIs in the
+# minifiedTest HOST ONLY. Production release remains fully R8-minified.
+# This supersedes the piecemeal rules above (Snapshot, LayoutInfo, RootForTest).
+-keep class androidx.compose.** { *; }
