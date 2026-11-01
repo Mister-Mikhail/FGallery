@@ -7,6 +7,9 @@ import android.media.MediaMetadataRetriever
 import android.util.Size
 import androidx.exifinterface.media.ExifInterface
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import java.util.concurrent.ConcurrentHashMap
@@ -15,58 +18,142 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicBoolean
 
 object ThumbnailCache {
-    private const val DIRECTORY = "fgallery_thumbnails_v3"
-    private const val FAST_EDGE_PX = 720
+    private const val DIRECTORY = "fgallery_thumbnails_v4"
+    private const val OLD_DIRECTORY = "fgallery_thumbnails_v3"
+    private const val FAST_EDGE_PX = 400
     private const val HIGH_EDGE_PX = 1920
+    private const val FAST_LIMIT = 500L * 1024L * 1024L
+    private const val HIGH_LIMIT = 1024L * 1024L * 1024L
     private val generationLocks = ConcurrentHashMap<String, Mutex>()
-    private val decoders = Semaphore(2)
+    private val foregroundDecoders = Semaphore(3)
+    private val backgroundDecoders = Semaphore(1)
+    private val userBusy = AtomicBoolean(false)
+    fun setUserBusy(busy: Boolean) {
+        userBusy.set(busy)
+        lastForegroundRequest.set(System.currentTimeMillis())
+    }
+    private val foregroundDemand = AtomicInteger()
+    private val lastForegroundRequest = AtomicLong()
+    private val migrationStarted = AtomicBoolean()
+    private val completedWrites = AtomicInteger()
+
 
     fun key(item: MediaItem): String {
         val source = item.sourcePath.ifBlank { if (item.uri.scheme == "file") item.uri.path.orEmpty() else item.uriKey }
         return "${item.kind}/${StorageAccess.stableId(source)}/${item.dateModifiedMillis}/${item.sizeBytes}"
     }
 
+    internal fun posterFormat(item: MediaItem): Bitmap.CompressFormat =
+        // Preserve alpha in vector, PNG/WEBP and animated GIF posters.
+        if (item.kind == MediaKind.RAW || item.kind == MediaKind.SVG || item.kind == MediaKind.PDF ||
+            item.name.endsWith(".png", true) || item.name.endsWith(".webp", true) ||
+            item.name.endsWith(".gif", true)) Bitmap.CompressFormat.PNG
+        else Bitmap.CompressFormat.JPEG
+
     fun fileFor(context: Context, item: MediaItem, highQuality: Boolean = false): File {
         val version = item.dateModifiedMillis.takeIf { it > 0L } ?: item.dateTakenMillis
-        val tier = if (highQuality) "hq" else "fast"
-        return File(File(context.cacheDir, DIRECTORY), "${StorageAccess.stableId(key(item))}_${version}_${tier}.png")
+        val tier = if (highQuality) "hq" else "micro"
+        val suffix = if (posterFormat(item) == Bitmap.CompressFormat.JPEG) "jpg" else "png"
+        return File(File(File(context.cacheDir, DIRECTORY), tier),
+            "${StorageAccess.stableId(key(item))}_${version}.$suffix")
     }
 
     suspend fun preload(context: Context, items: List<MediaItem>, highQuality: Boolean = false): Int =
         withContext(Dispatchers.IO) {
+            migrateOldCache(context)
             var generated = 0
-            items.forEach { if (ensure(context, it, highQuality) != null) generated++ }
+            for (item in items) {
+                currentCoroutineContext().ensureActive()
+                if (ensure(context, item, highQuality, background = true) != null) generated++
+            }
             generated
         }
 
-    suspend fun ensure(context: Context, item: MediaItem, highQuality: Boolean = false): File? =
-        withContext(Dispatchers.IO) {
-            val target = fileFor(context, item, highQuality)
-            if (target.exists() && target.length() > 0L) return@withContext target
-            generationLocks.getOrPut(target.path) { Mutex() }.withLock {
-                decoders.withPermit {
-                val target = fileFor(context, item, highQuality)
-                if (target.exists() && target.length() > 0L) return@withPermit target
-                target.parentFile?.mkdirs()
-                val edge = if (highQuality) HIGH_EDGE_PX else FAST_EDGE_PX
-                val bitmap = runCatching { decode(context, item, edge) }.getOrNull()
-                    ?: return@withPermit null
-                val temp = File.createTempFile("preview_", ".tmp", target.parentFile)
-                try {
-                    check(TiffNative.writeBitmapPng(bitmap, temp.absolutePath))
-                    check(temp.renameTo(target))
-                    target
-                } catch (_: Exception) {
-                    null
-                } finally {
-                    temp.delete()
-                    bitmap.recycle()
-                }
+    suspend fun ensure(
+        context: Context,
+        item: MediaItem,
+        highQuality: Boolean = false,
+        background: Boolean = false,
+    ): File? = withContext(Dispatchers.IO) {
+        val target = fileFor(context, item, highQuality)
+        if (target.isFile && target.length() > 0L) {
+            target.setLastModified(System.currentTimeMillis())
+            return@withContext target
+        }
+        if (!background) {
+            foregroundDemand.incrementAndGet()
+            lastForegroundRequest.set(System.currentTimeMillis())
+        }
+        try {
+            // Wait BEFORE acquiring the per-file mutex: otherwise a pending
+            // visible request for the same file could deadlock behind background.
+            if (background) {
+                while (userBusy.get() || foregroundDemand.get() > 0 ||
+                    System.currentTimeMillis() - lastForegroundRequest.get() < 1_500L) {
+                    currentCoroutineContext().ensureActive()
+                    delay(80L)
                 }
             }
+            val semaphore = if (background) backgroundDecoders else foregroundDecoders
+            generationLocks.getOrPut(target.path) { Mutex() }.withLock {
+                if (target.isFile && target.length() > 0L) return@withLock target
+                semaphore.withPermit {
+                    if (target.isFile && target.length() > 0L) return@withPermit target
+                    target.parentFile?.mkdirs()
+                    val edge = if (highQuality) HIGH_EDGE_PX else FAST_EDGE_PX
+                    val bitmap = runCatching { decode(context, item, edge) }.getOrNull()
+                        ?: return@withPermit null
+                    val temp = File.createTempFile("preview_", ".tmp", target.parentFile)
+                    try {
+                        FileOutputStream(temp).use { output ->
+                            check(bitmap.compress(posterFormat(item), if (highQuality) 90 else 85, output))
+                            output.fd.sync()
+                        }
+                        check(temp.length() > 0L)
+                        check(temp.renameTo(target)) { "Не удалось сохранить миниатюру" }
+                        if (completedWrites.incrementAndGet() % 64 == 0) trimCache(context, highQuality)
+                        target
+                    } catch (_: Exception) {
+                        null
+                    } finally {
+                        temp.delete()
+                        bitmap.recycle()
+                    }
+                }
+            }
+        } finally {
+            if (!background) {
+                foregroundDemand.decrementAndGet()
+                lastForegroundRequest.set(System.currentTimeMillis())
+            }
         }
+    }
+
+    private fun migrateOldCache(context: Context) {
+        if (migrationStarted.compareAndSet(false, true)) {
+            // Only background preloading invokes this; don't delay the first tile.
+            File(context.cacheDir, OLD_DIRECTORY).deleteRecursively()
+        }
+    }
+
+    private fun trimCache(context: Context, highQuality: Boolean) {
+        val tier = if (highQuality) "hq" else "micro"
+        val dir = File(File(context.cacheDir, DIRECTORY), tier)
+        val limit = if (highQuality) HIGH_LIMIT else FAST_LIMIT
+        val candidates = dir.listFiles()?.filter { it.isFile && !it.name.endsWith(".tmp") }
+            ?.sortedBy { it.lastModified() } ?: return
+        var total = candidates.sumOf { it.length() }
+        for (file in candidates) {
+            if (total <= limit) break
+            val bytes = file.length()
+            if (file.delete()) total -= bytes
+        }
+    }
 
     fun cached(context: Context, item: MediaItem): File? =
         fileFor(context, item, true).takeIf { it.exists() && it.length() > 0 }
