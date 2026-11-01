@@ -44,7 +44,27 @@ internal object CatalogStore {
             )
         }
 
-    suspend fun persist(context: Context, snapshot: LibrarySnapshot.Value) = withContext(Dispatchers.IO) {
+    suspend fun priorVolumes(context: Context): Map<String, CatalogVolumeRow> = withContext(Dispatchers.IO) {
+        CatalogDatabase.get(context).catalog().allVolumes().associateBy { it.storageId }
+    }
+
+    suspend fun captureScanStart(context: Context): Map<String, CatalogVolumeRow> =
+        withContext(Dispatchers.IO) {
+            runCatching { MediaStore.getExternalVolumeNames(context) }.getOrDefault(emptySet()).associateWith { volume ->
+                CatalogVolumeRow(
+                    storageId = volume,
+                    displayName = volume,
+                    mediaStoreGeneration = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
+                        runCatching { MediaStore.getGeneration(context, volume) }.getOrDefault(0L) else 0L,
+                    mediaStoreVersion = runCatching { MediaStore.getVersion(context, volume) }.getOrDefault(""),
+                    lastScannedMillis = System.currentTimeMillis(),
+                    connected = true,
+                )
+            }
+        }
+
+    suspend fun persist(context: Context, snapshot: LibrarySnapshot.Value,
+        atScanStart: Map<String, CatalogVolumeRow> = emptyMap()) = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
         val media = snapshot.items.map { item ->
             CatalogMediaRow(
@@ -81,19 +101,25 @@ internal object CatalogStore {
                     lastScannedMillis = now,
                 )
             }
-        val volumes = snapshot.items.groupBy { it.storageId }.map { (id, items) ->
-            val generation = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
-                runCatching { MediaStore.getGeneration(context, id) }.getOrDefault(0L) else 0L
-            val version = runCatching { MediaStore.getVersion(context, id) }.getOrDefault("")
+        // Capture MediaStore counters *before* scanning, never afterward:
+        // otherwise a file changed mid-scan could be silently missed.
+        val activeVolumes = snapshot.items.groupBy { it.storageId }.map { (id, items) ->
+            val start = atScanStart[id]
             CatalogVolumeRow(
                 storageId = id,
                 displayName = items.first().storageName,
-                mediaStoreGeneration = generation,
-                mediaStoreVersion = version,
+                mediaStoreGeneration = start?.mediaStoreGeneration ?: 0L,
+                mediaStoreVersion = start?.mediaStoreVersion.orEmpty(),
                 lastScannedMillis = now,
                 connected = true,
             )
         }
+        val activeIds = activeVolumes.mapTo(hashSetOf()) { it.storageId }
+        // Keep track of disconnected volumes rather than silently forgetting
+        // their identities when a USB drive is unplugged.
+        val disconnected = CatalogDatabase.get(context).catalog().allVolumes()
+            .filterNot { it.storageId in activeIds }.map { it.copy(connected = false) }
+        val volumes = disconnected + activeVolumes
         // Room transaction either commits the entire snapshot or leaves the
         // prior catalogue unchanged. Never use destructive fallback migrations.
         CatalogDatabase.get(context).catalog().replaceSnapshot(media, folders, volumes)
