@@ -41,10 +41,12 @@ internal object CatalogStore {
             // photos in the active gallery until the volume is mounted/scanned.
             val disconnectedIds = dao.allVolumes().asSequence()
                 .filterNot { it.connected }.mapTo(hashSetOf()) { it.storageId }
+            // PERMISSION_KEY is written only after a successful Room sync,
+            // so an empty Room table is a valid empty gallery, not a migration
+            // failure. Falling back to older JSON would resurrect deleted media.
             val allRows = dao.allMedia()
-            if (allRows.isEmpty()) return@withContext null // Unmigrated DB: try JSON backup.
-            // If all cached items are offline, return an intentionally empty
-            // visible snapshot; falling back to old JSON would resurrect them.
+            // If all cached items are offline, likewise return an intentionally
+            // empty visible snapshot instead of resurrecting them from JSON.
             val rows = allRows.filterNot { it.storageId in disconnectedIds }
             val items = rows.mapNotNull { row ->
                 runCatching {
