@@ -8,6 +8,12 @@ on:
     branches:
       - feature/fgallery-0.3.3-stage4-raw
   workflow_dispatch:
+    inputs:
+      publish_qa:
+        description: "Publish one immutable QA prerelease after Stage 1–5 are ready"
+        required: true
+        type: boolean
+        default: false
 
 concurrency:
   group: fgallery-stage5-${{ github.ref }}
@@ -89,7 +95,10 @@ jobs:
           path: app/build/reports/androidTests/connected/
 
   publish-qa:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/feature/fgallery-0.4.0-stage5-catalog'
+    # Ordinary pushes only test/build and upload run artifacts. An immutable
+    # QA tag is created ONCE, explicitly, after the consolidated test pack is
+    # ready; otherwise every fix after build28 fails against the old QA tag.
+    if: github.event_name == 'workflow_dispatch' && inputs.publish_qa == true && github.ref == 'refs/heads/feature/fgallery-0.4.0-stage5-catalog'
     needs: [r8-build, r8-device-tests]
     runs-on: ubuntu-latest
     permissions:
