@@ -251,7 +251,7 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
         refresh()
     }
 
-    fun refresh() {
+    fun refresh(forceFull: Boolean = false) {
         refreshJob?.cancel()
         val restoreSnapshot = !snapshotRestored
         snapshotRestored = true
@@ -267,18 +267,22 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
             }
             _uiState.update { it.copy(isLoading = it.allItems.isEmpty()) }
 
-            // Snapshot generation counters before the scan so any change
-            // occurring during a scan is included again on the next pass.
+            // The grid stays usable from Room while a daily/explicit full
+            // safety reconciliation runs on the I/O dispatcher.
+            val fullSafetyScan = forceFull || CatalogStore.fullScanDue(getApplication())
+            // Capture generations BEFORE scanning, so mid-scan changes cannot vanish.
             val started = runCatching { CatalogStore.captureScanStart(getApplication()) }.getOrDefault(emptyMap())
             val normal = try {
                 val prior = runCatching { CatalogStore.priorVolumes(getApplication()) }.getOrDefault(emptyMap())
                 val media = if (_uiState.value.hasPermission)
-                    repository.loadIncremental(_uiState.value.allItems, prior) else emptyList()
+                    repository.loadIncremental(_uiState.value.allItems, prior, fullSafetyScan) else emptyList()
                 val documents = DocumentLibrary(getApplication()).load()
-                val folderSnapshot = runCatching { CatalogStore.priorFolders(getApplication()) }.getOrDefault(emptyList())
+                val folderSnapshot = if (fullSafetyScan) emptyList()
+                    else runCatching { CatalogStore.priorFolders(getApplication()) }.getOrDefault(emptyList())
                 (media + documents + DriveLibrary.load(
                     getApplication(), media + documents,
-                    _uiState.value.allItems, folderSnapshot,
+                    if (fullSafetyScan) emptyList() else _uiState.value.allItems,
+                    folderSnapshot,
                 )).distinctBy { it.uriKey }
             } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { _uiState.value.allItems.filterNot { it.uriKey in _uiState.value.physicalBinUris } }
             val recycled = driveBin.load()
@@ -300,6 +304,7 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
             val roomStored = runCatching {
                 CatalogStore.persist(getApplication(), snapshot, started)
             }.isSuccess
+            if (roomStored && fullSafetyScan) CatalogStore.recordFullScan(getApplication())
             // JSON remains a rollback source, but not a large synchronous
             // rewrite after every MediaStore observer notification.
             val now = System.currentTimeMillis()
