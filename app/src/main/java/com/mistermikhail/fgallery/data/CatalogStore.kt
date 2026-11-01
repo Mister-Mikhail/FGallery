@@ -126,7 +126,7 @@ internal object CatalogStore {
         val volumes = disconnected + activeVolumes
         // Room transaction either commits the entire snapshot or leaves the
         // prior catalogue unchanged. Never use destructive fallback migrations.
-        CatalogDatabase.get(context).catalog().replaceSnapshot(media, folders, volumes)
+        CatalogDatabase.get(context).catalog().synchronizeSnapshot(media, folders, volumes)
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putBoolean(PERMISSION_KEY, snapshot.permission).apply()
     }
