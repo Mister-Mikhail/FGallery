@@ -18,3 +18,7 @@
 
 # Test source references public/internal Compose entrypoints and Kotlin bridges.
 -keep class com.mistermikhail.fgallery.ui.** { *; }
+
+# Crop instrumented tests invoke a debug-only host from an unminified test APK.
+-keep class com.mistermikhail.fgallery.CropTestHostActivity** { *; }
+-keep class com.mistermikhail.fgallery.TestDriveProvider** { *; }
