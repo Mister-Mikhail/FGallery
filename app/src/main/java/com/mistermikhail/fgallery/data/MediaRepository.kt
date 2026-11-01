@@ -65,7 +65,24 @@ class MediaRepository(private val context: Context) {
         val ids = HashSet<Long>()
         // Exclude Android's trashed rows. A trashed MediaStore ID must not
         // keep an older, untrashed catalogue entry alive.
+        // The ID set must use the SAME gallery eligibility filter as
+        // queryVolume(). Otherwise a RAW renamed to .txt retains its ID in
+        // MediaStore.Files and survives incremental reconciliation as a ghost.
+        val extensions = if (StorageFolders.hasFileAccess())
+            RAW_EXTENSIONS + listOf(".tif", ".tiff") else emptyList()
+        val selection = buildString {
+            append("${MediaStore.Files.FileColumns.MEDIA_TYPE}=? OR ${MediaStore.Files.FileColumns.MEDIA_TYPE}=?")
+            extensions.forEach {
+                append(" OR LOWER(${MediaStore.MediaColumns.DISPLAY_NAME}) LIKE ?")
+            }
+        }
+        val args = arrayOf(
+            MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString(),
+            MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString(),
+        ) + extensions.map { "%$it" }.toTypedArray()
         val queryArgs = Bundle().apply {
+            putString(ContentResolver.QUERY_ARG_SQL_SELECTION, "($selection)")
+            putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS, args)
             putInt(MediaStore.QUERY_ARG_MATCH_TRASHED, MediaStore.MATCH_EXCLUDE)
         }
         context.contentResolver.query(
