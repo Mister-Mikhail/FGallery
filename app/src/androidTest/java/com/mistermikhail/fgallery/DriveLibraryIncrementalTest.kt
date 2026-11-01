@@ -84,6 +84,34 @@ class DriveLibraryIncrementalTest {
         }
     }
 
+    @Test fun physicalTraversalStaysInsideMountAndRejectsCanonicalAliases() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val base = File(context.cacheDir, "fgallery-mount-safety-${System.nanoTime()}")
+        val root = File(base, "mount")
+        val child = File(root, "DCIM")
+        val outside = File(base, "outside")
+        try {
+            assertTrue(child.mkdirs())
+            assertTrue(outside.mkdirs())
+            val visited = hashSetOf<String>()
+            assertTrue(DriveLibrary.markPhysicalDirectoryVisited(root, root, visited))
+            assertTrue(DriveLibrary.markPhysicalDirectoryVisited(root, child, visited))
+            assertFalse(DriveLibrary.markPhysicalDirectoryVisited(root, child, visited))
+            // A path containing '..' resolves to a previously visited root.
+            assertFalse(DriveLibrary.markPhysicalDirectoryVisited(
+                root, File(child, ".."), visited,
+            ))
+            // A mounted provider must never scan a sibling directory.
+            assertFalse(DriveLibrary.markPhysicalDirectoryVisited(root, outside, visited))
+            assertFalse(DriveLibrary.markPhysicalDirectoryVisited(
+                root, File(root, "../outside"), visited,
+            ))
+            assertEquals(2, visited.size)
+        } finally {
+            base.deleteRecursively()
+        }
+    }
+
     @Test fun unchangedFolderTimestampStillDetectsNewOverwrittenAndDeletedRawFiles() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val dir = File(context.cacheDir, "fgallery-folder-delta-${System.nanoTime()}")
