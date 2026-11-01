@@ -624,6 +624,14 @@ internal fun TiledZoomableImage(
     var imageFailed by remember(item.uri, item.dateModifiedMillis, item.sizeBytes) { mutableStateOf(false) }
     var fullSource by remember(item.uri, item.dateModifiedMillis, item.sizeBytes) { mutableStateOf(com.mistermikhail.fgallery.data.FullResolutionFiles.cached(context, item)) }
     var fullDecoded by remember(item.uri, item.dateModifiedMillis, item.sizeBytes) { mutableStateOf(false) }
+    // Early camera JPEG keeps the viewer responsive while LibRaw decodes.
+    var cameraSource by remember(item.uri, item.dateModifiedMillis, item.sizeBytes) {
+        mutableStateOf(
+            if (item.kind == MediaKind.RAW)
+                com.mistermikhail.fgallery.data.RawEmbeddedJpeg.cached(context, item)
+            else null,
+        )
+    }
     var fullError by remember(item.uri, item.dateModifiedMillis, item.sizeBytes) { mutableStateOf<String?>(null) }
     val needsFullSource = item.kind == MediaKind.RAW || com.mistermikhail.fgallery.data.TiffImages.isTiff(item.name, item.mimeType)
     var cachedPreview by remember(item.uri, item.dateModifiedMillis, item.sizeBytes) {
@@ -632,6 +640,13 @@ internal fun TiledZoomableImage(
     LaunchedEffect(item.uri, item.dateModifiedMillis, item.sizeBytes, active) {
         if (needsFullSource && active && fullSource == null) {
             try {
+                if (item.kind == MediaKind.RAW && cameraSource == null) {
+                    // Safe optional acceleration. Unrecognized RAW continues
+                    // through the existing full-resolution LibRaw decoder.
+                    cameraSource = runCatching {
+                        com.mistermikhail.fgallery.data.RawEmbeddedJpeg.extract(context, item)
+                    }.getOrNull()
+                }
                 if (cachedPreview == null) cachedPreview = ThumbnailCache.ensure(context, item)
                 if (cachedPreview == null && item.kind == MediaKind.RAW) {
                     cachedPreview = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
@@ -681,7 +696,7 @@ internal fun TiledZoomableImage(
                 return@DoubleClickToZoomListener
             }
 
-            if ((needsFullSource && !fullDecoded) || !imageState.isImageDisplayed || !state.contentTransformation.isSpecified) return@DoubleClickToZoomListener
+            if ((needsFullSource && !fullDecoded && cameraSource == null) || !imageState.isImageDisplayed || !state.contentTransformation.isSpecified) return@DoubleClickToZoomListener
             val transformation = state.contentTransformation
             val fit = maxOf(transformation.scaleMetadata.initialScale.scaleX, transformation.scaleMetadata.initialScale.scaleY)
             // Second double taps must not be silently discarded while the first zoom
@@ -710,7 +725,7 @@ internal fun TiledZoomableImage(
         }
 
         ZoomableAsyncImage(
-            model = coil3.request.ImageRequest.Builder(context).data(fullSource ?: if (needsFullSource) cachedPreview else if (imageFailed && cachedPreview != null) cachedPreview else item.uri)
+            model = coil3.request.ImageRequest.Builder(context).data(fullSource ?: cameraSource ?: if (needsFullSource) cachedPreview else if (imageFailed && cachedPreview != null) cachedPreview else item.uri)
                 .memoryCacheKey("${item.uri}/${item.dateModifiedMillis}/${if (fullSource != null) "full" else if (imageFailed || needsFullSource) "fallback" else "source"}")
                 .listener(onError = { _, _ -> imageFailed = true }, onSuccess = { request, _ -> if (fullSource != null && request.data == fullSource) fullDecoded = true })
                 .build(),
@@ -725,7 +740,7 @@ internal fun TiledZoomableImage(
                 val initial = zoomableState.contentTransformation.scaleMetadata.initialScale
                 val fit = maxOf(initial.scaleX, initial.scaleY)
                 this[ViewerZoomRange] = fit to maxOf(8f, fit * 8f)
-                this[ViewerImageReady] = imageState.isImageDisplayed && (!needsFullSource || fullDecoded)
+                this[ViewerImageReady] = imageState.isImageDisplayed && (!needsFullSource || fullDecoded || cameraSource != null)
             }.testTag("viewer-image"),
         )
         if (imageFailed && cachedPreview == null) Text("Не удалось открыть изображение. Формат может не поддерживаться декодером устройства.", color = Color.White, modifier = Modifier.padding(24.dp))
