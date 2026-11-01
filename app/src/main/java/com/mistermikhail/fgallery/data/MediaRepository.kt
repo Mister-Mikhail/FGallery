@@ -42,9 +42,20 @@ class MediaRepository(private val context: Context) {
                     old.mediaStoreVersion != currentVersion ||
                     currentGeneration < old.mediaStoreGeneration -> queryVolume(volume, false)
                 currentGeneration == old.mediaStoreGeneration -> {
-                    // Some providers do not advance generation for metadata edits.
-                    // Re-query to avoid retaining stale names, paths and sizes.
-                    queryVolume(volume, false)
+                    // A cheap ID check catches deletions/trashed rows without
+                    // re-reading every metadata column on each observer event.
+                    // If the provider adds IDs without advancing generation,
+                    // fall back to a full volume query. The daily safety scan
+                    // catches same-ID metadata edits on nonconforming providers.
+                    val ids = runCatching { currentIds(volume) }.getOrNull()
+                        ?: return@flatMap queryVolume(volume, false)
+                    val previousIds = indexed.mapNotNull {
+                        runCatching { ContentUris.parseId(it.uri) }.getOrNull()
+                    }.toSet()
+                    if (hasNewMediaStoreIds(ids, previousIds)) queryVolume(volume, false)
+                    else indexed.filter {
+                        runCatching { ContentUris.parseId(it.uri) }.getOrNull() in ids
+                    }
                 }
                 else -> {
                     val changed = queryVolume(volume, false, old.mediaStoreGeneration)
@@ -250,3 +261,7 @@ class MediaRepository(private val context: Context) {
     }
 }
 
+
+/** A stalled generation counter with new IDs requires a full volume read. */
+internal fun hasNewMediaStoreIds(currentIds: Set<Long>, previousIds: Set<Long>): Boolean =
+    currentIds.any { it !in previousIds }
