@@ -51,6 +51,11 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
+          name: FGallery-0.4.0-R8-universal
+          path: app/build/outputs/apk/release/app-universal-release.apk
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
           name: FGallery-0.4.0-R8-mapping
           path: app/build/outputs/mapping/release/mapping.txt
 
@@ -82,3 +87,56 @@ jobs:
         with:
           name: FGallery-0.4.0-R8-instrumentation
           path: app/build/reports/androidTests/connected/
+
+  publish-qa:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/feature/fgallery-0.4.0-stage5-catalog'
+    needs: [r8-build, r8-device-tests]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: FGallery-0.4.0-R8-*
+          path: artifacts
+      - name: Publish immutable QA prerelease (not stable)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version=$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts)
+          code=$(sed -n 's/.*versionCode = \([0-9][0-9]*\).*/\1/p' app/build.gradle.kts)
+          test "$version" = "0.4.0"
+          test -n "$code"
+          tag="qa-v$version-b$code"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            existing_sha=$(gh api "repos/$GITHUB_REPOSITORY/commits/$tag" --jq '.sha')
+            if [[ "$existing_sha" != "$GITHUB_SHA" ]]; then
+              echo "Immutable QA tag $tag already belongs to $existing_sha; increment versionCode."
+              exit 1
+            fi
+            echo "QA prerelease $tag already exists for this exact source"
+            exit 0
+          fi
+          arm64="FGallery-$version-b$code-arm64-v8a.apk"
+          universal="FGallery-$version-b$code-universal.apk"
+          cp artifacts/FGallery-0.4.0-R8-arm64/app-arm64-v8a-release.apk "$arm64"
+          cp artifacts/FGallery-0.4.0-R8-universal/app-universal-release.apk "$universal"
+          arm64_sha=$(sha256sum "$arm64" | cut -d' ' -f1)
+          universal_sha=$(sha256sum "$universal" | cut -d' ' -f1)
+          {
+            echo "FGallery 0.4.0 build $code — TEST ONLY. Not a stable production release."
+            echo "Exact source SHA: $GITHUB_SHA"
+            echo "Signed with existing TEST certificate, SHA256: ce2293752c0a4a8c844caff57fa3bc28ee9206e927ad311dbcf3a5e71c803eb2."
+            echo "R8 build, unit checks, Android 16 instrumented tests: passed. Galaxy S23 physical acceptance: pending."
+            echo "Includes all unmerged code stages 1–5; APK install-over on Samsung S23 remains an acceptance item."
+            echo ""
+            echo "FGALLERY_VERSION_CODE=$code"
+            echo "FGALLERY_SHA256_ARM64=$arm64_sha"
+            echo "FGALLERY_SHA256_UNIVERSAL=$universal_sha"
+          } > qa-notes.md
+          gh release create "$tag" "$arm64" "$universal" --target "$GITHUB_SHA" \
+            --title "FGallery $version build $code — Stage 1–5 QA" \
+            --notes-file qa-notes.md --prerelease
