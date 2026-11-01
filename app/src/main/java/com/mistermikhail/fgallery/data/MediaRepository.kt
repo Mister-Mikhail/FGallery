@@ -36,7 +36,7 @@ class MediaRepository(private val context: Context) {
                 it.storageId == volume && it.uri.authority == MediaStore.AUTHORITY
             }
             when {
-                old == null || old.mediaStoreGeneration <= 0L ||
+                old == null || old.mediaStoreGeneration <= 0L || indexed.isEmpty() ||
                     currentVersion == null || currentGeneration == null ||
                     old.mediaStoreVersion != currentVersion ||
                     currentGeneration < old.mediaStoreGeneration -> queryVolume(volume, false)
@@ -58,9 +58,14 @@ class MediaRepository(private val context: Context) {
 
     private fun currentIds(volume: String): Set<Long> {
         val ids = HashSet<Long>()
+        // Exclude Android's trashed rows. A trashed MediaStore ID must not
+        // keep an older, untrashed catalogue entry alive.
+        val queryArgs = Bundle().apply {
+            putInt(MediaStore.QUERY_ARG_MATCH_TRASHED, MediaStore.MATCH_EXCLUDE)
+        }
         context.contentResolver.query(
             MediaStore.Files.getContentUri(volume),
-            arrayOf(MediaStore.Files.FileColumns._ID), null, null, null,
+            arrayOf(MediaStore.Files.FileColumns._ID), queryArgs, null,
         )?.use { cursor ->
             val col = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns._ID)
             while (cursor.moveToNext()) ids.add(cursor.getLong(col))
