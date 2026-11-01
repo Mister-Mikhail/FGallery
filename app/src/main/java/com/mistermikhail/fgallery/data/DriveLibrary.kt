@@ -28,7 +28,7 @@ object DriveLibrary {
             if (root.id == "external_primary") folder else "${root.name} · $folder", relative, size, modified,
             root.id, root.name, parent, if (uri.scheme == "file") uri.path.orEmpty() else "")
     }
-    suspend fun load(
+    internal suspend fun load(
         context: Context, indexed: List<MediaItem>,
         priorFiles: List<MediaItem> = emptyList(),
         knownFolders: List<CatalogFolderRow> = emptyList(),
