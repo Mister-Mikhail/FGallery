@@ -96,6 +96,21 @@ object DriveLibrary {
         }.getOrNull()
     }
 
+    /** A removable volume can expose aliases/symlinks. Stay within the
+     * canonical mount and never traverse a directory twice. */
+    internal fun markPhysicalDirectoryVisited(
+        root: File,
+        candidate: File,
+        seen: MutableSet<String>,
+    ): Boolean {
+        if (!candidate.isDirectory) return false
+        return runCatching {
+            val mount = root.canonicalPath
+            val path = candidate.canonicalPath
+            (path == mount || path.startsWith(mount + File.separator)) && seen.add(path)
+        }.getOrDefault(false)
+    }
+
     /** Avoid SAF providers that expose the same document through multiple
      * parents (or accidentally report a directory as its own child).
      * Document IDs are only unique within their provider authority.
@@ -118,9 +133,11 @@ object DriveLibrary {
         val previousFolders = knownFolders.associateBy { it.key }
         if (StorageFolders.hasFileAccess()) for (root in StorageAccess.mounted(context)) {
             val directory = root.directory ?: continue
+            val visitedPhysicalDirectories = hashSetOf<String>()
             suspend fun visit(dir: File) {
                 currentCoroutineContext().ensureActive()
-                if (!dir.isDirectory || dir.name.startsWith('.') || dir.name == "Android") return
+                if (dir.name.startsWith('.') || dir.name == "Android" ||
+                    !markPhysicalDirectoryVisited(directory, dir, visitedPhysicalDirectories)) return
                 // An unreadable mounted folder is a failed scan, not an empty one.
                 val entries = dir.listFiles() ?: error("Не удалось прочитать папку: ${dir.path}")
                 val folderKey = "${root.id}/${dir.absolutePath}"
@@ -210,15 +227,22 @@ object DriveLibrary {
         for (root in StorageAccess.roots(context)) {
             if (root.directory != null) {
                 if (!StorageFolders.hasFileAccess()) continue
-                root.directory.walkTopDown().onEnter { it.name != "Android" && !it.name.startsWith('.') }.filter { it.isDirectory }.forEach {
+                val visitedPhysicalDirectories = hashSetOf<String>()
+                root.directory.walkTopDown().onEnter {
+                    it.name != "Android" && !it.name.startsWith('.') &&
+                        markPhysicalDirectoryVisited(root.directory, it, visitedPhysicalDirectories)
+                }.filter { it.isDirectory }.forEach {
                     currentCoroutineContext().ensureActive()
                     result.add(StorageFolder(it.path, if (it == root.directory) root.name else "${root.name} · ${it.relativeTo(root.directory)}", root.id))
                 }
             } else {
+                val visitedSafDocuments = hashSetOf<String>()
                 suspend fun visit(target: String, relative: String) {
                     currentCoroutineContext().ensureActive()
                     val uri = Uri.parse(target)
-                    if (!androidx.documentfile.provider.DocumentFile.fromSingleUri(context, uri)!!.exists()) return
+                    if (!markSafDocumentVisited(uri.authority,
+                            DocumentsContract.getDocumentId(uri), visitedSafDocuments)) return
+                    if (androidx.documentfile.provider.DocumentFile.fromSingleUri(context, uri)?.exists() != true) return
                     result.add(StorageFolder(target, if (relative.isEmpty()) root.name else "${root.name} · $relative", root.id))
                     for ((name, child) in StorageAccess.children(context, target)) {
                         if (name.startsWith('.') || name == "Android") continue
