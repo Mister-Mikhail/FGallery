@@ -5,6 +5,8 @@ plugins {
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
     id("androidx.baselineprofile")
+    id("com.google.devtools.ksp")
+    id("androidx.room")
 }
 
 android {
@@ -16,8 +18,8 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         minSdk = 29
         targetSdk = 35
-        versionCode = 27
-        versionName = "0.3.3"
+        versionCode = 28
+        versionName = "0.4.0"
         externalNativeBuild { cmake { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64") } }
     }
 
@@ -93,6 +95,9 @@ android {
 kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }
 
 dependencies {
+    implementation("androidx.room:room-runtime:2.8.5")
+    implementation("androidx.room:room-ktx:2.8.5")
+    ksp("androidx.room:room-compiler:2.8.5")
     baselineProfile(project(":baselineprofile"))
     implementation("androidx.profileinstaller:profileinstaller:1.4.1")
     implementation("androidx.core:core-ktx:1.15.0")
@@ -138,4 +143,10 @@ dependencies {
 baselineProfile {
     automaticGenerationDuringBuild = false
     saveInSrc = true
+}
+
+// Room plugin supplies variant-isolated schema locations to each KSP task.
+// A single shared schemaLocation caused partial JSON reads during concurrent builds.
+room {
+    schemaDirectory("$projectDir/schemas")
 }

@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.mistermikhail.fgallery.data.LibrarySnapshot
+import com.mistermikhail.fgallery.data.CatalogStore
 import com.mistermikhail.fgallery.data.DriveLibrary
 import com.mistermikhail.fgallery.data.DriveRecycleBin
 import com.mistermikhail.fgallery.data.DocumentLibrary
@@ -67,6 +68,7 @@ data class GalleryUiState(
 
 class GalleryViewModel(application: Application) : AndroidViewModel(application) {
     private val driveBin = DriveRecycleBin(application)
+    private var lastJsonBackupMillis: Long = 0L
     private var thumbnailJob: kotlinx.coroutines.Job? = null
     private var albumWarmJob: kotlinx.coroutines.Job? = null
     private var refreshJob: kotlinx.coroutines.Job? = null
@@ -249,13 +251,15 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
         refresh()
     }
 
-    fun refresh() {
+    fun refresh(forceFull: Boolean = false) {
         refreshJob?.cancel()
         val restoreSnapshot = !snapshotRestored
         snapshotRestored = true
         refreshJob = viewModelScope.launch(Dispatchers.IO) {
             if (restoreSnapshot && _uiState.value.allItems.isEmpty()) {
-                LibrarySnapshot.load(getApplication(), _uiState.value.hasPermission)?.let { saved ->
+                (runCatching {
+                    CatalogStore.restore(getApplication(), _uiState.value.hasPermission)
+                }.getOrNull() ?: LibrarySnapshot.load(getApplication(), _uiState.value.hasPermission))?.let { saved ->
                     withContext(Dispatchers.Main) {
                         _uiState.update { derive(it.copy(allItems = saved.items, physicalBinUris = saved.bin)) }
                     }
@@ -263,10 +267,23 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
             }
             _uiState.update { it.copy(isLoading = it.allItems.isEmpty()) }
 
+            // The grid stays usable from Room while a daily/explicit full
+            // safety reconciliation runs on the I/O dispatcher.
+            val fullSafetyScan = forceFull || CatalogStore.fullScanDue(getApplication())
+            // Capture generations BEFORE scanning, so mid-scan changes cannot vanish.
+            val started = runCatching { CatalogStore.captureScanStart(getApplication()) }.getOrDefault(emptyMap())
             val normal = try {
-                val media = if (_uiState.value.hasPermission) repository.loadMedia() else emptyList()
+                val prior = runCatching { CatalogStore.priorVolumes(getApplication()) }.getOrDefault(emptyMap())
+                val media = if (_uiState.value.hasPermission)
+                    repository.loadIncremental(_uiState.value.allItems, prior, fullSafetyScan) else emptyList()
                 val documents = DocumentLibrary(getApplication()).load()
-                (media + documents + DriveLibrary.load(getApplication(), media + documents)).distinctBy { it.uriKey }
+                val folderSnapshot = if (fullSafetyScan) emptyList()
+                    else runCatching { CatalogStore.priorFolders(getApplication()) }.getOrDefault(emptyList())
+                (media + documents + DriveLibrary.load(
+                    getApplication(), media + documents,
+                    if (fullSafetyScan) emptyList() else _uiState.value.allItems,
+                    folderSnapshot,
+                )).distinctBy { it.uriKey }
             } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { _uiState.value.allItems.filterNot { it.uriKey in _uiState.value.physicalBinUris } }
             val recycled = driveBin.load()
             val items = normal + recycled
@@ -283,7 +300,18 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
                 }
             }
 
-            runCatching { LibrarySnapshot.save(getApplication(), LibrarySnapshot.Value(items, recycled.mapTo(hashSetOf()) { it.uriKey }, _uiState.value.hasPermission)) }
+            val snapshot = LibrarySnapshot.Value(items, recycled.mapTo(hashSetOf()) { it.uriKey }, _uiState.value.hasPermission)
+            val roomStored = runCatching {
+                CatalogStore.persist(getApplication(), snapshot, started)
+            }.isSuccess
+            if (roomStored && fullSafetyScan) CatalogStore.recordFullScan(getApplication())
+            // JSON remains a rollback source, but not a large synchronous
+            // rewrite after every MediaStore observer notification.
+            val now = System.currentTimeMillis()
+            if (!roomStored || restoreSnapshot || now - lastJsonBackupMillis >= 5 * 60 * 1000L) {
+                runCatching { LibrarySnapshot.save(getApplication(), snapshot) }
+                lastJsonBackupMillis = now
+            } else LibrarySnapshot.remember(snapshot)
             thumbnailJob?.cancel()
             val albumCovers = items
                 .groupBy { it.album }

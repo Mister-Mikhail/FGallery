@@ -1106,7 +1106,7 @@ class MainActivity : ComponentActivity() {
                     state = state,
                     onRequestPermission = ::requestMediaAccess,
                     limitedMediaAccess = hasLimitedMediaPermission(),
-                    onRefresh = viewModel::refresh,
+                    onRefresh = { viewModel.refresh(forceFull = true) },
                     onAddStorage = { storagePickerLauncher.launch(null) },
                     onImportDocuments = { documentsLauncher.launch(arrayOf("application/pdf", "image/svg+xml", "image/tiff", "image/x-tiff")) },
                     onManageFileAccess = { openFileAccessSettings() },
