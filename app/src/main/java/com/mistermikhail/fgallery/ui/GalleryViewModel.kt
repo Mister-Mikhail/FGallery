@@ -274,7 +274,11 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
                 val media = if (_uiState.value.hasPermission)
                     repository.loadIncremental(_uiState.value.allItems, prior) else emptyList()
                 val documents = DocumentLibrary(getApplication()).load()
-                (media + documents + DriveLibrary.load(getApplication(), media + documents)).distinctBy { it.uriKey }
+                val folderSnapshot = runCatching { CatalogStore.priorFolders(getApplication()) }.getOrDefault(emptyList())
+                (media + documents + DriveLibrary.load(
+                    getApplication(), media + documents,
+                    _uiState.value.allItems, folderSnapshot,
+                )).distinctBy { it.uriKey }
             } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { _uiState.value.allItems.filterNot { it.uriKey in _uiState.value.physicalBinUris } }
             val recycled = driveBin.load()
             val items = normal + recycled
