@@ -97,7 +97,7 @@ jobs:
           path: app/build/reports/androidTests/connected/
 
   publish-test-update:
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/feature/quickpic-masonry-mvp' || github.ref == 'refs/heads/feature/fgallery-0.2.9-s23-qa' || startsWith(github.ref, 'refs/tags/v'))
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/feature/quickpic-masonry-mvp' || github.ref == 'refs/heads/feature/fgallery-0.2.9-s23-qa' || github.ref == 'refs/heads/feature/fgallery-0.3.0-stage1' || startsWith(github.ref, 'refs/tags/v'))
     needs: [build, device-tests]
     runs-on: ubuntu-latest
     permissions:
@@ -116,6 +116,53 @@ jobs:
         run: |
           declared_version=$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts)
           version_tag="v$declared_version"
+          # Stage 1 is still a draft PR. Publish immutable, non-latest QA releases
+          # so S23 testers can download a direct APK without ChatGPT Library.
+          if [[ "$BUILD_REF" == "refs/heads/feature/fgallery-0.3.0-stage1" ]]; then
+            declared_code=$(sed -n 's/.*versionCode = \([0-9][0-9]*\).*/\1/p' app/build.gradle.kts)
+            test -n "$declared_code"
+            qa_tag="qa-v$declared_version-b$declared_code"
+            if gh release view "$qa_tag" >/dev/null 2>&1; then
+              released_sha=$(gh api "repos/$GITHUB_REPOSITORY/commits/$qa_tag" --jq '.sha')
+              if [[ "$released_sha" != "$BUILD_SHA" ]]; then
+                # A documentation-only follow-up must not mutate an already
+                # published binary/tag. A real code change needs new versionCode.
+                changed=$(gh api "repos/$GITHUB_REPOSITORY/compare/$released_sha...$BUILD_SHA" --jq '.files[].filename')
+                while IFS= read -r item; do
+                  case "$item" in docs/*|AGENTS.md) ;; *)
+                    echo "QA build $qa_tag belongs to $released_sha; increment versionCode before changing app code ($item)."
+                    exit 1 ;;
+                  esac
+                done <<< "$changed"
+                echo "Documentation-only HEAD; QA release stays at its tested source SHA $released_sha"
+                exit 0
+              fi
+              echo "QA release $qa_tag already exists at tested SHA $BUILD_SHA"
+              exit 0
+            fi
+            arm64="FGallery-$declared_version-b$declared_code-arm64-v8a.apk"
+            universal="FGallery-$declared_version-b$declared_code-universal.apk"
+            cp artifacts/FGallery-debug/app-arm64-v8a-debug.apk "$arm64"
+            cp artifacts/FGallery-universal/app-universal-debug.apk "$universal"
+            arm64_sha=$(sha256sum "$arm64" | cut -d' ' -f1)
+            universal_sha=$(sha256sum "$universal" | cut -d' ' -f1)
+            {
+              echo "FGallery $declared_version build $declared_code — TEST ONLY, not a stable release."
+              echo "Test APKs are signed with the existing shared public debug key."
+              echo "Source commit: $BUILD_SHA. Android CI build, signature and emulator checks passed."
+              echo "Physical Galaxy S23 / Android 16 acceptance is still pending."
+              echo ""
+              echo "FGALLERY_VERSION_CODE=$declared_code"
+              echo "FGALLERY_SHA256_ARM64=$arm64_sha"
+              echo "FGALLERY_SHA256_UNIVERSAL=$universal_sha"
+            } > qa-release-notes.md
+            gh release create "$qa_tag" "$arm64" "$universal" \
+              --target "$BUILD_SHA" \
+              --title "FGallery $declared_version build $declared_code (QA)" \
+              --notes-file qa-release-notes.md \
+              --prerelease
+            exit 0
+          fi
           if [[ "$BUILD_REF" == refs/tags/* ]]; then test "$BUILD_REF" = "refs/tags/$version_tag"; fi
           cp artifacts/FGallery-debug/app-arm64-v8a-debug.apk "FGallery-$declared_version-arm64-v8a.apk"
           cp artifacts/FGallery-universal/app-universal-debug.apk "FGallery-$declared_version-universal.apk"
