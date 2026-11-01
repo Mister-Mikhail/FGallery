@@ -22,3 +22,11 @@
 # Crop instrumented tests invoke a debug-only host from an unminified test APK.
 -keep class com.mistermikhail.fgallery.CropTestHostActivity** { *; }
 -keep class com.mistermikhail.fgallery.TestDriveProvider** { *; }
+
+# Instrumentation test bytecode lives in its own APK. The app shrinker
+# otherwise erases Compose runtime/lazy methods invoked only by that APK
+# (Snapshot.hasPendingChanges, LazyListScope.items$default), producing
+# NoSuchMethodError and a false minified-instrumentation failure.
+# Test build ONLY: the release APK still receives normal R8 shrinking.
+-keep class androidx.compose.runtime.** { *; }
+-keep class androidx.compose.foundation.lazy.** { *; }
