@@ -95,4 +95,33 @@ class CatalogDatabaseTest {
             assertTrue(dao.allVolumes().single { it.storageId == "usb" }.connected)
         } finally { db.close() }
     }
+    @Test fun directFileChangesUpdateOnlyAffectedRowsAndChunkLargeDeletes() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val db = Room.inMemoryDatabaseBuilder(context, CatalogDatabase::class.java).build()
+        try {
+            val template = CatalogMediaRow(
+                uri = "content://media/external_primary/images/media/1",
+                mediaId = 1, name = "photo.jpg", mimeType = "image/jpeg",
+                kind = "IMAGE", dateTakenMillis = 1L, width = 100, height = 100,
+                durationMillis = 0L, album = "DCIM", relativePath = "DCIM/",
+                sizeBytes = 50L, dateModifiedMillis = 1L,
+                storageId = "external_primary", storageName = "Phone",
+                folderTarget = "/phone/DCIM", sourcePath = "/phone/DCIM/photo.jpg",
+            )
+            val existing = (1..450).map { id ->
+                template.copy(uri = "content://media/external_primary/images/media/$id", mediaId = id.toLong())
+            }
+            val dao = db.catalog()
+            dao.upsertMedia(existing)
+            val created = template.copy(uri = "content://media/external_primary/images/media/451",
+                mediaId = 451, name = "edited.jpg")
+            dao.applyMediaChanges(listOf(created), existing.take(449).map { it.uri })
+            assertEquals(setOf(existing.last().uri, created.uri), dao.allMedia().map { it.uri }.toSet())
+            assertEquals("edited.jpg", dao.allMedia().single { it.uri == created.uri }.name)
+            // A repeated delete is safe and never removes unrelated originals.
+            dao.applyMediaChanges(emptyList(), existing.take(449).map { it.uri })
+            assertEquals(2, dao.allMedia().size)
+        } finally { db.close() }
+    }
+
 }
