@@ -40,7 +40,7 @@ class RawEmbeddedJpegTest {
     }
 
     @Test fun uncompressedOrOutOfBoundsOffsetsAreRejected() {
-        for (file in listOf(tiff(compression = 1), tiff(size = 1000), tiff(offset = 250))) {
+        for (file in listOf(tiff(compression = 1), tiff(size = 1000), tiff(offset = 254))) {
             try {
                 assertNull(RandomAccessFile(file, "r").use { RawEmbeddedJpeg.locate(it.channel) })
             } finally { file.delete() }
