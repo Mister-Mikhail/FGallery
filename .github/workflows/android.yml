@@ -23,6 +23,8 @@ concurrency:
 
 jobs:
   build:
+    # Integration branch uses android-stage5.yml (R8 + Android 16) instead.
+    if: github.head_ref != 'feature/fgallery-0.4.0-integration'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -64,6 +66,8 @@ jobs:
           path: app/build/outputs/apk/debug/app-universal-debug.apk
 
   device-tests:
+    # Debug instrumentation task is not defined for the integration variant.
+    if: github.head_ref != 'feature/fgallery-0.4.0-integration'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
