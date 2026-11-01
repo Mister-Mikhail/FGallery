@@ -34,6 +34,36 @@ class DriveLibraryIncrementalTest {
         assertEquals(2, seen.size)
     }
 
+    @Test fun safPathMappingRejectsOpaqueProvidersWrongVolumesAndTraversal() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val root = File(context.cacheDir, "saf-mapping-root").apply { mkdirs() }
+        val external = Uri.parse("content://com.android.externalstorage.documents/tree/primary%3A")
+        val cloud = Uri.parse("content://example.cloud.provider/tree/primary%3A")
+        try {
+            val expected = File(root, "DCIM/frame.dng").canonicalPath
+            assertEquals(expected, DriveLibrary.trustedSafPhysicalPath(
+                root, external, "primary:DCIM/frame.dng", "external_primary",
+            ))
+            assertEquals(null, DriveLibrary.trustedSafPhysicalPath(
+                root, cloud, "primary:DCIM/frame.dng", "external_primary",
+            ))
+            assertEquals(null, DriveLibrary.trustedSafPhysicalPath(
+                root, external, "ABCD-1234:DCIM/frame.dng", "external_primary",
+            ))
+            assertEquals(null, DriveLibrary.trustedSafPhysicalPath(
+                root, external, "primary:../../outside.dng", "external_primary",
+            ))
+            assertEquals(null, DriveLibrary.trustedSafPhysicalPath(
+                root, external, "opaque-id-without-volume", "external_primary",
+            ))
+            assertEquals(null, DriveLibrary.trustedSafPhysicalPath(
+                null, external, "primary:DCIM/frame.dng", "external_primary",
+            ))
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
     @Test fun unchangedFolderTimestampStillDetectsNewOverwrittenAndDeletedRawFiles() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val dir = File(context.cacheDir, "fgallery-folder-delta-${System.nanoTime()}")
