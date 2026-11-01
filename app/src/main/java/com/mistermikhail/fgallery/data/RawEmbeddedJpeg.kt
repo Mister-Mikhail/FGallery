@@ -4,6 +4,13 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
+import androidx.exifinterface.media.ExifInterface
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import java.io.File
+import java.io.FileOutputStream
 import java.io.FileInputStream
 import java.io.RandomAccessFile
 import java.nio.ByteBuffer
@@ -30,6 +37,62 @@ internal object RawEmbeddedJpeg {
             }
         }
     }.getOrNull()
+
+    /** Extract camera JPEG without recompressing its pixels.
+     * Writes only under app cache; never opens the RAW for writing.
+     * Ensures orientation is embedded as JPEG EXIF metadata.
+     */
+    suspend fun extract(context: Context, item: MediaItem): File? = withContext(Dispatchers.IO) {
+        val dir = File(context.cacheDir, "camera_raw_jpeg_v1").apply { mkdirs() }
+        val target = File(dir, "${StorageAccess.stableId(ThumbnailCache.key(item))}.jpg")
+        if (target.isFile && target.length() > 0L) return@withContext target
+        runCatching {
+            val direct = StorageAccess.file(context, item)?.takeIf { it.isFile && it.canRead() }
+            if (direct != null) {
+                RandomAccessFile(direct, "r").use { extractFromChannel(it.channel, target) }
+            } else {
+                context.contentResolver.openFileDescriptor(item.uri, "r")?.use { fd ->
+                    FileInputStream(fd.fileDescriptor).use { extractFromChannel(it.channel, target) }
+                }
+            }
+        }.getOrNull()
+    }
+
+    private suspend fun extractFromChannel(channel: FileChannel, target: File): File? {
+        val slice = locate(channel) ?: return null
+        val temp = File.createTempFile("camera_", ".tmp", target.parentFile)
+        try {
+            FileOutputStream(temp).use { output ->
+                var offset = slice.offset
+                var remaining = slice.length.toLong()
+                val buffer = ByteBuffer.allocate(128 * 1024)
+                while (remaining > 0) {
+                    currentCoroutineContext().ensureActive()
+                    buffer.clear()
+                    buffer.limit(minOf(buffer.capacity().toLong(), remaining).toInt())
+                    val n = channel.read(buffer, offset)
+                    if (n <= 0) return null
+                    output.write(buffer.array(), 0, n)
+                    remaining -= n
+                    offset += n
+                }
+                output.fd.sync()
+            }
+            val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeFile(temp.absolutePath, opts)
+            if (opts.outWidth <= 0 || opts.outHeight <= 0) return null
+            if (slice.orientation in 2..8) {
+                // ExifInterface writes metadata only; pixel bytes are not decoded
+                // and recompressed, preserving camera JPEG quality.
+                ExifInterface(temp.absolutePath).apply {
+                    setAttribute(ExifInterface.TAG_ORIENTATION, slice.orientation.toString())
+                    saveAttributes()
+                }
+            }
+            check(temp.renameTo(target))
+            return target
+        } finally { temp.delete() }
+    }
 
     private fun readPreview(channel: FileChannel, edge: Int): Bitmap? {
         val slice = locate(channel) ?: return null
