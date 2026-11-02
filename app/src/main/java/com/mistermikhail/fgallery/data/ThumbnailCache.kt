@@ -7,6 +7,11 @@ import android.media.MediaMetadataRetriever
 import android.util.Size
 import androidx.exifinterface.media.ExifInterface
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -79,8 +84,9 @@ object ThumbnailCache {
     }
 
     internal fun posterFormat(item: MediaItem): Bitmap.CompressFormat =
-        // Preserve alpha in vector, PNG/WEBP and animated GIF posters.
-        if (item.kind == MediaKind.RAW || item.kind == MediaKind.SVG || item.kind == MediaKind.PDF ||
+        // Camera RAW is opaque: use a compact JPEG, not a costly PNG.
+        // Preserve alpha only in vector, PNG/WEBP and animated GIF posters.
+        if (item.kind == MediaKind.SVG || item.kind == MediaKind.PDF ||
             item.name.endsWith(".png", true) || item.name.endsWith(".webp", true) ||
             item.name.endsWith(".gif", true)) Bitmap.CompressFormat.PNG
         else Bitmap.CompressFormat.JPEG
@@ -209,12 +215,21 @@ object ThumbnailCache {
         MediaKind.IMAGE, MediaKind.RAW ->
             if (TiffImages.isTiff(item.name, item.mimeType)) TiffImages.decode(context, item.uri, edge)
             else (if (item.kind == MediaKind.RAW) RawEmbeddedJpeg.preview(context, item, edge) else null)
-                ?: runCatching { context.contentResolver.loadThumbnail(item.uri, Size(edge, edge), null) }
-                    .getOrNull() ?: embeddedPreview(context, item)
-                    ?: if (item.kind == MediaKind.RAW) rawPreview(context, item) else sampled(context, item, edge)
+                // Android's platform thumbnail provider often attempts an expensive
+                // full decode of proprietary IIQ/3FR/FFF files before failing.
+                // Prefer the camera JPEG or our bounded LibRaw fallback instead.
+                ?: (if (item.kind == MediaKind.RAW && skipPlatformRawThumbnail(item.name)) null
+                    else runCatching { context.contentResolver.loadThumbnail(item.uri, Size(edge, edge), null) }.getOrNull())
+                ?: embeddedPreview(context, item)
+                ?: if (item.kind == MediaKind.RAW) rawPreview(context, item) else sampled(context, item, edge)
     }
 
     }
+
+    internal fun skipPlatformRawThumbnail(name: String): Boolean =
+        name.endsWith(".iiq", ignoreCase = true) ||
+            name.endsWith(".3fr", ignoreCase = true) ||
+            name.endsWith(".fff", ignoreCase = true)
 
     private fun embeddedPreview(context: Context, item: MediaItem): Bitmap? = runCatching {
         context.contentResolver.openInputStream(item.uri)?.use { input ->
@@ -260,11 +275,36 @@ object ThumbnailCache {
                 raw.setHalfSize(true); raw.setQuality(0)
                 raw.setCameraWhiteBalance(true)
                 raw.setOutputColorSpace(com.homesoft.photo.libraw.LibRaw.COLORSPACE_SRGB)
-                if (raw.open(input.path) != 0 || raw.dcrawProcess() != 0) return@use null
-                raw.getMutableBitmap(Bitmap.Config.ARGB_8888)?.let { bitmap ->
-                    val scale = minOf(1f, FAST_EDGE_PX.toFloat() / maxOf(bitmap.width, bitmap.height))
-                    Bitmap.createScaledBitmap(bitmap, (bitmap.width * scale).toInt().coerceAtLeast(1), (bitmap.height * scale).toInt().coerceAtLeast(1), true)
-                        .also { if (it !== bitmap) bitmap.recycle() }
+                if (raw.open(input.path) != 0) return@use null
+                // Native dcrawProcess is synchronous. On a cancelled tile,
+                // signal LibRaw rather than keeping the decoder occupied after
+                // the user has scrolled away (same pattern as full RAW decode).
+                coroutineScope {
+                    val cancelDecode = launch(Dispatchers.Default) {
+                        try { awaitCancellation() } finally { raw.setCancelFlag() }
+                    }
+                    try {
+                        if (raw.dcrawProcess() != 0) return@coroutineScope null
+                        currentCoroutineContext().ensureActive()
+                        raw.getMutableBitmap(Bitmap.Config.ARGB_8888)?.let { bitmap ->
+                            if (maxOf(bitmap.width, bitmap.height) <= FAST_EDGE_PX) bitmap
+                            else {
+                                val scale = FAST_EDGE_PX.toFloat() / maxOf(bitmap.width, bitmap.height)
+                                try {
+                                    Bitmap.createScaledBitmap(
+                                        bitmap,
+                                        (bitmap.width * scale).toInt().coerceAtLeast(1),
+                                        (bitmap.height * scale).toInt().coerceAtLeast(1),
+                                        true,
+                                    )
+                                } finally {
+                                    bitmap.recycle()
+                                }
+                            }
+                        }
+                    } finally {
+                        withContext(NonCancellable) { cancelDecode.cancelAndJoin() }
+                    }
                 }
             }
         } finally { if (direct == null) input.delete() }
