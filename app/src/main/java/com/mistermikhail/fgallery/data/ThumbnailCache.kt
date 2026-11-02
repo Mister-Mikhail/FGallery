@@ -280,7 +280,7 @@ object ThumbnailCache {
         return context.contentResolver.openInputStream(item.uri)?.use { BitmapFactory.decodeStream(it, null, options) }
     }
 
-    suspend fun rawPreview(context: Context, item: MediaItem): Bitmap? = RawDecodeGate.mutex.withLock {
+    suspend fun rawPreview(context: Context, item: MediaItem): Bitmap? {
         val direct = StorageAccess.file(context, item)?.takeIf { it.isFile && it.canRead() }
         val input = direct ?: File.createTempFile("raw_preview_", ".bin", context.cacheDir)
         try {
@@ -296,9 +296,12 @@ object ThumbnailCache {
                         destination.write(buffer, 0, count)
                     }
                 }
-            } ?: return@withLock null
+            } ?: return null
             currentCoroutineContext().ensureActive()
-            return@withLock com.homesoft.photo.libraw.LibRaw().use { raw ->
+            // Copy SAF data before taking the global native decoder lock. A slow
+            // provider must not block RAW decoding for other visible tiles.
+            return RawDecodeGate.mutex.withLock {
+                com.homesoft.photo.libraw.LibRaw().use { raw ->
                 raw.setHalfSize(true); raw.setQuality(0)
                 raw.setCameraWhiteBalance(true)
                 raw.setOutputColorSpace(com.homesoft.photo.libraw.LibRaw.COLORSPACE_SRGB)
@@ -332,6 +335,7 @@ object ThumbnailCache {
                     } finally {
                         withContext(NonCancellable) { cancelDecode.cancelAndJoin() }
                     }
+                }
                 }
             }
         } finally { if (direct == null) input.delete() }
