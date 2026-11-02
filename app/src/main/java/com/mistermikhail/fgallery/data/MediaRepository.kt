@@ -79,7 +79,7 @@ class MediaRepository(private val context: Context) {
         }
     }
 
-    private fun currentIds(volume: String): Set<Long> {
+    private suspend fun currentIds(volume: String): Set<Long> {
         val ids = HashSet<Long>()
         // Exclude Android's trashed rows. A trashed MediaStore ID must not
         // keep an older, untrashed catalogue entry alive.
@@ -108,7 +108,11 @@ class MediaRepository(private val context: Context) {
             arrayOf(MediaStore.Files.FileColumns._ID), queryArgs, null,
         )?.use { cursor ->
             val col = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns._ID)
-            while (cursor.moveToNext()) ids.add(cursor.getLong(col))
+            var seen = 0
+            while (cursor.moveToNext()) {
+                if (++seen % 128 == 0) currentCoroutineContext().ensureActive()
+                ids.add(cursor.getLong(col))
+            }
         } ?: error("Не удалось проверить удалённые MediaStore ID")
         return ids
     }
