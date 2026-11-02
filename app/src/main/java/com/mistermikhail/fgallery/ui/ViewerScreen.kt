@@ -689,7 +689,12 @@ internal fun TiledZoomableImage(
                             minOf(bounds.outWidth, bounds.outHeight) >= shortest * 0.9
                     }
                 }
-                if (cachedPreview == null) cachedPreview = ThumbnailCache.ensure(context, item)
+                // Display the extracted camera JPEG immediately. Generating a
+                // separate RAW thumbnail here used to demosaic the entire RAW
+                // before the viewer could show an already available JPEG.
+                if (cachedPreview == null) {
+                    cachedPreview = cameraSource ?: ThumbnailCache.ensure(context, item)
+                }
                 if (cachedPreview == null && item.kind == MediaKind.RAW) {
                     cachedPreview = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                         ThumbnailCache.rawPreview(context, item)?.let { bitmap ->
