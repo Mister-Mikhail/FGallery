@@ -193,7 +193,9 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
                     key = key,
                     cover = cover,
                     count = items.size,
-                    newestDateMillis = items.maxOfOrNull { it.dateTakenMillis } ?: 0L,
+                    // Sort albums by the newest file timestamp, never the folder timestamp.
+                    // Prefer whichever is newer: capture/creation or last modification.
+                    newestDateMillis = items.maxOfOrNull { maxOf(it.dateTakenMillis, it.dateModifiedMillis) } ?: 0L,
                     totalSizeBytes = items.sumOf { it.sizeBytes },
                 )
             }
