@@ -234,7 +234,7 @@ internal object CatalogStore {
             // Verify the cached edge fingerprint before trusting the grouping.
             val edge = stableRead(row, DuplicateFingerprints::quick) ?: continue
             if (edge != row.quickHash) {
-                dao.setQuickHash(row.uri, row.sizeBytes, row.dateModifiedMillis, edge)
+                if (dao.setQuickHash(row.uri, row.sizeBytes, row.dateModifiedMillis, edge) > 0) advanced = true
                 continue
             }
             stableRead(row, DuplicateFingerprints::full)?.let { digest ->
