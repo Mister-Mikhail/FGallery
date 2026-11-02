@@ -11,6 +11,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.Locale
 
+/** MediaStore and filesystem mtimes can disagree after external edits.
+ * Preserve the newest valid modification time for album sorting and cache keys. */
+internal fun effectiveModifiedTimestamp(providerMillis: Long, fileMillis: Long): Long =
+    maxOf(providerMillis, fileMillis, 0L)
+
 class MediaRepository(private val context: Context) {
     suspend fun loadMedia(): List<MediaItem> = withContext(Dispatchers.IO) {
         queryMedia(trashedOnly = false)
@@ -210,6 +215,9 @@ class MediaRepository(private val context: Context) {
                     }
                     val taken = it.getLong(takenC)
                     val added = it.getLong(addedC) * 1000L
+                    val providerModified = it.getLong(modifiedC) * 1000L
+                    val fileModified = if (StorageFolders.hasFileAccess() && sourcePath.isNotBlank())
+                        java.io.File(sourcePath).lastModified() else 0L
 
                     val itemCollection =
                         if (mediaType == MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO) {
@@ -234,7 +242,7 @@ class MediaRepository(private val context: Context) {
                             album = it.getString(albumC).orEmpty().ifBlank { "Без альбома" }.let { name -> if (volume == "external_primary") name else "${root.name} · $name" },
                             relativePath = it.getString(pathC).orEmpty(),
                             sizeBytes = it.getLong(sizeC),
-                            dateModifiedMillis = if (StorageFolders.hasFileAccess() && sourcePath.isNotBlank()) java.io.File(sourcePath).lastModified() else it.getLong(modifiedC) * 1000L,
+                            dateModifiedMillis = effectiveModifiedTimestamp(providerModified, fileModified),
                             storageId = volume, storageName = root.name, sourcePath = it.getString(dataC).orEmpty(),
                             folderTarget = it.getString(dataC)?.let { path -> java.io.File(path).parent }.orEmpty(),
                         )
