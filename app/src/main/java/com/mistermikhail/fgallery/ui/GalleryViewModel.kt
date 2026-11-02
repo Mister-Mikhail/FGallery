@@ -490,6 +490,12 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
     suspend fun restoreFromRecycleBin(items: List<MediaItem>) {
         try {
             driveBin.restore(items)
+            // A successful restore changes the URI identity. Remove the old
+            // bin entry immediately; refresh() will index the restored URI.
+            // Never delete the catalogue entry before the physical move succeeds.
+            runCatching {
+                CatalogStore.removeUris(getApplication(), items.mapTo(hashSetOf()) { it.uriKey })
+            }
             settingsRepository.removeFromRecycleBin(items.map { it.uriKey })
         } finally { refresh() }
     }

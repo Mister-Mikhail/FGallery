@@ -298,4 +298,32 @@ class CatalogDatabaseTest {
     }
 
 
+    @Test fun restoredFileDropsOldBinUriWithoutAffectingUnrelatedRows() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val db = Room.inMemoryDatabaseBuilder(context, CatalogDatabase::class.java).build()
+        try {
+            val bin = CatalogMediaRow(
+                uri = "file:///storage/FGalleryBin/old.jpg",
+                mediaId = 1L, name = "old.jpg", mimeType = "image/jpeg",
+                kind = "IMAGE", dateTakenMillis = 100L, width = 100, height = 100,
+                durationMillis = 0L, album = "Bin", relativePath = "FGalleryBin/",
+                sizeBytes = 1000L, dateModifiedMillis = 200L,
+                storageId = "external_primary", storageName = "Phone",
+                folderTarget = "/storage/FGalleryBin",
+                sourcePath = "/storage/FGalleryBin/old.jpg", recycled = true,
+            )
+            val other = bin.copy(uri = "file:///storage/DCIM/other.jpg", recycled = false)
+            val restored = bin.copy(uri = "file:///storage/DCIM/old.jpg",
+                folderTarget = "/storage/DCIM", relativePath = "DCIM/", recycled = false)
+            val dao = db.catalog()
+            dao.upsertMedia(listOf(bin, other))
+            // Mirrors the completed physical restore followed by refresh/upsert.
+            dao.applyMediaChanges(emptyList(), setOf(bin.uri))
+            dao.applyMediaChanges(listOf(restored), emptySet())
+            assertEquals(setOf(other.uri, restored.uri), dao.allMedia().map { it.uri }.toSet())
+            assertTrue(dao.allMedia().none { it.recycled })
+        } finally { db.close() }
+    }
+
+
 }

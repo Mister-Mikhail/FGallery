@@ -21,6 +21,11 @@ internal object CatalogStore {
     private const val PERMISSION_KEY = "permission_at_last_scan"
     private const val LAST_FULL_SCAN = "last_full_safety_scan"
 
+    // In-memory round-robin cursors: inaccessible provider rows must not
+    // occupy the same first 12/2 slots on every idle pass or refresh.
+    @Volatile private var nextQuickCandidate = 0
+    @Volatile private var nextFullCandidate = 0
+
     fun fullScanDue(context: Context): Boolean {
         val previous = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getLong(LAST_FULL_SCAN, 0L)
@@ -242,29 +247,65 @@ internal object CatalogStore {
                 null
             }
         }
-        for (row in dao.pendingQuickHashCandidates().asSequence().filter(::candidateAccessible).take(quickBudget)) {
+        val quickRows = dao.pendingQuickHashCandidates().filter(::candidateAccessible)
+        val quickWindow = fingerprintCandidateWindow(
+            quickRows, nextQuickCandidate, maxOf(quickBudget * 8, 64),
+        )
+        var quickAttempted = 0
+        var quickCompleted = 0
+        for (row in quickWindow) {
             ensureIdle()
+            quickAttempted++
             stableRead(row, true)?.let { digest ->
-                if (dao.setQuickHash(row.uri, row.sizeBytes, row.dateModifiedMillis, digest) > 0) advanced = true
+                if (dao.setQuickHash(row.uri, row.sizeBytes, row.dateModifiedMillis, digest) > 0) {
+                    advanced = true
+                    quickCompleted++
+                }
             }
+            if (quickCompleted >= quickBudget) break
         }
-        for (row in dao.pendingFullHashCandidates().asSequence().filter(::candidateAccessible).take(fullBudget)) {
+        if (quickRows.isNotEmpty()) {
+            nextQuickCandidate = Math.floorMod(nextQuickCandidate + quickAttempted, quickRows.size)
+        }
+
+        val fullRows = dao.pendingFullHashCandidates().filter(::candidateAccessible)
+        val fullWindow = fingerprintCandidateWindow(
+            fullRows, nextFullCandidate, maxOf(fullBudget * 8, 32),
+        )
+        var fullAttempted = 0
+        var fullCompleted = 0
+        for (row in fullWindow) {
             ensureIdle()
+            fullAttempted++
             // Verify the cached edge fingerprint before trusting the grouping.
             val edge = stableRead(row, true) ?: continue
             if (edge != row.quickHash) {
-                if (dao.setQuickHash(row.uri, row.sizeBytes, row.dateModifiedMillis, edge) > 0) advanced = true
+                if (dao.setQuickHash(row.uri, row.sizeBytes, row.dateModifiedMillis, edge) > 0) {
+                    advanced = true
+                    fullCompleted++
+                }
+                if (fullCompleted >= fullBudget) break
                 continue
             }
             val digest = stableRead(row, false) ?: continue
             // A provider may replace a document without changing coarse mtime.
-            // Check the edge again after the expensive streaming full read.
             val afterEdge = stableRead(row, true) ?: continue
             if (afterEdge != edge) {
-                if (dao.setQuickHash(row.uri, row.sizeBytes, row.dateModifiedMillis, afterEdge) > 0) advanced = true
+                if (dao.setQuickHash(row.uri, row.sizeBytes, row.dateModifiedMillis, afterEdge) > 0) {
+                    advanced = true
+                    fullCompleted++
+                }
+                if (fullCompleted >= fullBudget) break
                 continue
             }
-            if (dao.setFullHash(row.uri, row.sizeBytes, row.dateModifiedMillis, edge, digest) > 0) advanced = true
+            if (dao.setFullHash(row.uri, row.sizeBytes, row.dateModifiedMillis, edge, digest) > 0) {
+                advanced = true
+                fullCompleted++
+            }
+            if (fullCompleted >= fullBudget) break
+        }
+        if (fullRows.isNotEmpty()) {
+            nextFullCandidate = Math.floorMod(nextFullCandidate + fullAttempted, fullRows.size)
         }
         // Signal the idle scheduler to keep draining finite batches. A false
         // result means no accessible candidate advanced, so stop rather than

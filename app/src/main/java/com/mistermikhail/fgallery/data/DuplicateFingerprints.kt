@@ -94,6 +94,22 @@ internal object DuplicateFingerprints {
 }
 
 /**
+ * Cycle through pending fingerprint candidates in bounded windows. A group
+ * of inaccessible SAF documents must not permanently starve readable files
+ * later in the SQL result. The cursor is advanced across idle passes; this
+ * helper never reads or modifies media.
+ */
+internal fun <T> fingerprintCandidateWindow(
+    candidates: List<T>, start: Int, maxAttempts: Int,
+): List<T> {
+    if (candidates.isEmpty() || maxAttempts <= 0) return emptyList()
+    val offset = Math.floorMod(start, candidates.size)
+    return List(minOf(candidates.size, maxAttempts)) {
+        candidates[(offset + it) % candidates.size]
+    }
+}
+
+/**
  * Exact copies only. RAW+JPEG of the same exposure have different bytes and
  * cannot enter a group. Perceptual matches/crops require a separate validated
  * pipeline and must never be inferred from a similar hash alone.
