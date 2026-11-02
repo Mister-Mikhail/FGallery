@@ -242,7 +242,20 @@ object ThumbnailCache {
         val direct = StorageAccess.file(context, item)?.takeIf { it.isFile && it.canRead() }
         val input = direct ?: File.createTempFile("raw_preview_", ".bin", context.cacheDir)
         try {
-            if (direct == null) context.contentResolver.openInputStream(item.uri)?.use { source -> input.outputStream().use { source.copyTo(it) } } ?: return@withLock null
+            if (direct == null) context.contentResolver.openInputStream(item.uri)?.use { source ->
+                input.outputStream().use { destination ->
+                    val buffer = ByteArray(64 * 1024)
+                    while (true) {
+                        // A dismissed RAW tile must not continue copying a
+                        // multi-hundred-MB file from a slow SAF provider.
+                        currentCoroutineContext().ensureActive()
+                        val count = source.read(buffer)
+                        if (count < 0) break
+                        destination.write(buffer, 0, count)
+                    }
+                }
+            } ?: return@withLock null
+            currentCoroutineContext().ensureActive()
             return@withLock com.homesoft.photo.libraw.LibRaw().use { raw ->
                 raw.setHalfSize(true); raw.setQuality(0)
                 raw.setCameraWhiteBalance(true)
