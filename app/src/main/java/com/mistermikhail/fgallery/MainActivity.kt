@@ -1240,6 +1240,7 @@ class MainActivity : ComponentActivity() {
                     ViewerScreen(
                         items = if (state.recycleBinVisible) state.recycleBinItems else state.visibleItems,
                         initialItem = animatedItem,
+                        onVisibleItemChanged = { savedViewerUri = it.uriKey },
                         onBack = { selectedItem = null; savedViewerUri = null },
                         active = videoCropItem == null && !operationBusy,
                         onTrash = { requestTrash(listOf(it), keepViewerOpen = true) },
