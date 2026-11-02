@@ -222,13 +222,13 @@ internal object CatalogStore {
                 null
             }
         }
-        for (row in quickHashCandidates(dao.allMedia()).take(quickBudget)) {
+        for (row in quickHashCandidates(dao.allMedia()).asSequence().filter { localFile(it) != null }.take(quickBudget)) {
             ensureIdle()
             stableRead(row, DuplicateFingerprints::quick)?.let { digest ->
                 dao.setQuickHash(row.uri, row.sizeBytes, row.dateModifiedMillis, digest)
             }
         }
-        for (row in fullHashCandidates(dao.allMedia()).take(fullBudget)) {
+        for (row in fullHashCandidates(dao.allMedia()).asSequence().filter { localFile(it) != null }.take(fullBudget)) {
             ensureIdle()
             // Verify the cached edge fingerprint before trusting the grouping.
             val edge = stableRead(row, DuplicateFingerprints::quick) ?: continue
