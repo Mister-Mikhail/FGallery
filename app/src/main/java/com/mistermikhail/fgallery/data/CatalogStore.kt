@@ -186,8 +186,8 @@ internal object CatalogStore {
 
     /**
      * Bounded, resumable Stage 6 exact-copy fingerprinting. Only accessible
-     * local files are hashed; opaque SAF documents are left for the later
-     * streaming provider implementation. Never read media on the UI thread.
+     * local files and seekable, versioned content URIs are hashed. Providers
+     * without reliable metadata or seeking are safely skipped. Never read media on the UI thread.
      * A matching edge hash is not evidence of duplication: only full SHA-256
      * groups may be offered to the user (no deletion occurs here).
      */
@@ -204,42 +204,67 @@ internal object CatalogStore {
             job?.ensureActive()
             if (!canWork()) throw kotlinx.coroutines.CancellationException("Foreground media interaction")
         }
+        val provider = ContentFingerprintSource(context)
         fun localFile(row: CatalogMediaRow): File? = row.sourcePath
             .takeIf { it.isNotBlank() && it.startsWith("/") }
             ?.let(::File)?.takeIf { it.isFile && it.canRead() && it.length() == row.sizeBytes }
-        fun stableRead(row: CatalogMediaRow, hash: (File, () -> Unit) -> String): String? {
+        fun candidateAccessible(row: CatalogMediaRow): Boolean =
+            localFile(row) != null || Uri.parse(row.uri).scheme == "content"
+
+        fun stableRead(row: CatalogMediaRow, quick: Boolean): String? {
             ensureIdle()
-            val file = localFile(row) ?: return null
-            val beforeSize = file.length()
-            val beforeModified = file.lastModified()
             return try {
-                val digest = hash(file, ::ensureIdle)
-                if (file.length() == beforeSize && file.lastModified() == beforeModified) digest else null
+                val file = localFile(row)
+                if (file != null) {
+                    val beforeSize = file.length()
+                    val beforeModified = file.lastModified()
+                    val digest = if (quick) DuplicateFingerprints.quick(file, ::ensureIdle)
+                        else DuplicateFingerprints.full(file, ::ensureIdle)
+                    ensureIdle()
+                    digest.takeIf {
+                        file.length() == beforeSize && file.lastModified() == beforeModified
+                    }
+                } else {
+                    val uri = Uri.parse(row.uri)
+                    if (uri.scheme != "content") return null
+                    val before = provider.signature(uri) ?: return null
+                    if (before.size != row.sizeBytes) return null
+                    val digest = if (quick) provider.quick(uri, row.sizeBytes, ::ensureIdle)
+                        else provider.full(uri, row.sizeBytes, ::ensureIdle)
+                    ensureIdle()
+                    digest?.takeIf { before == provider.signature(uri) }
+                }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
-            } catch (_: java.io.IOException) {
-                null // Files may disappear during a concurrent move/rename.
-            } catch (_: SecurityException) {
+            } catch (_: Exception) {
+                // Permission loss, provider failure, disappearing file, or
+                // non-seekable SAF pipe: do not write a speculative digest.
                 null
             }
         }
-        for (row in dao.pendingQuickHashCandidates().asSequence().filter { localFile(it) != null }.take(quickBudget)) {
+        for (row in dao.pendingQuickHashCandidates().asSequence().filter(::candidateAccessible).take(quickBudget)) {
             ensureIdle()
-            stableRead(row, DuplicateFingerprints::quick)?.let { digest ->
+            stableRead(row, true)?.let { digest ->
                 if (dao.setQuickHash(row.uri, row.sizeBytes, row.dateModifiedMillis, digest) > 0) advanced = true
             }
         }
-        for (row in dao.pendingFullHashCandidates().asSequence().filter { localFile(it) != null }.take(fullBudget)) {
+        for (row in dao.pendingFullHashCandidates().asSequence().filter(::candidateAccessible).take(fullBudget)) {
             ensureIdle()
             // Verify the cached edge fingerprint before trusting the grouping.
-            val edge = stableRead(row, DuplicateFingerprints::quick) ?: continue
+            val edge = stableRead(row, true) ?: continue
             if (edge != row.quickHash) {
                 if (dao.setQuickHash(row.uri, row.sizeBytes, row.dateModifiedMillis, edge) > 0) advanced = true
                 continue
             }
-            stableRead(row, DuplicateFingerprints::full)?.let { digest ->
-                if (dao.setFullHash(row.uri, row.sizeBytes, row.dateModifiedMillis, edge, digest) > 0) advanced = true
+            val digest = stableRead(row, false) ?: continue
+            // A provider may replace a document without changing coarse mtime.
+            // Check the edge again after the expensive streaming full read.
+            val afterEdge = stableRead(row, true) ?: continue
+            if (afterEdge != edge) {
+                if (dao.setQuickHash(row.uri, row.sizeBytes, row.dateModifiedMillis, afterEdge) > 0) advanced = true
+                continue
             }
+            if (dao.setFullHash(row.uri, row.sizeBytes, row.dateModifiedMillis, edge, digest) > 0) advanced = true
         }
         // Signal the idle scheduler to keep draining finite batches. A false
         // result means no accessible candidate advanced, so stop rather than

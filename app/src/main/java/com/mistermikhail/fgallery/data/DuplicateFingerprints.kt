@@ -2,7 +2,11 @@ package com.mistermikhail.fgallery.data
 
 import java.io.File
 import java.io.FileInputStream
-import java.io.RandomAccessFile
+import java.io.EOFException
+import java.io.IOException
+import java.io.InputStream
+import java.nio.ByteBuffer
+import java.nio.channels.SeekableByteChannel
 import java.security.MessageDigest
 
 /**
@@ -16,45 +20,70 @@ internal object DuplicateFingerprints {
     private const val EDGE_BYTES = 64 * 1024
     private const val STREAM_BYTES = 64 * 1024
 
-    fun quick(file: File, checkActive: () -> Unit = {}): String {
+    fun quick(file: File, checkActive: () -> Unit = {}): String =
+        FileInputStream(file).use { quick(it.channel, checkActive) }
+
+    /**
+     * A seekable descriptor lets SAF/MediaStore files use the same 128 KiB
+     * prefilter as physical files, without copying a large RAW to disk.
+     * Non-seekable provider pipes are deliberately skipped by the caller.
+     */
+    fun quick(channel: SeekableByteChannel, checkActive: () -> Unit = {}): String {
         val digest = MessageDigest.getInstance("SHA-256")
-        RandomAccessFile(file, "r").use { stream ->
-            val length = stream.length()
-            // Include file length and domain separation to avoid mixing this
-            // sampling digest with a complete SHA-256.
-            digest.update("FGALLERY-EDGE-V1".toByteArray(Charsets.US_ASCII))
-            repeat(8) { shift -> digest.update((length ushr (shift * 8)).toByte()) }
-            val head = minOf(length, EDGE_BYTES.toLong()).toInt()
-            updateExact(stream, digest, head, checkActive)
-            if (length > EDGE_BYTES) {
-                stream.seek(length - EDGE_BYTES)
-                updateExact(stream, digest, EDGE_BYTES, checkActive)
-            }
+        val length = channel.size()
+        digest.update("FGALLERY-EDGE-V1".toByteArray(Charsets.US_ASCII))
+        repeat(8) { shift -> digest.update((length ushr (shift * 8)).toByte()) }
+        channel.position(0L)
+        updateExact(channel, digest, minOf(length, EDGE_BYTES.toLong()).toInt(), checkActive)
+        if (length > EDGE_BYTES) {
+            channel.position(length - EDGE_BYTES)
+            updateExact(channel, digest, EDGE_BYTES, checkActive)
         }
         return digest.digest().toHexString()
     }
 
-    fun full(file: File, checkActive: () -> Unit = {}): String {
+    fun full(file: File, checkActive: () -> Unit = {}): String =
+        FileInputStream(file).use { full(it, checkActive) }
+
+    /** Full streaming digest; verify expected length for provider streams. */
+    fun full(
+        input: InputStream,
+        checkActive: () -> Unit = {},
+        expectedBytes: Long? = null,
+    ): String {
         val digest = MessageDigest.getInstance("SHA-256")
-        FileInputStream(file).use { stream ->
-            val buffer = ByteArray(STREAM_BYTES)
-            while (true) {
-                checkActive()
-                val read = stream.read(buffer)
-                if (read < 0) break
-                if (read > 0) digest.update(buffer, 0, read)
+        val buffer = ByteArray(STREAM_BYTES)
+        var total = 0L
+        while (true) {
+            checkActive()
+            val read = input.read(buffer)
+            if (read < 0) break
+            if (read == 0) throw IOException("Fingerprint stream made no progress")
+            total += read
+            if (expectedBytes != null && total > expectedBytes) {
+                throw IOException("Provider file grew during fingerprinting")
             }
+            digest.update(buffer, 0, read)
+        }
+        if (expectedBytes != null && total != expectedBytes) {
+            throw EOFException("Provider file changed during fingerprinting")
         }
         return digest.digest().toHexString()
     }
 
-    private fun updateExact(stream: RandomAccessFile, digest: MessageDigest, count: Int, checkActive: () -> Unit) {
+    private fun updateExact(
+        channel: SeekableByteChannel,
+        digest: MessageDigest,
+        count: Int,
+        checkActive: () -> Unit,
+    ) {
         val buffer = ByteArray(STREAM_BYTES)
         var remaining = count
         while (remaining > 0) {
             checkActive()
-            val read = stream.read(buffer, 0, minOf(buffer.size, remaining))
-            if (read < 0) throw java.io.EOFException("File changed during fingerprinting")
+            val read = channel.read(ByteBuffer.wrap(buffer, 0, minOf(buffer.size, remaining)))
+            if (read < 0) throw EOFException("File changed during fingerprinting")
+            if (read == 0) throw IOException("Fingerprint channel made no progress")
             digest.update(buffer, 0, read)
             remaining -= read
         }

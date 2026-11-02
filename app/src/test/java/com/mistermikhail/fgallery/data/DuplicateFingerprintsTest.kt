@@ -6,6 +6,9 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
+import java.io.ByteArrayInputStream
+import java.io.EOFException
+import java.io.FileInputStream
 import java.nio.file.Files
 
 class DuplicateFingerprintsTest {
@@ -166,4 +169,26 @@ class DuplicateFingerprintsTest {
             empty.delete()
         }
     }
+    @Test fun seekableChannelAndStreamMatchLocalFileDigests() {
+        val file = Files.createTempFile("fgallery-provider-hash", ".bin").toFile()
+        try {
+            val bytes = ByteArray(200_000) { (it * 37).toByte() }
+            file.writeBytes(bytes)
+            val fromChannel = FileInputStream(file).use {
+                DuplicateFingerprints.quick(it.channel)
+            }
+            assertEquals(DuplicateFingerprints.quick(file), fromChannel)
+            assertEquals(DuplicateFingerprints.full(file),
+                DuplicateFingerprints.full(ByteArrayInputStream(bytes), expectedBytes = bytes.size.toLong()))
+            try {
+                DuplicateFingerprints.full(ByteArrayInputStream(bytes),
+                    expectedBytes = bytes.size.toLong() + 1L)
+                org.junit.Assert.fail("Short provider stream must not be cached")
+            } catch (_: EOFException) { /* correct */ }
+        } finally {
+            file.delete()
+        }
+    }
+
+
 }

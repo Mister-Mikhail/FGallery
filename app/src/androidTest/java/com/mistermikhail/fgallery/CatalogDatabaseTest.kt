@@ -282,4 +282,20 @@ class CatalogDatabaseTest {
         } finally { db.close() }
     }
 
+    @Test fun seekableParcelDescriptorUsesSameEdgeDigestAsLocalFile() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val file = java.io.File.createTempFile("fgallery-fd", ".raw", context.cacheDir)
+        try {
+            file.writeBytes(ByteArray(180_000) { (it * 19).toByte() })
+            val expected = com.mistermikhail.fgallery.data.DuplicateFingerprints.quick(file)
+            val descriptor = android.os.ParcelFileDescriptor.open(
+                file, android.os.ParcelFileDescriptor.MODE_READ_ONLY)
+            val actual = android.os.ParcelFileDescriptor.AutoCloseInputStream(descriptor).use {
+                com.mistermikhail.fgallery.data.DuplicateFingerprints.quick(it.channel)
+            }
+            assertEquals(expected, actual)
+        } finally { file.delete() }
+    }
+
+
 }

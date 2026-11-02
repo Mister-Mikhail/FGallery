@@ -108,3 +108,8 @@
 ## QA build40 — опубликован и проверен CI (2026-11-02)
 - [QA40](https://github.com/Mister-Mikhail/FGallery/releases/tag/qa-v0.4.0-b40), [ARM64 APK](https://github.com/Mister-Mikhail/FGallery/releases/download/qa-v0.4.0-b40/FGallery-0.4.0-b40-arm64-v8a.apk), SHA-256 `93ecf4c98e608049826eb62d28f223e54e766609ffe11c33d1ddab16e2b610ef`; source `092d906eeccd9a676431bece967fb22ce759df8e`, [R8/JVM/Android16/publish 41482305521](https://github.com/Mister-Mikhail/FGallery/actions/runs/41482305521) **success**.
 - SQL-планирование quick/full SHA-256 и исправление отмены MediaStore ID прошли CI. Нужна приёмка S23; поиск кропов/масштабов, SAF, UI, защита от ложных дубликатов и ранее неповторённое падение остаются открытыми. Принятые build35 функции не менять.
+
+## Stage 5/6 — QA41 кандидат (2026-11-02)
+- **Принято на S23:** build35 RAW/превью/сортировка по времени файлов/индексация/встроенное обновление. Не менять без регрессии.
+- **FG-DUP-SAF:** потоковое чтение seekable content:// URI, отказ от недостоверных размеров/mtime и pipe, контроль размера полного потока и повторная проверка edge после full; без копирования RAW. Нужны CI и физическая проверка, недоступные provider-URI пока пропускаются.
+- **Открыто:** Stage5 полноценная USB/SAF delta сверка; Stage6 визуальные масштабы, кропы, защита от ложных совпадений, UI подтверждения; диагностика единичного падения. Автоматического удаления нет. PR #15 не сливать, stable не публиковать.
