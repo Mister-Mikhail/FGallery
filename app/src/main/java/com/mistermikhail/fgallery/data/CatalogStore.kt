@@ -6,6 +6,7 @@ import android.os.Build
 import android.provider.MediaStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.ensureActive
 import java.io.File
 
 /**
@@ -182,6 +183,64 @@ internal object CatalogStore {
             sourcePath = item.sourcePath,
             recycled = recycled,
         )
+
+    /**
+     * Bounded, resumable Stage 6 exact-copy fingerprinting. Only accessible
+     * local files are hashed; opaque SAF documents are left for the later
+     * streaming provider implementation. Never read media on the UI thread.
+     * A matching edge hash is not evidence of duplication: only full SHA-256
+     * groups may be offered to the user (no deletion occurs here).
+     */
+    suspend fun indexExactDuplicateCandidates(
+        context: Context,
+        canWork: () -> Boolean,
+        quickBudget: Int = 12,
+        fullBudget: Int = 2,
+    ) = withContext(Dispatchers.IO) {
+        val dao = CatalogDatabase.get(context).catalog()
+        val job = kotlin.coroutines.coroutineContext[kotlinx.coroutines.Job]
+        fun ensureIdle() {
+            job?.ensureActive()
+            if (!canWork()) throw kotlinx.coroutines.CancellationException("Foreground media interaction")
+        }
+        fun localFile(row: CatalogMediaRow): File? = row.sourcePath
+            .takeIf { it.isNotBlank() && it.startsWith("/") }
+            ?.let(::File)?.takeIf { it.isFile && it.canRead() && it.length() == row.sizeBytes }
+        fun stableRead(row: CatalogMediaRow, hash: (File, () -> Unit) -> String): String? {
+            ensureIdle()
+            val file = localFile(row) ?: return null
+            val beforeSize = file.length()
+            val beforeModified = file.lastModified()
+            return try {
+                val digest = hash(file, ::ensureIdle)
+                if (file.length() == beforeSize && file.lastModified() == beforeModified) digest else null
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (_: java.io.IOException) {
+                null // Files may disappear during a concurrent move/rename.
+            } catch (_: SecurityException) {
+                null
+            }
+        }
+        for (row in quickHashCandidates(dao.allMedia()).take(quickBudget)) {
+            ensureIdle()
+            stableRead(row, DuplicateFingerprints::quick)?.let { digest ->
+                dao.setQuickHash(row.uri, row.sizeBytes, row.dateModifiedMillis, digest)
+            }
+        }
+        for (row in fullHashCandidates(dao.allMedia()).take(fullBudget)) {
+            ensureIdle()
+            // Verify the cached edge fingerprint before trusting the grouping.
+            val edge = stableRead(row, DuplicateFingerprints::quick) ?: continue
+            if (edge != row.quickHash) {
+                dao.setQuickHash(row.uri, row.sizeBytes, row.dateModifiedMillis, edge)
+                continue
+            }
+            stableRead(row, DuplicateFingerprints::full)?.let { digest ->
+                dao.setFullHash(row.uri, row.sizeBytes, row.dateModifiedMillis, edge, digest)
+            }
+        }
+    }
 
     /** Keep Room current immediately after a successful app-owned file creation.
      * The next MediaStore/SAF reconciliation remains authoritative. */
