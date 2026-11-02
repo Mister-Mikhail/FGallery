@@ -145,6 +145,12 @@ object ThumbnailCache {
                 semaphore.withPermit {
                     if (target.isFile && target.length() > 0L) return@withPermit target
                     target.parentFile?.mkdirs()
+                    // v4 previously stored RAW posters as PNG. Convert the
+                    // already-rendered poster instead of demosaicing a 100 MP
+                    // Phase One/Hasselblad RAW again after this update.
+                    if (item.kind == MediaKind.RAW &&
+                        migrateRawPngPoster(target, if (highQuality) 90 else 85))
+                        return@withPermit target
                     val edge = if (highQuality) HIGH_EDGE_PX else FAST_EDGE_PX
                     val bitmap = runCatching { decode(context, item, edge) }.getOrNull()
                         ?: return@withPermit null
@@ -172,6 +178,27 @@ object ThumbnailCache {
                 lastForegroundRequest.set(System.currentTimeMillis())
             }
         }
+    }
+
+    /** One-time, per-file migration from the old RAW PNG poster to compact JPEG.
+     * Called under the per-file lock and decoder permit; source RAW is untouched.
+     */
+    private fun migrateRawPngPoster(target: File, quality: Int): Boolean {
+        val old = File(target.parentFile, "${target.nameWithoutExtension}.png")
+        if (!old.isFile || old.length() <= 0L) return false
+        val bitmap = runCatching { BitmapFactory.decodeFile(old.path) }.getOrNull() ?: return false
+        try {
+            val temp = File.createTempFile("raw_poster_", ".tmp", target.parentFile)
+            try {
+                FileOutputStream(temp).use { output ->
+                    if (!bitmap.compress(Bitmap.CompressFormat.JPEG, quality, output)) return false
+                    output.fd.sync()
+                }
+                if (temp.length() <= 0L || !temp.renameTo(target)) return false
+                old.delete()
+                return true
+            } finally { temp.delete() }
+        } finally { bitmap.recycle() }
     }
 
     private fun migrateOldCache(context: Context) {
