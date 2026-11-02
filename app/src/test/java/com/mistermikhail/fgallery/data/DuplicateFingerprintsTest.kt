@@ -84,6 +84,12 @@ class DuplicateFingerprintsTest {
         assertNull(changed.perceptualHash)
         assertNull(changed.exifCamera)
         assertNull(retainUnchangedFingerprints(old, renamed.copy(sizeBytes = 101)).fullHash)
+        // Providers can preserve both file length and coarse mtime on overwrite.
+        // A fresh edge hash is stronger evidence than unchanged metadata.
+        val replaced = retainUnchangedFingerprints(old, renamed.copy(quickHash = "new-edge"))
+        assertEquals("new-edge", replaced.quickHash)
+        assertNull(replaced.fullHash)
+        assertNull(replaced.perceptualHash)
     }
 
     @Test fun hashOfEmptyFileIsStable() {
