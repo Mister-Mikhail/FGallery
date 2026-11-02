@@ -68,12 +68,13 @@ class MediaRepository(private val context: Context) {
                     val changed = queryVolume(volume, false, old.mediaStoreGeneration)
                     val ids = runCatching { currentIds(volume) }.getOrNull()
                         ?: return@flatMap queryVolume(volume, false)
-                    (indexed.filter { item -> runCatching { ContentUris.parseId(item.uri) }.getOrNull() in ids } +
-                        changed).distinctBy { it.uriKey }.let { result ->
-                            // Changed records replace outdated metadata for the same URI.
-                            val delta = changed.associateBy { it.uriKey }
-                            result.map { delta[it.uriKey] ?: it }
-                        }
+                    // A row can be deleted/trashed after the delta query but
+                    // before the live-ID check. Filter BOTH old and changed
+                    // records against the same authoritative ID inventory;
+                    // otherwise a deleted changed row is resurrected in Room.
+                    reconcileMediaStoreDelta(indexed, changed, ids,
+                        id = { runCatching { ContentUris.parseId(it.uri) }.getOrNull() },
+                        key = { it.uriKey })
                 }
             }
         }
@@ -296,4 +297,23 @@ internal fun hasNewMediaStoreIds(currentIds: Set<Long>, previousIds: Set<Long>):
 internal fun checkedMediaStoreVolumes(volumes: Set<String>): Set<String> {
     check(volumes.isNotEmpty()) { "MediaStore returned no accessible volumes" }
     return volumes
+}
+
+/**
+ * Reconcile a generation delta against a live MediaStore ID inventory.
+ * A changed record is only retained if it is still present at reconciliation
+ * time (not deleted/trashed); changed metadata wins for surviving identities.
+ * Pure helper for JVM regression tests, independent of Android Uri stubs.
+ */
+internal fun <T> reconcileMediaStoreDelta(
+    previous: List<T>,
+    changed: List<T>,
+    liveIds: Set<Long>,
+    id: (T) -> Long?,
+    key: (T) -> String,
+): List<T> {
+    val merged = LinkedHashMap<String, T>()
+    for (item in previous) if (id(item) in liveIds) merged[key(item)] = item
+    for (item in changed) if (id(item) in liveIds) merged[key(item)] = item
+    return merged.values.toList()
 }
