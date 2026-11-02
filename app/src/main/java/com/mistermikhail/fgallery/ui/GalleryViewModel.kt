@@ -23,6 +23,10 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+/** Album date is the latest timestamp of a contained file, not the folder mtime. */
+internal fun albumFileTimestamp(capturedOrCreated: Long, modified: Long): Long =
+    maxOf(capturedOrCreated, modified)
+
 enum class MediaFilter { ALL, PHOTOS, VIDEOS, RAW }
 enum class GridMode { MOSAIC, UNIFORM }
 enum class SortMode {
@@ -195,7 +199,7 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
                     count = items.size,
                     // Sort albums by the newest file timestamp, never the folder timestamp.
                     // Prefer whichever is newer: capture/creation or last modification.
-                    newestDateMillis = items.maxOfOrNull { maxOf(it.dateTakenMillis, it.dateModifiedMillis) } ?: 0L,
+                    newestDateMillis = items.maxOfOrNull { albumFileTimestamp(it.dateTakenMillis, it.dateModifiedMillis) } ?: 0L,
                     totalSizeBytes = items.sumOf { it.sizeBytes },
                 )
             }
