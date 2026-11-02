@@ -190,9 +190,11 @@ fun GalleryScreen(
         }
     }
 
-    LaunchedEffect(mediaGridScrolling) {
-        // Prevent background file decode from stealing I/O from active scrolling.
-        ThumbnailCache.setUserBusy(mediaGridScrolling)
+    val galleryScrolling = mediaGridScrolling || (!inAlbum && albumsGridState.isScrollInProgress)
+    LaunchedEffect(galleryScrolling) {
+        // Album covers also need priority while scrolling the album grid.
+        // Keep the video rotation logic tied only to mediaGridScrolling.
+        ThumbnailCache.setUserBusy(galleryScrolling)
     }
     DisposableEffect(Unit) {
         onDispose { ThumbnailCache.setUserBusy(false) }
