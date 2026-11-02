@@ -114,3 +114,9 @@
 - [QA prerelease build39](https://github.com/Mister-Mikhail/FGallery/releases/tag/qa-v0.4.0-b39); [ARM64 APK](https://github.com/Mister-Mikhail/FGallery/releases/download/qa-v0.4.0-b39/FGallery-0.4.0-b39-arm64-v8a.apk); SHA-256 `5f6490e56bdcd8ee7bb2d00cd300e2e1cb2446593d162d1f457b323e8655f736` (GitHub asset digest).
 - Исходный SHA `d43e704f9b6f5aed46456cd86c14fa2cbb7b0607`; [CI 41475552271](https://github.com/Mister-Mikhail/FGallery/actions/runs/41475552271) — **success**: R8/JVM, Android 16 instrumentation, QA publish.
 - Stage5: delta не восстанавливает удалённые/trashed записи из changed query; Stage6: продолжение точных SHA-256 пакетами во время простоя. Проверить на S23 обновление build38→39, стабильность, отсутствие торможения просмотра/прокрутки. Принятые build35 функции не менять; UI/визуальные дубликаты и диагностика единичного падения открыты. PR #15 draft, stable/merge запрещены.
+
+## QA build40 — кандидат, ожидает R8/JVM/Android16 (2026-11-02)
+- **Принято на S23:** build35 RAW/превью/сортировка альбомов/индексация/встроенное обновление; не изменялись. Build39 отдельно ещё не принят.
+- **Stage 6:** фоновые quick/full SHA-256 теперь выбирают кандидатов через SQL Room по совпадающим размерам и непустым edge-хешам, не выгружая весь каталог в Kotlin дважды на каждом пакете. Нет SQL LIMIT, чтобы недоступные файлы не блокировали дальнейших кандидатов. Инструментальный тест сопоставляет SQL с JVM-планировщиком, включая корзину, singleton и пустые отпечатки.
+- **Stage 5:** отмена чтения live MediaStore IDs не запускает резервное полное сканирование. versionCode=40; публикация QA только после успешных R8/JVM/Android16. Не stable, PR #15 draft, не сливать.
+- **Открыто:** SAF/USB, визуальные дубликаты (масштаб, кроп, защита от ретуши/цветокоррекции/серий), UI подтверждения, причина единичного падения. Нет автоматического удаления.
