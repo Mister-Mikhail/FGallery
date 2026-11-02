@@ -183,7 +183,7 @@ object ThumbnailCache {
         fileFor(context, item, true).takeIf { it.exists() && it.length() > 0 }
             ?: fileFor(context, item).takeIf { it.exists() && it.length() > 0 }
 
-    private fun decode(context: Context, item: MediaItem, edge: Int): Bitmap? {
+    private suspend fun decode(context: Context, item: MediaItem, edge: Int): Bitmap? {
         FullResolutionFiles.cached(context, item)?.let { file ->
             val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             BitmapFactory.decodeFile(file.path, options)
@@ -228,12 +228,12 @@ object ThumbnailCache {
         return context.contentResolver.openInputStream(item.uri)?.use { BitmapFactory.decodeStream(it, null, options) }
     }
 
-    fun rawPreview(context: Context, item: MediaItem): Bitmap? {
+    suspend fun rawPreview(context: Context, item: MediaItem): Bitmap? = RawDecodeGate.mutex.withLock {
         val direct = StorageAccess.file(context, item)?.takeIf { it.isFile && it.canRead() }
         val input = direct ?: File.createTempFile("raw_preview_", ".bin", context.cacheDir)
         try {
-            if (direct == null) context.contentResolver.openInputStream(item.uri)?.use { source -> input.outputStream().use { source.copyTo(it) } } ?: return null
-            return com.homesoft.photo.libraw.LibRaw().use { raw ->
+            if (direct == null) context.contentResolver.openInputStream(item.uri)?.use { source -> input.outputStream().use { source.copyTo(it) } } ?: return@withLock null
+            return@withLock com.homesoft.photo.libraw.LibRaw().use { raw ->
                 raw.setHalfSize(true); raw.setQuality(0)
                 raw.setCameraWhiteBalance(true)
                 raw.setOutputColorSpace(com.homesoft.photo.libraw.LibRaw.COLORSPACE_SRGB)
