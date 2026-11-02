@@ -54,8 +54,9 @@ class MediaRepository(private val context: Context) {
                     // If the provider adds IDs without advancing generation,
                     // fall back to a full volume query. The daily safety scan
                     // catches same-ID metadata edits on nonconforming providers.
-                    val ids = runCatching { currentIds(volume) }.getOrNull()
-                        ?: return@flatMap queryVolume(volume, false)
+                    val ids = try { currentIds(volume) }
+                    catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                    catch (_: Exception) { return@flatMap queryVolume(volume, false) }
                     val previousIds = indexed.mapNotNull {
                         runCatching { ContentUris.parseId(it.uri) }.getOrNull()
                     }.toSet()
@@ -66,8 +67,9 @@ class MediaRepository(private val context: Context) {
                 }
                 else -> {
                     val changed = queryVolume(volume, false, old.mediaStoreGeneration)
-                    val ids = runCatching { currentIds(volume) }.getOrNull()
-                        ?: return@flatMap queryVolume(volume, false)
+                    val ids = try { currentIds(volume) }
+                    catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                    catch (_: Exception) { return@flatMap queryVolume(volume, false) }
                     // A row can be deleted/trashed after the delta query but
                     // before the live-ID check. Filter BOTH old and changed
                     // records against the same authoritative ID inventory;
