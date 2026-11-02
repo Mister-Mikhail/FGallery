@@ -104,3 +104,7 @@
 ## QA build40 — кандидат (2026-11-02)
 - **FG-DUP-PERF:** выбор SQL-кандидатов точных копий вместо двойной полной загрузки Room в каждом idle-пакете; Android16 регрессия с проверкой корзины/одиночных/неполных хешей. SAF, UI и визуальная проверка масштабов/кропов ещё открыты.
 - **FG-INDEX-CANCEL:** отмена чтения ID MediaStore теперь пробрасывается, а не запускает повторный полный скан. Принятые на S23 функции build35 не менялись; единичное падение без логов остаётся открытым.
+
+## QA build40 — опубликован и проверен CI (2026-11-02)
+- [QA40](https://github.com/Mister-Mikhail/FGallery/releases/tag/qa-v0.4.0-b40), [ARM64 APK](https://github.com/Mister-Mikhail/FGallery/releases/download/qa-v0.4.0-b40/FGallery-0.4.0-b40-arm64-v8a.apk), SHA-256 `93ecf4c98e608049826eb62d28f223e54e766609ffe11c33d1ddab16e2b610ef`; source `092d906eeccd9a676431bece967fb22ce759df8e`, [R8/JVM/Android16/publish 41482305521](https://github.com/Mister-Mikhail/FGallery/actions/runs/41482305521) **success**.
+- SQL-планирование quick/full SHA-256 и исправление отмены MediaStore ID прошли CI. Нужна приёмка S23; поиск кропов/масштабов, SAF, UI, защита от ложных дубликатов и ранее неповторённое падение остаются открытыми. Принятые build35 функции не менять.
