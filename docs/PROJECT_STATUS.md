@@ -2,9 +2,9 @@
 Обновлено: **2026-11-02**. История: [архив](history/PROJECT_STATUS-through-2026-11-01.md). Утверждённые критерии: [FGallery_TZ_v1.md](FGallery_TZ_v1.md).
 
 ## Опубликованная тестовая сборка
-- **0.4.0 / versionCode 30, QA prerelease, не stable**: [qa-v0.4.0-b30](https://github.com/Mister-Mikhail/FGallery/releases/tag/qa-v0.4.0-b30).
-- **ARM64 APK:** [прямая ссылка](https://github.com/Mister-Mikhail/FGallery/releases/download/qa-v0.4.0-b30/FGallery-0.4.0-b30-arm64-v8a.apk), SHA-256 `dbdd72e09ba0ef66c688b93d91e98e12914639dd31cdc67220918e45aca72110`.
-- **Точный исходный SHA APK:** `b8716b4289c15445c39a8d6db6606d4505d3014f`; [R8/JVM + Android 16 emulator + публикация](https://github.com/Mister-Mikhail/FGallery/actions/runs/41375558109) — **success**.
+- **0.4.0 / versionCode 31, QA prerelease, не stable**: [qa-v0.4.0-b31](https://github.com/Mister-Mikhail/FGallery/releases/tag/qa-v0.4.0-b31).
+- **ARM64 APK:** [прямая ссылка](https://github.com/Mister-Mikhail/FGallery/releases/download/qa-v0.4.0-b31/FGallery-0.4.0-b31-arm64-v8a.apk), SHA-256 `c2abf4f8e8aa4ab973e22e5cabf85bcca316835ce43ddb9fc221b3f42b8f5cd1`.
+- **Точный исходный SHA APK:** `af72cbcf73c100b3010f62835853989d0e0dda21`; [R8/JVM + Android 16 emulator + публикация](https://github.com/Mister-Mikhail/FGallery/actions/runs/41389681159) — **success**.
 - **Физический Samsung Galaxy S23 / Android 16:** пять изменений build30 проверены и приняты пользователем; новые проблемы RAW/падения остаются открыты.
 
 ## Рабочая точка
@@ -46,3 +46,8 @@
 - **В коде для следующего QA:** сортировка по max(дата съёмки/создания, дата изменения) для каждого файла; восстановлен LibRaw fallback превью Phase One; быстрый поиск JPEG в TIFF/DNG IFD1 и одном SubIFD (с проверкой границ); общий ограничитель нативного RAW-декодирования, чтобы одновременно не проявлять несколько многомегапиксельных RAW; показ извлечённого JPEG без повторной дорогой демозаики; JVM-тесты DNG IFD1 и сортировки.
 - **Проверка:** R8/JVM/Android16 и реальный S23; CI-зелёный не означает принятие пользователем. Причина единичного падения не установлена без журнала; ограничение параллельной RAW-памяти — профилактическое исправление, не подтверждённый диагноз.
 - Следующая сборка должна иметь `versionCode=31`, QA prerelease, то же тестовое подписание для установки поверх build30 и проверки встроенного обновления. Не stable, PR #15 не сливать. USB/SD остаются отложенными.
+
+## Опубликованный QA 0.4.0 build31 — 2026-11-02
+- [QA prerelease build31](https://github.com/Mister-Mikhail/FGallery/releases/tag/qa-v0.4.0-b31), [ARM64 APK](https://github.com/Mister-Mikhail/FGallery/releases/download/qa-v0.4.0-b31/FGallery-0.4.0-b31-arm64-v8a.apk), SHA-256 `c2abf4f8e8aa4ab973e22e5cabf85bcca316835ce43ddb9fc221b3f42b8f5cd1`.
+- Исходный SHA `af72cbcf73c100b3010f62835853989d0e0dda21`, [CI 41389681159](https://github.com/Mister-Mikhail/FGallery/actions/runs/41389681159) — **success** (R8 release/JVM/Android16 + публикация).
+- Проверить **встроенное обновление с build30**, затем Samsung DNG, Phase One IIQ/3FR превью и скорость, сортировку альбомов по времени файлов, стабильность при переключениях. Не считать принято без S23.
