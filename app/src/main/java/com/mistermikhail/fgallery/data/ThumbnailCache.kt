@@ -12,7 +12,6 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
-import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -53,12 +52,19 @@ object ThumbnailCache {
                 .putInt(key, megabytes.coerceIn(MIN_LIMIT_MB, MAX_LIMIT_MB)).apply()
             trimCache(context, highQuality)
         }
-    private val generationLocks = ConcurrentHashMap<String, Mutex>()
+    // A fixed lock stripe pool avoids retaining one Mutex per ever-seen media file.
+    // Same path always hashes to the same stripe, preserving single-writer safety.
+    private val generationLocks = Array(128) { Mutex() }
     private val foregroundDecoders = Semaphore(3)
     private val backgroundDecoders = Semaphore(1)
     private val userBusy = AtomicBoolean(false)
+    private val viewerBusy = AtomicBoolean(false)
     fun setUserBusy(busy: Boolean) {
         userBusy.set(busy)
+        lastForegroundRequest.set(System.currentTimeMillis())
+    }
+    fun setViewerBusy(busy: Boolean) {
+        viewerBusy.set(busy)
         lastForegroundRequest.set(System.currentTimeMillis())
     }
     private val foregroundDemand = AtomicInteger()
@@ -93,6 +99,10 @@ object ThumbnailCache {
             var generated = 0
             for (item in items) {
                 currentCoroutineContext().ensureActive()
+                // Skip unchanged cached media without touching their LRU timestamps.
+                // Only new/modified items should enter the background decode queue.
+                val target = fileFor(context, item, highQuality)
+                if (target.isFile && target.length() > 0L) continue
                 if (ensure(context, item, highQuality, background = true) != null) generated++
             }
             generated
@@ -117,14 +127,14 @@ object ThumbnailCache {
             // Wait BEFORE acquiring the per-file mutex: otherwise a pending
             // visible request for the same file could deadlock behind background.
             if (background) {
-                while (userBusy.get() || foregroundDemand.get() > 0 ||
+                while (userBusy.get() || viewerBusy.get() || foregroundDemand.get() > 0 ||
                     System.currentTimeMillis() - lastForegroundRequest.get() < 1_500L) {
                     currentCoroutineContext().ensureActive()
                     delay(80L)
                 }
             }
             val semaphore = if (background) backgroundDecoders else foregroundDecoders
-            generationLocks.getOrPut(target.path) { Mutex() }.withLock {
+            generationLocks[(target.path.hashCode() and Int.MAX_VALUE) % generationLocks.size].withLock {
                 if (target.isFile && target.length() > 0L) return@withLock target
                 semaphore.withPermit {
                     if (target.isFile && target.length() > 0L) return@withPermit target
