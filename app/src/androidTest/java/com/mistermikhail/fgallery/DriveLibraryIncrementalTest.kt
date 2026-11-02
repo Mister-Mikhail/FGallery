@@ -34,6 +34,43 @@ class DriveLibraryIncrementalTest {
         assertEquals(2, seen.size)
     }
 
+
+    @Test fun unchangedSafDocumentRetainsEnrichedMetadataButChangedVersionDoesNot() {
+        val root = StorageRoot("external_primary", "Phone", "/storage/emulated/0", null)
+        val uri = Uri.parse(
+            "content://com.android.externalstorage.documents/tree/primary%3A/document/primary%3ADCIM%2Fphoto.dng"
+        )
+        val fresh = requireNotNull(DriveLibrary.item(
+            uri, "photo.dng", "image/x-adobe-dng", 1024L, 1234L,
+            root, "content://com.android.externalstorage.documents/tree/primary%3A", "DCIM/",
+        ))
+        val prior = fresh.copy(dateTakenMillis = 111L, width = 4000,
+            height = 3000, durationMillis = 50L)
+        val reused = DriveLibrary.reuseUnchangedSafMetadata(fresh, prior)
+        assertEquals(4000, reused.width)
+        assertEquals(3000, reused.height)
+        assertEquals(111L, reused.dateTakenMillis)
+        assertEquals(50L, reused.durationMillis)
+        assertEquals(fresh, DriveLibrary.reuseUnchangedSafMetadata(fresh, null))
+        assertEquals(fresh.copy(sizeBytes = 1025L),
+            DriveLibrary.reuseUnchangedSafMetadata(fresh.copy(sizeBytes = 1025L), prior))
+        assertEquals(fresh.copy(dateModifiedMillis = 1235L),
+            DriveLibrary.reuseUnchangedSafMetadata(fresh.copy(dateModifiedMillis = 1235L), prior))
+        assertEquals(fresh.copy(name = "renamed.dng"),
+            DriveLibrary.reuseUnchangedSafMetadata(fresh.copy(name = "renamed.dng"), prior))
+        assertEquals(fresh.copy(folderTarget = "content://different-folder"),
+            DriveLibrary.reuseUnchangedSafMetadata(
+                fresh.copy(folderTarget = "content://different-folder"), prior))
+        assertEquals(fresh.copy(sourcePath = "/storage/usb/photo.dng"),
+            DriveLibrary.reuseUnchangedSafMetadata(
+                fresh.copy(sourcePath = "/storage/usb/photo.dng"), prior))
+        assertEquals(fresh.copy(storageName = "Renamed volume"),
+            DriveLibrary.reuseUnchangedSafMetadata(
+                fresh.copy(storageName = "Renamed volume"), prior))
+        assertEquals(fresh, DriveLibrary.reuseUnchangedSafMetadata(
+            fresh, prior.copy(dateModifiedMillis = 0L)))
+    }
+
     @Test fun safTraversalStopsProviderCyclesWithoutCollidingAcrossAuthorities() {
         val seen = hashSetOf<String>()
         assertTrue(DriveLibrary.markSafDocumentVisited(

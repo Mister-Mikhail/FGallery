@@ -61,6 +61,34 @@ object DriveLibrary {
         }
     }
 
+    /**
+     * SAF providers often return the same URI and metadata on every refresh.
+     * Preserve dimensions, EXIF-derived capture time and video duration only
+     * when the document identity AND its versioned metadata are unchanged.
+     * A rename, move, content change or provider remount must re-index it.
+     * This is a metadata-only optimization: never assume identical bytes
+     * solely from an unchanged provider mtime for duplicate detection.
+     */
+    internal fun reuseUnchangedSafMetadata(current: MediaItem, prior: MediaItem?): MediaItem {
+        if (prior == null || current.uriKey != prior.uriKey ||
+            current.name != prior.name || current.mimeType != prior.mimeType ||
+            current.kind != prior.kind || current.sizeBytes != prior.sizeBytes ||
+            current.dateModifiedMillis <= 0L ||
+            current.dateModifiedMillis != prior.dateModifiedMillis ||
+            current.storageId != prior.storageId ||
+            current.storageName != prior.storageName ||
+            current.folderTarget != prior.folderTarget ||
+            current.relativePath != prior.relativePath ||
+            current.sourcePath != prior.sourcePath
+        ) return current
+        return current.copy(
+            dateTakenMillis = prior.dateTakenMillis,
+            width = prior.width,
+            height = prior.height,
+            durationMillis = prior.durationMillis,
+        )
+    }
+
     /** Null physical paths belong to opaque SAF providers: keep those URI
      * identities, while known MediaStore and already-discovered physical
      * paths are never inserted twice. */
@@ -142,6 +170,9 @@ object DriveLibrary {
         val previous = priorFiles.filter { it.uri.scheme == "file" && it.sourcePath.isNotBlank() }
             .groupBy { it.folderTarget }
         val previousFolders = knownFolders.associateBy { it.key }
+        val previousSaf = priorFiles.asSequence()
+            .filter { it.uri.scheme == "content" }
+            .associateBy { it.uriKey }
         if (StorageFolders.hasFileAccess()) for (root in StorageAccess.mounted(context)) {
             val directory = root.directory ?: continue
             val canonicalRoot = directory.canonicalPath
@@ -212,9 +243,12 @@ object DriveLibrary {
                         val child = DocumentsContract.buildDocumentUriUsingTree(uri, id)
                         val path = trustedSafPhysicalPath(mountedRoot, child, id, root.id)
                         if (mime == DocumentsContract.Document.MIME_TYPE_DIR) rows.add(Triple(child.toString(), name, mime))
-                        else if (path == null || path !in known) item(child, name, mime, c.getLong(3), c.getLong(4), root, target, relative)?.let { item ->
+                        else if (path == null || path !in known) item(
+                            child, name, mime, c.getLong(3), c.getLong(4), root, target, relative,
+                        )?.let { item ->
                             if (shouldIncludeSafPhysicalPath(path, known, seenPhysicalPaths)) {
-                                result.add(item.copy(sourcePath = path.orEmpty()))
+                                val fresh = item.copy(sourcePath = path.orEmpty())
+                                result.add(reuseUnchangedSafMetadata(fresh, previousSaf[fresh.uriKey]))
                             }
                         }
                     }
