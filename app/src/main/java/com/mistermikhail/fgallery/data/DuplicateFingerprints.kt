@@ -10,6 +10,24 @@ import java.nio.channels.SeekableByteChannel
 import java.security.MessageDigest
 
 /**
+ * A hash may only be attached to the exact indexed file generation. In
+ * particular, a stale Room row must not receive a digest of bytes overwritten
+ * by another app between MediaStore scans. MediaStore exposes second-granular
+ * mtime; accept only its rounded-down value (never a newer timestamp).
+ * Unknown timestamps are deliberately skipped, not guessed.
+ */
+internal fun fingerprintMetadataMatchesIndexed(
+    indexedSize: Long,
+    indexedModifiedMillis: Long,
+    observedSize: Long,
+    observedModifiedMillis: Long,
+    precisionMillis: Long = 0L,
+): Boolean = indexedSize > 0L && indexedSize == observedSize &&
+    indexedModifiedMillis > 0L && observedModifiedMillis > 0L &&
+    observedModifiedMillis <= indexedModifiedMillis &&
+    indexedModifiedMillis - observedModifiedMillis <= precisionMillis
+
+/**
  * Stage 6: bounded-I/O exact-copy prefilter. Never decode a RAW to hash it.
  * Quick hashes are candidates only: matching quick hashes are NOT proof of
  * equality. Full SHA-256 is required before any exact-copy proposal.
