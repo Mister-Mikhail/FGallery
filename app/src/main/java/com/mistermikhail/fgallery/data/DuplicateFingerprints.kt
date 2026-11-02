@@ -75,8 +75,37 @@ internal fun exactDuplicateGroups(rows: List<CatalogMediaRow>): List<List<Catalo
         .filter { it.sizeBytes > 0L && !it.quickHash.isNullOrBlank() && !it.fullHash.isNullOrBlank() }
         .groupBy { Triple(it.sizeBytes, it.quickHash, it.fullHash) }
         .values.filter { it.size > 1 }
-        .map { it.sortedWith(compareBy<CatalogMediaRow> { it.dateTakenMillis }.thenBy { it.uri }) }
+        .map { it.sortedWith(exactCopyKeepPriority) }
         .sortedByDescending { it.size }
+
+/**
+ * Preferred file to KEEP within a verified exact-byte group. This only orders
+ * suggestions; it never deletes files. Image edits and visually similar photos
+ * are NOT part of these groups.
+ *
+ * The catalogue does not yet record JPEG quantization tables or full EXIF
+ * completeness, so those criteria must be added before automatic proposals
+ * of which lossy JPEG to retain. URI is a stable final tie-breaker.
+ */
+internal val exactCopyKeepPriority: Comparator<CatalogMediaRow> =
+    compareByDescending<CatalogMediaRow> { duplicateFormatPriority(it) }
+        .thenByDescending { it.width.toLong() * it.height.toLong() }
+        .thenByDescending { it.sizeBytes }
+        .thenBy { it.dateTakenMillis.takeIf { date -> date > 0L } ?: Long.MAX_VALUE }
+        .thenByDescending { !it.exifCamera.isNullOrBlank() }
+        .thenBy { it.uri }
+
+private fun duplicateFormatPriority(row: CatalogMediaRow): Int {
+    val ext = row.name.substringAfterLast('.', "").lowercase(java.util.Locale.ROOT)
+    return when (ext) {
+        "dng", "cr2", "cr3", "nef", "nrw", "arw", "sr2", "srf",
+        "orf", "rw2", "raf", "pef", "raw", "3fr", "fff", "iiq" -> 4
+        "tif", "tiff" -> 3
+        "heic", "heif" -> 2
+        "jpg", "jpeg" -> 1
+        else -> 0
+    }
+}
 
 /**
  * Stage 6 exact-copy work planner. Size equality is only a candidate;
