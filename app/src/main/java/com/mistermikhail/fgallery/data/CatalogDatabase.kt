@@ -114,6 +114,13 @@ internal interface CatalogDao {
     @Query("SELECT * FROM catalog_media WHERE uri IN (:uris)")
     suspend fun mediaByUris(uris: List<String>): List<CatalogMediaRow>
 
+    /** Conditional writes avoid attaching a digest to a row changed by a concurrent scan. */
+    @Query("UPDATE catalog_media SET quickHash = :hash WHERE uri = :uri AND sizeBytes = :size AND dateModifiedMillis = :modified AND recycled = 0")
+    suspend fun setQuickHash(uri: String, size: Long, modified: Long, hash: String): Int
+
+    @Query("UPDATE catalog_media SET fullHash = :hash WHERE uri = :uri AND sizeBytes = :size AND dateModifiedMillis = :modified AND quickHash = :quick AND recycled = 0")
+    suspend fun setFullHash(uri: String, size: Long, modified: Long, quick: String, hash: String): Int
+
     @Query("DELETE FROM catalog_media WHERE uri IN (:uris)")
     suspend fun deleteMedia(uris: List<String>)
 
