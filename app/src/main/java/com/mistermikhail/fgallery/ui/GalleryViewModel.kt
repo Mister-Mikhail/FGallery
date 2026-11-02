@@ -2,6 +2,7 @@ package com.mistermikhail.fgallery.ui
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import com.mistermikhail.fgallery.data.LibrarySnapshot
 import com.mistermikhail.fgallery.data.CatalogStore
@@ -66,7 +67,7 @@ data class GalleryUiState(
     val physicalBinUris: Set<String> = emptySet(),
 )
 
-class GalleryViewModel(application: Application) : AndroidViewModel(application) {
+class GalleryViewModel(application: Application, private val savedStateHandle: SavedStateHandle) : AndroidViewModel(application) {
     private val driveBin = DriveRecycleBin(application)
     private var lastJsonBackupMillis: Long = 0L
     private var thumbnailJob: kotlinx.coroutines.Job? = null
@@ -75,8 +76,8 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
     private val repository = MediaRepository(application)
     private val settingsRepository = AppSettingsRepository(application)
     private val _uiState = MutableStateFlow(LibrarySnapshot.memory?.let {
-        derive(GalleryUiState(allItems = it.items, physicalBinUris = it.bin, hasPermission = it.permission))
-    } ?: GalleryUiState())
+        derive(GalleryUiState(allItems = it.items, physicalBinUris = it.bin, hasPermission = it.permission, selectedAlbum = savedStateHandle["selected_album"]))
+    } ?: GalleryUiState(selectedAlbum = savedStateHandle["selected_album"]))
     val uiState: StateFlow<GalleryUiState> = _uiState.asStateFlow()
     private var snapshotRestored = false
 
@@ -444,6 +445,7 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun openRecycleBin() {
+        savedStateHandle.remove<String>("selected_album")
         _uiState.update {
             it.copy(
                 recycleBinVisible = true,
@@ -458,6 +460,7 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
         _uiState.update { it.copy(recycleBinVisible = false) }
 
     fun openAlbum(name: String) {
+        savedStateHandle["selected_album"] = name
         _uiState.update {
             derive(
                 it.copy(
@@ -470,7 +473,8 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
         prewarmAlbum(name)
     }
 
-    fun closeAlbum() =
+    fun closeAlbum() {
+        savedStateHandle.remove<String>("selected_album")
         _uiState.update {
             derive(
                 it.copy(
@@ -480,6 +484,7 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
                 )
             )
         }
+    }
 
     fun setFilter(filter: MediaFilter) =
         _uiState.update { derive(it.copy(filter = filter)) }
