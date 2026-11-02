@@ -695,21 +695,10 @@ internal fun TiledZoomableImage(
                 if (cachedPreview == null) {
                     cachedPreview = cameraSource ?: ThumbnailCache.ensure(context, item)
                 }
-                if (cachedPreview == null && item.kind == MediaKind.RAW) {
-                    cachedPreview = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                        ThumbnailCache.rawPreview(context, item)?.let { bitmap ->
-                            try {
-                                val file = ThumbnailCache.fileFor(context, item)
-                                file.parentFile?.mkdirs()
-                                val temp = java.io.File.createTempFile("raw_fast_", ".png", file.parentFile)
-                                try {
-                                    check(com.mistermikhail.fgallery.data.TiffNative.writeBitmapPng(bitmap, temp.path))
-                                    check(temp.renameTo(file)); file
-                                } finally { temp.delete() }
-                            } finally { bitmap.recycle() }
-                        }
-                    }
-                }
+                // ThumbnailCache.ensure already performs the single bounded LibRaw
+                // fallback and writes the poster in its configured format.
+                // Retrying it here decoded a large RAW twice on failures and
+                // wrote PNG bytes into a .jpg cache path (v4 RAW posters).
                 if (!cameraFullEnough || developRequested || item.kind != MediaKind.RAW) {
                     fullSource = com.mistermikhail.fgallery.data.FullResolutionFiles.prepare(context, item)
                 }
