@@ -114,4 +114,43 @@ class RawEmbeddedJpegTest {
             assertNull(RandomAccessFile(file, "r").use { RawEmbeddedJpeg.locate(it.channel) })
         } finally { file.delete() }
     }
+    @Test fun dngMultiSubIfdArrayFindsBestJpegAndStopsAtCycle() {
+        val bytes = ByteArray(1024)
+        val b = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
+        b.put(0, 'I'.code.toByte()); b.put(1, 'I'.code.toByte())
+        b.putShort(2, 42); b.putInt(4, 8)
+        // IFD0 has orientation plus a two-element SubIFD pointer array.
+        b.putShort(8, 2)
+        b.putShort(10, 0x0112.toShort()); b.putShort(12, 3)
+        b.putInt(14, 1); b.putShort(18, 6)
+        b.putShort(22, 0x014a.toShort()); b.putShort(24, 4)
+        b.putInt(26, 2); b.putInt(30, 96)
+        b.putInt(34, 0)
+        b.putInt(96, 160); b.putInt(100, 240)
+
+        fun jpegDirectory(at: Int, jpegAt: Int, jpegSize: Int, next: Int) {
+            b.putShort(at, 2)
+            fun entry(i: Int, tag: Int, value: Int) {
+                val pos = at + 2 + i * 12
+                b.putShort(pos, tag.toShort()); b.putShort(pos + 2, 4)
+                b.putInt(pos + 4, 1); b.putInt(pos + 8, value)
+            }
+            entry(0, 0x0201, jpegAt)
+            entry(1, 0x0202, jpegSize)
+            b.putInt(at + 26, next)
+        }
+        jpegDirectory(160, 500, 16, 0)
+        jpegDirectory(240, 600, 80, 8) // malformed back-link to IFD0
+        bytes[500] = 0xff.toByte(); bytes[501] = 0xd8.toByte()
+        bytes[600] = 0xff.toByte(); bytes[601] = 0xd8.toByte()
+        val file = File.createTempFile("fgallery-dng-subifds", ".dng")
+        try {
+            file.writeBytes(bytes)
+            assertEquals(
+                RawEmbeddedJpeg.Slice(600, 80, 6),
+                RandomAccessFile(file, "r").use { RawEmbeddedJpeg.locate(it.channel) },
+            )
+        } finally { file.delete() }
+    }
+
 }
