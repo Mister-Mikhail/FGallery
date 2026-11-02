@@ -256,7 +256,7 @@ class CatalogDatabaseTest {
             )
             fun row(id: Int, size: Long, quick: String? = null,
                     full: String? = null, recycled: Boolean = false) =
-                template.copy(uri = "media://$"+"id", mediaId = id.toLong(),
+                template.copy(uri = "media://" + id, mediaId = id.toLong(),
                     sizeBytes = size, quickHash = quick,
                     fullHash = full, recycled = recycled)
             val rows = listOf(
