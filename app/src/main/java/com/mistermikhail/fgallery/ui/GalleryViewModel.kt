@@ -124,6 +124,14 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
     }
 
     // Stable album identity must include drive and exact folder, never just a leaf name.
+    /**
+     * Bulk prewarming of RAW without an embedded JPEG can trigger a native
+     * demosaic of a 100 MP file before the user ever opens its folder.
+     * Keep the first album cover in the priority queue; other RAW thumbnails
+     * are requested by visible Coil tiles instead of consuming idle memory.
+     */
+    internal fun bulkPrewarmEligible(kind: MediaKind): Boolean = kind != MediaKind.RAW
+
     private fun albumKey(item: MediaItem): String = "${item.storageId}:${item.folderTarget.ifBlank { item.relativePath.ifBlank { item.album } }}"
 
     private fun sortItems(
@@ -349,7 +357,7 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
                 )
 
                 val coverIds = albumCovers.mapTo(hashSetOf()) { it.id }
-                val remaining = items.filterNot { it.id in coverIds }
+                val remaining = items.filterNot { it.id in coverIds || !bulkPrewarmEligible(it.kind) }
 
                 preloadThumbnailBatches(
                     items = remaining,
@@ -358,7 +366,7 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
                     pauseBetweenBatchesMs = 45L,
                 )
                 preloadThumbnailBatches(
-                    items = albumCovers,
+                    items = albumCovers.filter { bulkPrewarmEligible(it.kind) },
                     batchSize = 8,
                     highQuality = true,
                     pauseBetweenBatchesMs = 40L,
@@ -392,7 +400,8 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
     private fun prewarmAlbum(name: String) {
         val snapshot = _uiState.value
         val items = snapshot.allItems.filter {
-            albumKey(it) == name && it.uriKey !in (snapshot.recycleBinUris + snapshot.physicalBinUris)
+            albumKey(it) == name && it.uriKey !in (snapshot.recycleBinUris + snapshot.physicalBinUris) &&
+                bulkPrewarmEligible(it.kind)
         }
 
         albumWarmJob?.cancel()
