@@ -944,7 +944,7 @@ private fun MediaPreview(
         .background(MaterialTheme.colorScheme.surfaceVariant)) {
         AsyncImage(request, item.name, contentScale = ContentScale.Crop,
             onSuccess = { primaryLoaded = true; previewFailed = false },
-            onError = { previewFailed = true; fallbackNeeded = true },
+            onError = { previewFailed = true; if (albumCover && item.kind in listOf(MediaKind.IMAGE, MediaKind.VIDEO)) fallbackNeeded = true },
             modifier = Modifier.fillMaxSize())
         if (albumCover && fallbackNeeded && !primaryLoaded &&
             item.kind in listOf(MediaKind.IMAGE, MediaKind.VIDEO)) {
