@@ -143,7 +143,7 @@ internal object RawEmbeddedJpeg {
         val top = ByteBuffer.wrap(header).order(order)
         if ((top.getShort(2).toInt() and 0xffff) != 42) return null
 
-        data class Directory(val jpeg: Slice?, val next: Long, val subIfd: Long, val orientation: Int)
+        data class Directory(val jpeg: Slice?, val next: Long, val subIfds: List<Long>, val orientation: Int)
         fun directory(ifd: Long, inheritedOrientation: Int): Directory? {
             if (ifd < 8L || ifd > length - 2) return null
             val countBytes = read(channel, ifd, 2) ?: return null
@@ -157,14 +157,25 @@ internal object RawEmbeddedJpeg {
             var stripSize: Long? = null
             var compression = 0L
             var orientation = inheritedOrientation
-            var subIfd = 0L
+            var subIfds = emptyList<Long>()
             for (i in 0 until count) {
                 val offset = i * 12
                 val tag = data.getShort(offset).toInt() and 0xffff
                 val type = data.getShort(offset + 2).toInt() and 0xffff
                 val total = unsignedInt(data.getInt(offset + 4))
-                // A TIFF array is an offset, not an inline scalar. Never
-                // mistake a multi-strip array for the beginning of a JPEG.
+                // DNGs often store several SubIFDs in a LONG array (IFD0 tag
+                // 0x014a), not a single inline pointer. Read at most 16 pointers.
+                // Never treat a TIFF array offset as a JPEG strip offset.
+                if (tag == 0x014a && type == 4 && total in 1L..16L) {
+                    val pointer = unsignedInt(data.getInt(offset + 8))
+                    subIfds = if (total == 1L) listOf(pointer) else {
+                        read(channel, pointer, total.toInt() * 4)?.let { bytes ->
+                            val pointers = ByteBuffer.wrap(bytes).order(order)
+                            List(total.toInt()) { unsignedInt(pointers.getInt(it * 4)) }
+                        }.orEmpty()
+                    }
+                    continue
+                }
                 if (total != 1L || type != 3 && type != 4) continue
                 val value = if (type == 3) data.getShort(offset + 8).toLong() and 0xffff
                     else unsignedInt(data.getInt(offset + 8))
@@ -175,7 +186,6 @@ internal object RawEmbeddedJpeg {
                     0x0117 -> stripSize = value
                     0x0201 -> jpegStart = value
                     0x0202 -> jpegSize = value
-                    0x014a -> if (type == 4) subIfd = value
                 }
             }
             val nextOffset = ifd + 2L + count * 12L
@@ -191,19 +201,32 @@ internal object RawEmbeddedJpeg {
                     marker[1] == 0xd8.toByte()) Slice(start, size.toInt(), orientation)
                 else null
             } else null
-            return Directory(candidate, next, subIfd, orientation)
+            return Directory(candidate, next, subIfds, orientation)
         }
 
         val firstOffset = unsignedInt(top.getInt(4))
         val first = directory(firstOffset, 1) ?: return null
-        // Limit traversal and avoid cyclic/invalid directory pointers.
+        // Bounded breadth-first traversal handles IFD1, multi-SubIFD DNGs
+        // and their next-IFD chains. Cycle protection and a strict 24-directory
+        // budget prevent malformed RAW files from causing unbounded work.
         val seen = hashSetOf(firstOffset)
         val candidates = mutableListOf<Slice>()
         first.jpeg?.let(candidates::add)
-        for (offset in listOf(first.next, first.subIfd)) {
-            if (offset >= 8L && seen.add(offset)) {
-                directory(offset, first.orientation)?.jpeg?.let(candidates::add)
+        val pending = java.util.ArrayDeque<Pair<Long, Int>>()
+        fun enqueue(offset: Long, orientation: Int) {
+            if (offset >= 8L && offset < length && !seen.contains(offset)) {
+                pending.add(offset to orientation)
             }
+        }
+        enqueue(first.next, first.orientation)
+        first.subIfds.forEach { enqueue(it, first.orientation) }
+        while (pending.isNotEmpty() && seen.size < 24) {
+            val (offset, inheritedOrientation) = pending.removeFirst()
+            if (!seen.add(offset)) continue
+            val next = directory(offset, inheritedOrientation) ?: continue
+            next.jpeg?.let(candidates::add)
+            enqueue(next.next, next.orientation)
+            next.subIfds.forEach { enqueue(it, next.orientation) }
         }
         // Prefer the largest camera JPEG. Some DNGs carry a tiny IFD0
         // thumbnail and a much better preview in IFD1.
