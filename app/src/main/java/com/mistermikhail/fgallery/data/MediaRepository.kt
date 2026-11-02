@@ -8,6 +8,8 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.util.Locale
 
@@ -120,17 +122,19 @@ class MediaRepository(private val context: Context) {
         }
     }
 
-    private fun queryMedia(trashedOnly: Boolean): List<MediaItem> = MediaStore.getExternalVolumeNames(context).flatMap { volume ->
-        runCatching { queryVolume(volume, trashedOnly) }.getOrDefault(emptyList())
+    private suspend fun queryMedia(trashedOnly: Boolean): List<MediaItem> = MediaStore.getExternalVolumeNames(context).flatMap { volume ->
+        try { queryVolume(volume, trashedOnly) }
+        catch (e: kotlinx.coroutines.CancellationException) { throw e }
+        catch (_: Exception) { emptyList() }
     }
 
     /** Unlike the best-effort trash listing, catalogue reconciliation must
      * fail atomically if any volume query fails. Otherwise a transient null
      * cursor can delete that volume's saved rows and advance its checkpoint. */
-    private fun queryMediaStrict(): List<MediaItem> =
+    private suspend fun queryMediaStrict(): List<MediaItem> =
         MediaStore.getExternalVolumeNames(context).flatMap { volume -> queryVolume(volume, false) }
 
-    private fun queryVolume(volume: String, trashedOnly: Boolean, since: Long? = null): List<MediaItem> {
+    private suspend fun queryVolume(volume: String, trashedOnly: Boolean, since: Long? = null): List<MediaItem> {
         val resolver = context.contentResolver
         val collection = MediaStore.Files.getContentUri(volume)
         val projection = arrayOf(
@@ -200,7 +204,11 @@ class MediaRepository(private val context: Context) {
                 val durationC = it.getColumnIndexOrThrow(MediaStore.Video.VideoColumns.DURATION)
                 val albumC = it.getColumnIndexOrThrow(MediaStore.Images.ImageColumns.BUCKET_DISPLAY_NAME)
 
+                var scannedRows = 0
                 while (it.moveToNext()) {
+                    // MediaStore cursors can contain tens of thousands of rows.
+                    // Abandon superseded scans promptly when refresh() cancels them.
+                    if (++scannedRows % 128 == 0) currentCoroutineContext().ensureActive()
                     val sourcePath = it.getString(dataC).orEmpty()
                     if (sourcePath.contains("/${StorageAccess.BIN}/") || (StorageFolders.hasFileAccess() && sourcePath.isNotBlank() && !java.io.File(sourcePath).exists())) continue
                     val id = it.getLong(idC)
