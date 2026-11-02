@@ -123,6 +123,18 @@ internal interface CatalogDao {
     """)
     suspend fun pendingFullHashCandidates(): List<CatalogMediaRow>
 
+    /** Keyset paging: successful hashes remove rows from this query without
+     * skipping later candidates. Missing posters can be retried on next pass. */
+    @Query("""
+        SELECT * FROM catalog_media
+        WHERE recycled = 0 AND kind = 'IMAGE'
+          AND width >= 64 AND height >= 64
+          AND LOWER(name) NOT LIKE '%.gif'
+          AND perceptualHash IS NULL AND uri > :afterUri
+        ORDER BY uri LIMIT :limit
+    """)
+    suspend fun pendingVisualHashCandidates(afterUri: String, limit: Int): List<CatalogMediaRow>
+
     @Query("SELECT * FROM catalog_volumes")
     suspend fun allVolumes(): List<CatalogVolumeRow>
 
@@ -147,6 +159,18 @@ internal interface CatalogDao {
 
     @Query("UPDATE catalog_media SET fullHash = :hash WHERE uri = :uri AND sizeBytes = :size AND dateModifiedMillis = :modified AND quickHash = :quick AND recycled = 0")
     suspend fun setFullHash(uri: String, size: Long, modified: Long, quick: String, hash: String): Int
+
+    /** A visual poster must not be attached to an updated row or changed
+     * edge digest. It is only a prefilter, never duplicate evidence. */
+    @Query("""
+        UPDATE catalog_media SET perceptualHash = :hash
+        WHERE uri = :uri AND sizeBytes = :size AND dateModifiedMillis = :modified
+          AND recycled = 0 AND perceptualHash IS NULL
+          AND ((:edge IS NULL AND quickHash IS NULL) OR quickHash = :edge)
+    """)
+    suspend fun setVisualHash(
+        uri: String, size: Long, modified: Long, edge: String?, hash: String,
+    ): Int
 
     @Query("DELETE FROM catalog_media WHERE uri IN (:uris)")
     suspend fun deleteMedia(uris: List<String>)

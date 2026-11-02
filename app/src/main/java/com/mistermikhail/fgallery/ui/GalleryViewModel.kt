@@ -344,6 +344,20 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
                     while (!ThumbnailCache.canRunBackgroundIndexing() && waits++ < 40) delay(1_500L)
                     if (ThumbnailCache.canRunBackgroundIndexing()) {
                         try {
+                            // Compute cheap dHash candidates only from already
+                            // cached ordinary image posters. No RAW decode and
+                            // no visual duplicate proposals until strict pixel
+                            // verification rejects edits, crops and burst shots.
+                            var lastVisualUri = ""
+                            repeat(96) {
+                                if (!ThumbnailCache.canRunBackgroundIndexing()) return@launch
+                                val next = CatalogStore.indexVisualCandidateHashes(
+                                    getApplication(), ThumbnailCache::canRunBackgroundIndexing,
+                                    afterUri = lastVisualUri,
+                                ) ?: return@repeat
+                                lastVisualUri = next
+                                delay(350L)
+                            }
                             // One refresh may expose hundreds of same-size files.
                             // Drain small bounded batches while idle, rather than
                             // indexing only 12 candidates until the NEXT refresh.

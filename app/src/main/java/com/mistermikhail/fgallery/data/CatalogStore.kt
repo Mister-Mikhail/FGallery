@@ -272,6 +272,40 @@ internal object CatalogStore {
         advanced
     }
 
+    /** Stage 6: bounded idle pass over EXISTING JPEG/PNG posters. Never start
+     * a RAW decode or request a new thumbnail. Keyset paging avoids starving
+     * later files when the first posters are missing or evicted. */
+    suspend fun indexVisualCandidateHashes(
+        context: Context,
+        canWork: () -> Boolean,
+        afterUri: String = "",
+        budget: Int = 48,
+    ): String? = withContext(Dispatchers.IO) {
+        val dao = CatalogDatabase.get(context).catalog()
+        val job = kotlin.coroutines.coroutineContext[kotlinx.coroutines.Job]
+        fun ensureIdle() {
+            job?.ensureActive()
+            if (!canWork()) throw kotlinx.coroutines.CancellationException("Foreground media interaction")
+        }
+        val candidates = dao.pendingVisualHashCandidates(afterUri, budget)
+        for (row in candidates) {
+            ensureIdle()
+            try {
+                val hash = VisualThumbnailFingerprintSource.cachedDifferenceHash(
+                    context, row, ::ensureIdle,
+                ) ?: continue
+                ensureIdle()
+                dao.setVisualHash(row.uri, row.sizeBytes, row.dateModifiedMillis,
+                    row.quickHash, hash)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // Evicted/corrupt cached poster: leave the row unmodified.
+            }
+        }
+        candidates.lastOrNull()?.uri
+    }
+
     /** Keep Room current immediately after a successful app-owned file creation.
      * The next MediaStore/SAF reconciliation remains authoritative. */
     suspend fun upsertItems(context: Context, items: List<MediaItem>) = withContext(Dispatchers.IO) {
