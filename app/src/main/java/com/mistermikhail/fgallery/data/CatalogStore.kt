@@ -196,8 +196,9 @@ internal object CatalogStore {
         canWork: () -> Boolean,
         quickBudget: Int = 12,
         fullBudget: Int = 2,
-    ) = withContext(Dispatchers.IO) {
+    ): Boolean = withContext(Dispatchers.IO) {
         val dao = CatalogDatabase.get(context).catalog()
+        var advanced = false
         val job = kotlin.coroutines.coroutineContext[kotlinx.coroutines.Job]
         fun ensureIdle() {
             job?.ensureActive()
@@ -225,7 +226,7 @@ internal object CatalogStore {
         for (row in quickHashCandidates(dao.allMedia()).asSequence().filter { localFile(it) != null }.take(quickBudget)) {
             ensureIdle()
             stableRead(row, DuplicateFingerprints::quick)?.let { digest ->
-                dao.setQuickHash(row.uri, row.sizeBytes, row.dateModifiedMillis, digest)
+                if (dao.setQuickHash(row.uri, row.sizeBytes, row.dateModifiedMillis, digest) > 0) advanced = true
             }
         }
         for (row in fullHashCandidates(dao.allMedia()).asSequence().filter { localFile(it) != null }.take(fullBudget)) {
@@ -237,9 +238,13 @@ internal object CatalogStore {
                 continue
             }
             stableRead(row, DuplicateFingerprints::full)?.let { digest ->
-                dao.setFullHash(row.uri, row.sizeBytes, row.dateModifiedMillis, edge, digest)
+                if (dao.setFullHash(row.uri, row.sizeBytes, row.dateModifiedMillis, edge, digest) > 0) advanced = true
             }
         }
+        // Signal the idle scheduler to keep draining finite batches. A false
+        // result means no accessible candidate advanced, so stop rather than
+        // spin forever on unreadable/unchanged provider rows.
+        advanced
     }
 
     /** Keep Room current immediately after a successful app-owned file creation.
