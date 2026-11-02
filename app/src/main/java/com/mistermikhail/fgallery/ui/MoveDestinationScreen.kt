@@ -19,7 +19,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.CreateNewFolder
+import androidx.compose.material.icons.outlined.Sort
 import androidx.compose.material.icons.outlined.ChevronRight
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -31,6 +34,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -55,8 +62,18 @@ fun MoveDestinationScreen(
     onChooseOtherFolder: () -> Unit,
     onCreateFolder: () -> Unit,
 ) {
-    val filtered = albums.filter {
-        query.isBlank() || it.name.contains(query, ignoreCase = true)
+    var sortMode by remember { mutableStateOf(0) }
+    var sortMenuExpanded by remember { mutableStateOf(false) }
+    val filtered = remember(albums, query, sortMode) {
+        val matches = albums.filter { query.isBlank() || it.name.contains(query, ignoreCase = true) }
+        when (sortMode) {
+            1 -> matches.sortedByDescending { it.name.lowercase() }
+            2 -> matches.sortedByDescending { it.newestDateMillis }
+            3 -> matches.sortedBy { it.newestDateMillis }
+            4 -> matches.sortedByDescending { it.count }
+            5 -> matches.sortedBy { it.count }
+            else -> matches.sortedBy { it.name.lowercase() }
+        }
     }
 
     Scaffold(
@@ -82,6 +99,26 @@ fun MoveDestinationScreen(
                     }
                 },
                 actions = {
+                    Box {
+                        IconButton(onClick = { sortMenuExpanded = true }) {
+                            Icon(Icons.Outlined.Sort, contentDescription = "Сортировка папок")
+                        }
+                        DropdownMenu(
+                            expanded = sortMenuExpanded,
+                            onDismissRequest = { sortMenuExpanded = false },
+                        ) {
+                            listOf(
+                                "Имя: А–Я", "Имя: Я–А",
+                                "Сначала новые", "Сначала старые",
+                                "Больше файлов", "Меньше файлов",
+                            ).forEachIndexed { index, label ->
+                                DropdownMenuItem(
+                                    text = { Text(label) },
+                                    onClick = { sortMode = index; sortMenuExpanded = false },
+                                )
+                            }
+                        }
+                    }
                     IconButton(onClick = onCreateFolder) {
                         Icon(
                             Icons.Outlined.CreateNewFolder,
