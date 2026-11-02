@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 
 /** Album date is the latest timestamp of a contained file, not the folder mtime. */
@@ -77,6 +78,7 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
     private var thumbnailJob: kotlinx.coroutines.Job? = null
     private var albumWarmJob: kotlinx.coroutines.Job? = null
     private var refreshJob: kotlinx.coroutines.Job? = null
+    private var fingerprintJob: kotlinx.coroutines.Job? = null
     private val repository = MediaRepository(application)
     private val settingsRepository = AppSettingsRepository(application)
     private val _uiState = MutableStateFlow(LibrarySnapshot.memory?.let {
@@ -272,6 +274,7 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
     }
 
     fun refresh(forceFull: Boolean = false) {
+        fingerprintJob?.cancel()
         refreshJob?.cancel()
         val restoreSnapshot = !snapshotRestored
         snapshotRestored = true
@@ -332,6 +335,26 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
                 CatalogStore.persist(getApplication(), snapshot, started)
             }.isSuccess
             if (roomStored && fullSafetyScan) CatalogStore.recordFullScan(getApplication())
+            if (roomStored) {
+                // Fingerprint only potential exact-copy candidates, with small
+                // per-refresh budgets. Never compete with scrolling or viewing.
+                fingerprintJob = viewModelScope.launch(Dispatchers.IO) {
+                    delay(8_000L)
+                    var waits = 0
+                    while (!ThumbnailCache.canRunBackgroundIndexing() && waits++ < 40) delay(1_500L)
+                    if (ThumbnailCache.canRunBackgroundIndexing()) {
+                        try {
+                            CatalogStore.indexExactDuplicateCandidates(getApplication(),
+                                ThumbnailCache::canRunBackgroundIndexing)
+                        } catch (e: kotlinx.coroutines.CancellationException) {
+                            // Foreground interaction or a newer scan supersedes the work.
+                            if (!kotlinx.coroutines.currentCoroutineContext().isActive) throw e
+                        } catch (_: Exception) {
+                            // Fingerprints are optional; media and the catalogue stay intact.
+                        }
+                    }
+                }
+            }
             // A failed scan must not replace the previous JSON fallback either.
             // Leave the last good checkpoint intact for the next retry.
             if (scanSucceeded) {
