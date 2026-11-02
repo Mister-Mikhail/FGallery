@@ -897,7 +897,10 @@ class MainActivity : ComponentActivity() {
                 try {
                     viewModel.restoreFromRecycleBin(items)
                     selectedIds = emptySet()
-                    if (items.any { it.uriKey == selectedItem?.uriKey }) selectedItem = null; savedViewerUri = null
+                    if (items.any { it.uriKey == selectedItem?.uriKey }) {
+                        selectedItem = null
+                        savedViewerUri = null
+                    }
                 }
                 catch (e: Exception) { notify("Не удалось восстановить: ${e.localizedMessage}") }
                 finally { operationBusy = false }
