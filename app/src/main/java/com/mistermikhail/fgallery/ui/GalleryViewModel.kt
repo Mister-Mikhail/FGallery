@@ -344,8 +344,17 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
                     while (!ThumbnailCache.canRunBackgroundIndexing() && waits++ < 40) delay(1_500L)
                     if (ThumbnailCache.canRunBackgroundIndexing()) {
                         try {
-                            CatalogStore.indexExactDuplicateCandidates(getApplication(),
-                                ThumbnailCache::canRunBackgroundIndexing)
+                            // One refresh may expose hundreds of same-size files.
+                            // Drain small bounded batches while idle, rather than
+                            // indexing only 12 candidates until the NEXT refresh.
+                            // Never compete with a visible tile or RAW viewer.
+                            repeat(48) {
+                                if (!ThumbnailCache.canRunBackgroundIndexing()) return@launch
+                                val progressed = CatalogStore.indexExactDuplicateCandidates(
+                                    getApplication(), ThumbnailCache::canRunBackgroundIndexing)
+                                if (!progressed) return@launch
+                                delay(3_000L)
+                            }
                         } catch (e: kotlinx.coroutines.CancellationException) {
                             // Foreground interaction or a newer scan supersedes the work.
                             if (!kotlinx.coroutines.currentCoroutineContext().isActive) throw e
