@@ -92,6 +92,42 @@ class DuplicateFingerprintsTest {
         assertNull(replaced.perceptualHash)
     }
 
+    @Test fun plannerHashesOnlySizeCollisionsThenEdgeCollisions() {
+        val a = row("a", size = 120)
+        val b = row("b", size = 120)
+        val singleton = row("single", size = 121)
+        val recycled = row("trash", size = 120, recycled = true)
+        assertEquals(listOf(a, b), quickHashCandidates(listOf(a, b, singleton, recycled)))
+
+        val withEdges = listOf(
+            a.copy(quickHash = "same"), b.copy(quickHash = "same"),
+            row("c", size = 120, quick = "other"),
+            row("d", size = 120, quick = "other", full = "already"),
+        )
+        assertEquals(listOf(withEdges[0], withEdges[1], withEdges[2]),
+            fullHashCandidates(withEdges))
+    }
+
+    @Test fun fingerprintReadCanBeCancelledBeforeExpensiveFullHashCompletes() {
+        val source = Files.createTempFile("fgallery-cancel-hash", ".bin").toFile()
+        try {
+            source.writeBytes(ByteArray(1024 * 1024) { 7 })
+            var checks = 0
+            var cancelled = false
+            try {
+                DuplicateFingerprints.full(source) {
+                    if (++checks >= 3) throw java.util.concurrent.CancellationException()
+                }
+            } catch (_: java.util.concurrent.CancellationException) {
+                cancelled = true
+            }
+            assertTrue(cancelled)
+            assertTrue(checks >= 3)
+        } finally {
+            source.delete()
+        }
+    }
+
     @Test fun hashOfEmptyFileIsStable() {
         val empty = Files.createTempFile("fgallery-empty", ".bin").toFile()
         try {
