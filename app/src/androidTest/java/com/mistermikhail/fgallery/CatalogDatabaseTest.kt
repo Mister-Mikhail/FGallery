@@ -241,4 +241,45 @@ class CatalogDatabaseTest {
         } finally { db.close() }
     }
 
+    @Test fun sqliteCandidatePlannerMatchesSafeJvmPlanner() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val db = Room.inMemoryDatabaseBuilder(context, CatalogDatabase::class.java).build()
+        try {
+            val template = CatalogMediaRow(
+                uri = "media://1", mediaId = 1, name = "photo.jpg",
+                mimeType = "image/jpeg", kind = "IMAGE", dateTakenMillis = 100,
+                width = 100, height = 100, durationMillis = 0,
+                album = "Camera", relativePath = "DCIM/",
+                sizeBytes = 100, dateModifiedMillis = 100,
+                storageId = "external_primary", storageName = "Phone",
+                folderTarget = "/phone/DCIM", sourcePath = "/phone/DCIM/photo.jpg",
+            )
+            fun row(id: Int, size: Long, quick: String? = null,
+                    full: String? = null, recycled: Boolean = false) =
+                template.copy(uri = "media://$"+"id", mediaId = id.toLong(),
+                    sizeBytes = size, quickHash = quick,
+                    fullHash = full, recycled = recycled)
+            val rows = listOf(
+                row(1, 100), row(2, 100), row(3, 100, "edge", "full"),
+                row(4, 200, "match"), row(5, 200, "match", "full"),
+                row(6, 300), row(7, 100, recycled = true),
+                row(8, 400, ""), row(9, 400, ""),
+                row(10, 500, "other"), row(11, 500, "different"),
+            )
+            val dao = db.catalog()
+            dao.upsertMedia(rows)
+            assertEquals(
+                com.mistermikhail.fgallery.data.quickHashCandidates(rows).map { it.uri },
+                dao.pendingQuickHashCandidates().map { it.uri },
+            )
+            assertEquals(
+                com.mistermikhail.fgallery.data.fullHashCandidates(rows).map { it.uri },
+                dao.pendingFullHashCandidates().map { it.uri },
+            )
+            assertEquals(1, dao.setQuickHash(rows[0].uri, 100L, 100L, "edge"))
+            assertFalse(dao.pendingQuickHashCandidates().any { it.uri == rows[0].uri })
+            assertTrue(dao.pendingFullHashCandidates().any { it.uri == rows[0].uri })
+        } finally { db.close() }
+    }
+
 }
