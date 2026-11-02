@@ -1,23 +1,22 @@
 # FGallery — текущий статус
-Обновлено: **2026-11-02**. История: [архив](history/PROJECT_STATUS-through-2026-11-01.md). Источник требований: [FGallery_TZ_v1.md](FGallery_TZ_v1.md).
+Обновлено: **2026-11-02**. История: [архив](history/PROJECT_STATUS-through-2026-11-01.md). Утверждённые критерии: [FGallery_TZ_v1.md](FGallery_TZ_v1.md).
 
-## Точка продолжения
-- Рабочая интеграционная ветка: `feature/fgallery-0.4.0-integration`, основана на Stage 5, включающем исходники этапов 1–4. Новые изменения только в интеграционной ветке.
-- Draft PR #11–#14 оставлены открытыми, **не сливать**. Для интеграционной ветки нужен отдельный draft PR.
-- Версия тестовой сборки: **0.4.0 / versionCode 29**. QA prerelease через `android-stage5.yml` / `workflow_dispatch` с `publish_qa=true` после успешных R8/JVM и Android 16 instrumentation.
-- Физическое тестирование Samsung S23 Android 16 **не пройдено**; успешный эмулятор не является пользовательской приёмкой.
+## Опубликованная тестовая сборка
+- **0.4.0 / versionCode 29, QA prerelease, не stable**: [qa-v0.4.0-b29](https://github.com/Mister-Mikhail/FGallery/releases/tag/qa-v0.4.0-b29).
+- **ARM64 APK:** [прямая ссылка](https://github.com/Mister-Mikhail/FGallery/releases/download/qa-v0.4.0-b29/FGallery-0.4.0-b29-arm64-v8a.apk), SHA-256 `26a411cb8cf401e784e16deb74a1841f0aade7faaad6ec92119b6ae0be765d01`.
+- **Точный исходный SHA APK:** `f558a5eb0e436b6fa623aa73fd961dc2754b368b`; [R8/JVM + Android 16 emulator + публикация](https://github.com/Mister-Mikhail/FGallery/actions/runs/41362174886) — **success**. Позднейшие коммиты меняли документацию и CI, а не код приложения; [последний integration CI](https://github.com/Mister-Mikhail/FGallery/actions/runs/41363593841) — success.
+- **Физический Samsung Galaxy S23 / Android 16:** проверка пользователем ожидается; ни один пункт нельзя объявлять принятым только по эмулятору.
 
-## Очередность работ
-1. **Сейчас:** собрать и опубликовать промежуточный QA APK build29 для проверки базового функционала. Это не stable и не финальная приёмка Stage 5.
-2. Room-каталог: отражать собственные move/rename/delete/restore операции без устаревших записей.
-3. Пошаговое сканирование USB/SAF, сверка incremental/full в тестовой сборке.
-4. Stage 3: настройки кэша.
-5. Stage 4: проверить CR3 через LibRaw, встроенный JPEG либо корректный fallback; сохранить работающие CR2/3FR/IIQ.
-6. Видео: центральное поле — play/pause, края — только панели, в режиме уборки задержка 250 мс; остальное не менять.
-7. По результатам S23 QA закрывать только подтверждённые пункты.
+## Рабочая точка
+- Единственная активная ветка: `feature/fgallery-0.4.0-integration`, draft PR #15. Исторические draft PR #11–#14 не сливать и не развивать параллельно.
+- Проверенные Stage 2, 3, 4 CI: [41310970741](https://github.com/Mister-Mikhail/FGallery/actions/runs/41310970741), [41310875272](https://github.com/Mister-Mikhail/FGallery/actions/runs/41310875272), [41310872290](https://github.com/Mister-Mikhail/FGallery/actions/runs/41310872290) — success. Stage 5 head `2677fc3c`: [41360617549](https://github.com/Mister-Mikhail/FGallery/actions/runs/41360617549) — success.
+- Проверка базовой сборки: перемещение и отмена, конфликты, доступы, сетка, RAW CR2/3FR/IIQ, зум, уборка, видео, обновление из приложения.
 
-## Процесс
-- Документы обновлять **по завершении пункта**, а не после каждого коммита.
-- Не тратить время на дополнительные редкие SAF/symlink случаи без критерия приёмки.
-- Не трогать ранее принятые функции, не сливать PR, не публиковать stable.
-- Проверять SHA, GitHub Actions и скачиваемость APK перед передачей.
+## Следующие изменения — после базовой проверки
+1. Room-каталог после собственных move/rename/delete/restore.
+2. Пошаговое сканирование USB/SAF и full-vs-incremental сверка.
+3. Настройки кэша Stage 3.
+4. CR3: проверка LibRaw / извлечение встроенного JPEG, без регрессий CR2/3FR/IIQ.
+5. Только разрешённый пункт видео: play/pause по центральному полю, края — панели, задержка 250 мс в Cleanup.
+
+Документы обновлять после завершённого пункта, не после каждого коммита; не трогать принятые функции, не публиковать stable и не сливать PR без разрешения.
