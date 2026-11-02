@@ -95,3 +95,8 @@
 - **FG-INDEX-DELTA:** устранено потенциальное восстановление удалённого/trashed файла из уже полученной MediaStore generation delta; JVM-регрессии добавлены. Нужна проверка CI и устройства.
 - **FG-DUP-EXACT:** фоновые SHA-256 обрабатываются последовательными ограниченными пакетами при простое, а не только одним пакетом на refresh. Визуальные совпадения, кропы, SAF, UI и подтверждение удаления остаются открытыми; автоматического удаления нет.
 - **FG-CRASH:** ранее отмеченное единичное падение всё ещё без воспроизводимого журнала; не считать исправленным. PR #15 не сливать, stable не публиковать.
+
+## QA 0.4.0 build39 — опубликован, CI success (2026-11-02)
+- [QA prerelease build39](https://github.com/Mister-Mikhail/FGallery/releases/tag/qa-v0.4.0-b39); [ARM64 APK](https://github.com/Mister-Mikhail/FGallery/releases/download/qa-v0.4.0-b39/FGallery-0.4.0-b39-arm64-v8a.apk); SHA-256 `5f6490e56bdcd8ee7bb2d00cd300e2e1cb2446593d162d1f457b323e8655f736` (GitHub asset digest).
+- Исходный SHA `d43e704f9b6f5aed46456cd86c14fa2cbb7b0607`; [CI 41475552271](https://github.com/Mister-Mikhail/FGallery/actions/runs/41475552271) — **success**: R8/JVM, Android 16 instrumentation, QA publish.
+- Stage5: delta не восстанавливает удалённые/trashed записи из changed query; Stage6: продолжение точных SHA-256 пакетами во время простоя. Проверить на S23 обновление build38→39, стабильность, отсутствие торможения просмотра/прокрутки. Принятые build35 функции не менять; UI/визуальные дубликаты и диагностика единичного падения открыты. PR #15 draft, stable/merge запрещены.
