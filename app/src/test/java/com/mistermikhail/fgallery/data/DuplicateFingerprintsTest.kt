@@ -108,6 +108,33 @@ class DuplicateFingerprintsTest {
             fullHashCandidates(withEdges))
     }
 
+    @Test fun exactCopyProposalPrefersOriginalFormatThenResolutionThenCaptureDate() {
+        // Only verified equal bytes may enter a group; the order is advisory.
+        val jpeg = row("file:///jpeg", quick = "edge", full = "sha")
+            .copy(name = "image.jpg", width = 1000, height = 1000, dateTakenMillis = 100L)
+        val tiff = row("file:///tiff", quick = "edge", full = "sha")
+            .copy(name = "image.tiff", width = 2000, height = 2000, dateTakenMillis = 200L)
+        val raw = row("file:///raw", quick = "edge", full = "sha")
+            .copy(name = "image.dng", width = 1000, height = 1000, dateTakenMillis = 300L)
+        assertEquals(listOf(raw, tiff, jpeg),
+            exactDuplicateGroups(listOf(jpeg, tiff, raw)).single())
+
+        val older = jpeg.copy(uri = "file:///older", dateTakenMillis = 10L)
+        val newer = jpeg.copy(uri = "file:///newer", dateTakenMillis = 20L)
+        assertEquals(listOf(older, newer),
+            exactDuplicateGroups(listOf(newer, older)).single())
+    }
+
+    @Test fun exactCopyGroupingDoesNotConfuseRawJpegPairOrEditedVersion() {
+        val raw = row("file:///raw", quick = "same-edge", full = "raw-bytes")
+            .copy(name = "frame.dng", kind = "RAW")
+        val jpeg = row("file:///jpeg", quick = "same-edge", full = "jpeg-bytes")
+            .copy(name = "frame.jpg")
+        val retouched = row("file:///edit", quick = "same-edge", full = "edited-bytes")
+            .copy(name = "frame-edited.jpg")
+        assertTrue(exactDuplicateGroups(listOf(raw, jpeg, retouched)).isEmpty())
+    }
+
     @Test fun fingerprintReadCanBeCancelledBeforeExpensiveFullHashCompletes() {
         val source = Files.createTempFile("fgallery-cancel-hash", ".bin").toFile()
         try {
