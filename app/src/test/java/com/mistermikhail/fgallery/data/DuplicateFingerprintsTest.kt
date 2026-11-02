@@ -29,6 +29,41 @@ class DuplicateFingerprintsTest {
         quickHash = quick, fullHash = full, recycled = recycled,
     )
 
+    @Test fun staleFileOrProviderGenerationMustNotReceiveFingerprint() {
+        val indexedSize = 256_000L
+        val indexedModified = 1_730_000_000_875L
+        assertTrue(fingerprintMetadataMatchesIndexed(
+            indexedSize, indexedModified, indexedSize, indexedModified,
+        ))
+        // MediaStore reports seconds, so its timestamp is rounded DOWN.
+        assertTrue(fingerprintMetadataMatchesIndexed(
+            indexedSize, indexedModified, indexedSize, 1_730_000_000_000L,
+            precisionMillis = 999L,
+        ))
+        assertFalse(fingerprintMetadataMatchesIndexed(
+            indexedSize, indexedModified, indexedSize, 1_730_000_001_000L,
+            precisionMillis = 999L,
+        ))
+        assertFalse(fingerprintMetadataMatchesIndexed(
+            indexedSize, indexedModified, indexedSize, 1_729_999_999_000L,
+            precisionMillis = 999L,
+        ))
+        assertFalse(fingerprintMetadataMatchesIndexed(
+            indexedSize, indexedModified, indexedSize + 1, indexedModified,
+        ))
+        assertFalse(fingerprintMetadataMatchesIndexed(
+            indexedSize, indexedModified, indexedSize, 0L,
+        ))
+        // A physical path is millisecond-granular. Same-size overwrite with
+        // newer mtime must be skipped until the Room row is refreshed.
+        assertFalse(fingerprintMetadataMatchesIndexed(
+            indexedSize, indexedModified, indexedSize, indexedModified + 1L,
+        ))
+        assertFalse(fingerprintMetadataMatchesIndexed(
+            indexedSize, indexedModified, indexedSize, indexedModified - 1L,
+        ))
+    }
+
     @Test fun identicalBytesHaveIdenticalQuickAndFullHashes() {
         val one = Files.createTempFile("fgallery-hash-one", ".bin").toFile()
         val two = Files.createTempFile("fgallery-hash-two", ".bin").toFile()
