@@ -349,12 +349,12 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
                             // no visual duplicate proposals until strict pixel
                             // verification rejects edits, crops and burst shots.
                             var lastVisualUri = ""
-                            repeat(96) {
+                            for (page in 0 until 96) {
                                 if (!ThumbnailCache.canRunBackgroundIndexing()) return@launch
                                 val next = CatalogStore.indexVisualCandidateHashes(
                                     getApplication(), ThumbnailCache::canRunBackgroundIndexing,
                                     afterUri = lastVisualUri,
-                                ) ?: return@repeat
+                                ) ?: break
                                 lastVisualUri = next
                                 delay(350L)
                             }
