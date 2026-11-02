@@ -54,7 +54,8 @@ internal fun potentialResizedDuplicate(a: CatalogMediaRow, b: CatalogMediaRow): 
     if (a.uri == b.uri || a.recycled || b.recycled ||
         a.kind != "IMAGE" || b.kind != "IMAGE" ||
         a.width < 64 || b.width < 64 || a.height < 64 || b.height < 64 ||
-        a.name.endsWith(".gif", true) || b.name.endsWith(".gif", true)) return false
+        a.name.endsWith(".gif", true) || b.name.endsWith(".gif", true) ||
+        isCameraRawImage(a.name) || isCameraRawImage(b.name)) return false
     if (a.dateTakenMillis > 0L && b.dateTakenMillis > 0L &&
         kotlin.math.abs(a.dateTakenMillis - b.dateTakenMillis) > 2_000L) return false
     if (!a.exifCamera.isNullOrBlank() && !b.exifCamera.isNullOrBlank() &&
@@ -67,3 +68,10 @@ internal fun potentialResizedDuplicate(a: CatalogMediaRow, b: CatalogMediaRow): 
     val second = b.perceptualHash ?: return false
     return (VisualDuplicateFingerprints.hammingDistance(first, second) ?: return false) <= 5
 }
+
+/** Camera RAW + JPEG from one shutter press is a pair, not a visual duplicate. */
+internal fun isCameraRawImage(name: String): Boolean =
+    name.substringAfterLast('.', "").lowercase(java.util.Locale.ROOT) in setOf(
+        "dng", "cr2", "cr3", "nef", "nrw", "arw", "sr2", "srf",
+        "orf", "rw2", "raf", "pef", "raw", "3fr", "fff", "iiq",
+    )

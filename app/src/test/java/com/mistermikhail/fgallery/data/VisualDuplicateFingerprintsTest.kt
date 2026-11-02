@@ -57,6 +57,9 @@ class VisualDuplicateFingerprintsTest {
         assertTrue(potentialResizedDuplicate(original, scaled))
         assertFalse(potentialResizedDuplicate(original, original))
         assertFalse(potentialResizedDuplicate(original, scaled.copy(kind = "RAW", name = "frame.dng")))
+        // Android MediaStore often classifies camera RAW as IMAGE, not RAW.
+        assertFalse(potentialResizedDuplicate(original, scaled.copy(kind = "IMAGE", name = "frame.dng")))
+        assertFalse(potentialResizedDuplicate(original.copy(name = "frame.iiq"), scaled))
         assertFalse(potentialResizedDuplicate(original, scaled.copy(recycled = true)))
         assertFalse(potentialResizedDuplicate(original, scaled.copy(name = "animated.gif")))
         assertFalse(potentialResizedDuplicate(original, scaled.copy(width = 1200, height = 700)))
