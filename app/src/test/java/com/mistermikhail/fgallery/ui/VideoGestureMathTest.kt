@@ -20,9 +20,9 @@ class VideoGestureMathTest {
         assertFalse(isUnambiguousVertical(8f, 10f, 12f))
     }
 
-    @Test fun adjustmentIsRelativeCumulativeAndHalfRangePerFullZone() {
-        assertEquals(.75f, videoAdjustmentFraction(.25f, -600f, 1000f), .0001f)
-        assertEquals(.5f, videoAdjustmentFraction(.75f, 300f, 1000f), .0001f)
+    @Test fun adjustmentIsRelativeCumulativeAndFullRangePerFullZone() {
+        assertEquals(1f, videoAdjustmentFraction(.25f, -600f, 1000f), .0001f)
+        assertEquals(.25f, videoAdjustmentFraction(.75f, 300f, 1000f), .0001f)
         assertEquals(1f, videoAdjustmentFraction(.8f, -600f, 1000f), .0001f)
         assertEquals(0f, videoAdjustmentFraction(.1f, 600f, 1000f), .0001f)
     }
