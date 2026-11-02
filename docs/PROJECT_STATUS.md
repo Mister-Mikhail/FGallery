@@ -2,10 +2,10 @@
 Обновлено: **2026-11-02**. История: [архив](history/PROJECT_STATUS-through-2026-11-01.md). Утверждённые критерии: [FGallery_TZ_v1.md](FGallery_TZ_v1.md).
 
 ## Опубликованная тестовая сборка
-- **0.4.0 / versionCode 29, QA prerelease, не stable**: [qa-v0.4.0-b29](https://github.com/Mister-Mikhail/FGallery/releases/tag/qa-v0.4.0-b29).
-- **ARM64 APK:** [прямая ссылка](https://github.com/Mister-Mikhail/FGallery/releases/download/qa-v0.4.0-b29/FGallery-0.4.0-b29-arm64-v8a.apk), SHA-256 `26a411cb8cf401e784e16deb74a1841f0aade7faaad6ec92119b6ae0be765d01`.
-- **Точный исходный SHA APK:** `f558a5eb0e436b6fa623aa73fd961dc2754b368b`; [R8/JVM + Android 16 emulator + публикация](https://github.com/Mister-Mikhail/FGallery/actions/runs/41362174886) — **success**. Позднейшие коммиты меняли документацию и CI, а не код приложения; [последний integration CI](https://github.com/Mister-Mikhail/FGallery/actions/runs/41363593841) — success.
-- **Физический Samsung Galaxy S23 / Android 16:** проверка пользователем ожидается; ни один пункт нельзя объявлять принятым только по эмулятору.
+- **0.4.0 / versionCode 30, QA prerelease, не stable**: [qa-v0.4.0-b30](https://github.com/Mister-Mikhail/FGallery/releases/tag/qa-v0.4.0-b30).
+- **ARM64 APK:** [прямая ссылка](https://github.com/Mister-Mikhail/FGallery/releases/download/qa-v0.4.0-b30/FGallery-0.4.0-b30-arm64-v8a.apk), SHA-256 `dbdd72e09ba0ef66c688b93d91e98e12914639dd31cdc67220918e45aca72110`.
+- **Точный исходный SHA APK:** `b8716b4289c15445c39a8d6db6606d4505d3014f`; [R8/JVM + Android 16 emulator + публикация](https://github.com/Mister-Mikhail/FGallery/actions/runs/41375558109) — **success**.
+- **Физический Samsung Galaxy S23 / Android 16:** пять изменений build30 проверены и приняты пользователем; новые проблемы RAW/падения остаются открыты.
 
 ## Рабочая точка
 - Единственная активная ветка: `feature/fgallery-0.4.0-integration`, draft PR #15. Исторические draft PR #11–#14 не сливать и не развивать параллельно.
@@ -39,3 +39,10 @@
 - [QA prerelease 0.4.0 build30](https://github.com/Mister-Mikhail/FGallery/releases/tag/qa-v0.4.0-b30); [ARM64 APK](https://github.com/Mister-Mikhail/FGallery/releases/download/qa-v0.4.0-b30/FGallery-0.4.0-b30-arm64-v8a.apk), SHA-256 `dbdd72e09ba0ef66c688b93d91e98e12914639dd31cdc67220918e45aca72110`.
 - Исходный SHA APK `b8716b4289c15445c39a8d6db6606d4505d3014f`; [R8/JVM + Android 16 instrumented + QA publish](https://github.com/Mister-Mikhail/FGallery/actions/runs/41375558109) — **success**.
 - Изменения: сортировка папок назначения, переход к разрешениям, восстановление экрана/альбома/медиа, прогрев обложек, видеожест на полный диапазон. Физическая проверка Samsung S23 остаётся открытой. Не stable.
+
+## S23 — результаты приёмки build30 и следующий QA build31 (2026-11-02)
+- **Принято, не менять:** обложки альбомов появились; открытая папка/медиа сохраняются при возврате; кнопка разрешений работает; сортировка папок назначения появилась; видеоплеер и жесты работают.
+- **Новые замечания:** одно неповторённое падение приложения; Samsung DNG, Hasselblad и Phase One RAW открываются медленно; у Phase One пропали превью; альбомы «новые/старые» должны сортироваться по самой поздней дате создания/изменения **файла внутри альбома**.
+- **В коде для следующего QA:** сортировка по max(дата съёмки/создания, дата изменения) для каждого файла; восстановлен LibRaw fallback превью Phase One; быстрый поиск JPEG в TIFF/DNG IFD1 и одном SubIFD (с проверкой границ); общий ограничитель нативного RAW-декодирования, чтобы одновременно не проявлять несколько многомегапиксельных RAW; показ извлечённого JPEG без повторной дорогой демозаики; JVM-тесты DNG IFD1 и сортировки.
+- **Проверка:** R8/JVM/Android16 и реальный S23; CI-зелёный не означает принятие пользователем. Причина единичного падения не установлена без журнала; ограничение параллельной RAW-памяти — профилактическое исправление, не подтверждённый диагноз.
+- Следующая сборка должна иметь `versionCode=31`, QA prerelease, то же тестовое подписание для установки поверх build30 и проверки встроенного обновления. Не stable, PR #15 не сливать. USB/SD остаются отложенными.
