@@ -1036,6 +1036,15 @@ class MainActivity : ComponentActivity() {
 
         val current = selectedItem
 
+        // Heavy RAW decoding in the viewer must not compete with background
+        // thumbnail prewarming. Foreground tile requests remain responsive.
+        DisposableEffect(current != null) {
+            com.mistermikhail.fgallery.data.ThumbnailCache.setViewerBusy(current != null)
+            onDispose {
+                if (current != null) com.mistermikhail.fgallery.data.ThumbnailCache.setViewerBusy(false)
+            }
+        }
+
         BackHandler(enabled = current != null) {
             selectedItem = null; savedViewerUri = null
         }
