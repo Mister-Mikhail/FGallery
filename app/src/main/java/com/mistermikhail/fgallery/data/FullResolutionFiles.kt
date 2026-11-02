@@ -42,7 +42,8 @@ object FullResolutionFiles {
                 } ?: error("Нет доступа к исходному файлу")
                 currentCoroutineContext().ensureActive()
                 if (item.kind == MediaKind.RAW) {
-                    LibRaw().use { raw ->
+                    RawDecodeGate.mutex.withLock {
+                        LibRaw().use { raw ->
                         raw.setHalfSize(false)
                         raw.setCameraWhiteBalance(true)
                         raw.setOutputColorSpace(LibRaw.COLORSPACE_SRGB)
@@ -67,6 +68,7 @@ object FullResolutionFiles {
                                 check(size.outWidth == resultSize[0] && size.outHeight == resultSize[1]) { "RAW декодирован не полностью" }
                                 android.util.Log.i("FGallerySource", "RAW full=${size.outWidth}x${size.outHeight}; nativeBytes=${android.os.Debug.getNativeHeapAllocatedSize()}; heapLimit=${Runtime.getRuntime().maxMemory()}")
                             } finally { withContext(NonCancellable) { cancelDecode.cancelAndJoin() } }
+                        }
                         }
                     }
                 } else {
