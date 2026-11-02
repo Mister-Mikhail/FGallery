@@ -45,3 +45,10 @@
 - **QA31:** после CI R8/JVM/Android16 и публикации QA prerelease проверить обновление внутри приложения с build30. Stable не публиковать, PR #15 не сливать, USB/SD отложены.
 
 - **QA31 опубликован и CI успешен:** [ARM64 APK](https://github.com/Mister-Mikhail/FGallery/releases/download/qa-v0.4.0-b31/FGallery-0.4.0-b31-arm64-v8a.apk), SHA-256 `c2abf4f8e8aa4ab973e22e5cabf85bcca316835ce43ddb9fc221b3f42b8f5cd1`, исходный SHA `af72cbcf73c100b3010f62835853989d0e0dda21`, [R8/JVM/Android16 CI 41389681159](https://github.com/Mister-Mikhail/FGallery/actions/runs/41389681159) — success. **Все новые RAW-исправления и обновление через приложение требуют теста S23; crash без логов остаётся открытым.**
+
+## QA build32 — результаты CI и оставшиеся проверки (2026-11-02)
+- **Сборка опубликована и CI зелёный:** [QA32](https://github.com/Mister-Mikhail/FGallery/releases/tag/qa-v0.4.0-b32), [Android 16 + R8/JVM + publish](https://github.com/Mister-Mikhail/FGallery/actions/runs/41394707264); ARM64 SHA-256 `2e68e8fc2018c95d765fa657fd79fdf490954d97a16beb712594328dc58c8018`; source `a1406c6c43bf2636075bd493b07b8c2d40fa944f`.
+- **FG-RAW-SLOW/THUMB:** поиск JPEG расширен на несколько DNG SubIFD с ограничением циклов и размеров; тест JVM зелёный. Реальные Samsung DNG и Phase One/Hasselblad всё ещё требуют S23.
+- **FG-INDEX/CRASH:** кэш пропускает неизменённые миниатюры, блокировки фиксированного размера; фон не конкурирует с открытым просмотрщиком/прокруткой папок. Это профилактика задержек и памяти, **не доказанное устранение единичного падения**; физическая проверка открыта.
+- **FG-ALBUM-DATE:** реализация build31 не изменялась; проверка на S23 остаётся открытой.
+- **FG-UPDATE:** проверить обновление build31 → build32 из приложения, сохранив данные. Stable и merge запрещены.
