@@ -125,7 +125,12 @@ internal object RawEmbeddedJpeg {
         }
     }
 
-    /** Pure TIFF range parser. Sizes and offsets are always checked before I/O. */
+    /**
+     * Inspect the primary IFD, its next-IFD (often the DNG preview), and one
+     * inline SubIFD. Camera DNG files frequently store their usable JPEG in
+     * IFD1 rather than IFD0. Only small TIFF directories and JPEG signatures
+     * are read: the original RAW data is never copied or decoded here.
+     */
     internal fun locate(channel: FileChannel): Slice? {
         val length = channel.size()
         if (length < 16) return null
@@ -137,45 +142,72 @@ internal object RawEmbeddedJpeg {
         }
         val top = ByteBuffer.wrap(header).order(order)
         if ((top.getShort(2).toInt() and 0xffff) != 42) return null
-        val ifd = unsignedInt(top.getInt(4))
-        if (ifd > length - 2) return null
-        val countBytes = read(channel, ifd, 2) ?: return null
-        val count = ByteBuffer.wrap(countBytes).order(order).getShort().toInt() and 0xffff
-        if (count > 4_096 || ifd + 2L + count * 12L > length) return null
-        val entries = read(channel, ifd + 2L, count * 12) ?: return null
 
-        var jpegStart: Long? = null
-        var jpegSize: Long? = null
-        var stripStart: Long? = null
-        var stripSize: Long? = null
-        var compression = 0L
-        var orientation = 1
-        val data = ByteBuffer.wrap(entries).order(order)
-        for (i in 0 until count) {
-            val offset = i * 12
-            val tag = data.getShort(offset).toInt() and 0xffff
-            val type = data.getShort(offset + 2).toInt() and 0xffff
-            val total = unsignedInt(data.getInt(offset + 4))
-            // Single inline 16-bit or 32-bit integer. Multi-strip arrays are
-            // intentionally excluded until they can be decoded safely.
-            if (total != 1L || type != 3 && type != 4) continue
-            val value = if (type == 3) data.getShort(offset + 8).toLong() and 0xffff
-                else unsignedInt(data.getInt(offset + 8))
-            when (tag) {
-                0x0103 -> compression = value
-                0x0112 -> orientation = value.toInt()
-                0x0111 -> stripStart = value
-                0x0117 -> stripSize = value
-                0x0201 -> jpegStart = value
-                0x0202 -> jpegSize = value
+        data class Directory(val jpeg: Slice?, val next: Long, val subIfd: Long)
+        fun directory(ifd: Long, inheritedOrientation: Int): Directory? {
+            if (ifd < 8L || ifd > length - 2) return null
+            val countBytes = read(channel, ifd, 2) ?: return null
+            val count = ByteBuffer.wrap(countBytes).order(order).getShort().toInt() and 0xffff
+            if (count > 4_096 || ifd + 2L + count * 12L + 4L > length) return null
+            val entries = read(channel, ifd + 2L, count * 12) ?: return null
+            val data = ByteBuffer.wrap(entries).order(order)
+            var jpegStart: Long? = null
+            var jpegSize: Long? = null
+            var stripStart: Long? = null
+            var stripSize: Long? = null
+            var compression = 0L
+            var orientation = inheritedOrientation
+            var subIfd = 0L
+            for (i in 0 until count) {
+                val offset = i * 12
+                val tag = data.getShort(offset).toInt() and 0xffff
+                val type = data.getShort(offset + 2).toInt() and 0xffff
+                val total = unsignedInt(data.getInt(offset + 4))
+                // A TIFF array is an offset, not an inline scalar. Never
+                // mistake a multi-strip array for the beginning of a JPEG.
+                if (total != 1L || type != 3 && type != 4) continue
+                val value = if (type == 3) data.getShort(offset + 8).toLong() and 0xffff
+                    else unsignedInt(data.getInt(offset + 8))
+                when (tag) {
+                    0x0103 -> compression = value
+                    0x0112 -> orientation = value.toInt()
+                    0x0111 -> stripStart = value
+                    0x0117 -> stripSize = value
+                    0x0201 -> jpegStart = value
+                    0x0202 -> jpegSize = value
+                    0x014a -> if (type == 4) subIfd = value
+                }
+            }
+            val nextOffset = ifd + 2L + count * 12L
+            val nextBytes = read(channel, nextOffset, 4) ?: return null
+            val next = unsignedInt(ByteBuffer.wrap(nextBytes).order(order).getInt())
+            val start = jpegStart ?: if (compression == 7L) stripStart else null
+            val size = jpegSize ?: if (compression == 7L) stripSize else null
+            val candidate = if (start != null && size != null &&
+                start >= 8L && size >= 4L && size <= 32L * 1024 * 1024 &&
+                start <= length && size <= length - start) {
+                val marker = read(channel, start, 2)
+                if (marker != null && marker[0] == 0xff.toByte() &&
+                    marker[1] == 0xd8.toByte()) Slice(start, size.toInt(), orientation)
+                else null
+            } else null
+            return Directory(candidate, next, subIfd)
+        }
+
+        val firstOffset = unsignedInt(top.getInt(4))
+        val first = directory(firstOffset, 1) ?: return null
+        // Limit traversal and avoid cyclic/invalid directory pointers.
+        val seen = hashSetOf(firstOffset)
+        val candidates = mutableListOf<Slice>()
+        first.jpeg?.let(candidates::add)
+        for (offset in listOf(first.next, first.subIfd)) {
+            if (offset >= 8L && seen.add(offset)) {
+                directory(offset, first.jpeg?.orientation ?: 1)?.jpeg?.let(candidates::add)
             }
         }
-        val start = (jpegStart ?: if (compression == 7L) stripStart else null) ?: return null
-        val size = (jpegSize ?: if (compression == 7L) stripSize else null) ?: return null
-        // Prevent gigantic allocations from malformed TIFF offsets.
-        if (start < 8L || size < 4L || size > 32L * 1024 * 1024 ||
-            start > length || size > length - start) return null
-        return Slice(start, size.toInt(), orientation)
+        // Prefer the largest camera JPEG. Some DNGs carry a tiny IFD0
+        // thumbnail and a much better preview in IFD1.
+        return candidates.maxByOrNull { it.length }
     }
 
     private fun unsignedInt(i: Int) = i.toLong() and 0xffff_ffffL
