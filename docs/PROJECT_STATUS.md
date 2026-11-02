@@ -2,9 +2,9 @@
 Обновлено: **2026-11-02**. История: [архив](history/PROJECT_STATUS-through-2026-11-01.md). Утверждённые критерии: [FGallery_TZ_v1.md](FGallery_TZ_v1.md).
 
 ## Опубликованная тестовая сборка
-- **0.4.0 / versionCode 31, QA prerelease, не stable**: [qa-v0.4.0-b31](https://github.com/Mister-Mikhail/FGallery/releases/tag/qa-v0.4.0-b31).
-- **ARM64 APK:** [прямая ссылка](https://github.com/Mister-Mikhail/FGallery/releases/download/qa-v0.4.0-b31/FGallery-0.4.0-b31-arm64-v8a.apk), SHA-256 `c2abf4f8e8aa4ab973e22e5cabf85bcca316835ce43ddb9fc221b3f42b8f5cd1`.
-- **Точный исходный SHA APK:** `af72cbcf73c100b3010f62835853989d0e0dda21`; [R8/JVM + Android 16 emulator + публикация](https://github.com/Mister-Mikhail/FGallery/actions/runs/41389681159) — **success**.
+- **0.4.0 / versionCode 32, QA prerelease, не stable**: [qa-v0.4.0-b32](https://github.com/Mister-Mikhail/FGallery/releases/tag/qa-v0.4.0-b32).
+- **ARM64 APK:** [прямая ссылка](https://github.com/Mister-Mikhail/FGallery/releases/download/qa-v0.4.0-b32/FGallery-0.4.0-b32-arm64-v8a.apk), SHA-256 `2e68e8fc2018c95d765fa657fd79fdf490954d97a16beb712594328dc58c8018`.
+- **Точный исходный SHA APK:** `a1406c6c43bf2636075bd493b07b8c2d40fa944f`; [R8/JVM + Android 16 emulator + публикация](https://github.com/Mister-Mikhail/FGallery/actions/runs/41394707264) — **success**.
 - **Физический Samsung Galaxy S23 / Android 16:** пять изменений build30 проверены и приняты пользователем; новые проблемы RAW/падения остаются открыты.
 
 ## Рабочая точка
@@ -51,3 +51,10 @@
 - [QA prerelease build31](https://github.com/Mister-Mikhail/FGallery/releases/tag/qa-v0.4.0-b31), [ARM64 APK](https://github.com/Mister-Mikhail/FGallery/releases/download/qa-v0.4.0-b31/FGallery-0.4.0-b31-arm64-v8a.apk), SHA-256 `c2abf4f8e8aa4ab973e22e5cabf85bcca316835ce43ddb9fc221b3f42b8f5cd1`.
 - Исходный SHA `af72cbcf73c100b3010f62835853989d0e0dda21`, [CI 41389681159](https://github.com/Mister-Mikhail/FGallery/actions/runs/41389681159) — **success** (R8 release/JVM/Android16 + публикация).
 - Проверить **встроенное обновление с build30**, затем Samsung DNG, Phase One IIQ/3FR превью и скорость, сортировку альбомов по времени файлов, стабильность при переключениях. Не считать принято без S23.
+
+## QA 0.4.0 build32 — опубликован 2026-11-02
+- **QA prerelease** [qa-v0.4.0-b32](https://github.com/Mister-Mikhail/FGallery/releases/tag/qa-v0.4.0-b32), [ARM64 APK](https://github.com/Mister-Mikhail/FGallery/releases/download/qa-v0.4.0-b32/FGallery-0.4.0-b32-arm64-v8a.apk), SHA-256 `2e68e8fc2018c95d765fa657fd79fdf490954d97a16beb712594328dc58c8018` (совпадает с GitHub asset digest).
+- **Исходный SHA:** `a1406c6c43bf2636075bd493b07b8c2d40fa944f`; [R8/JVM + Android 16 emulator + QA publish, run 41394707264](https://github.com/Mister-Mikhail/FGallery/actions/runs/41394707264) — **success**.
+- Дополнительный быстрый путь DNG: поиск JPEG в нескольких SubIFD и цепочках IFD, ограничение 24 директорий и 16 SubIFD-указателей на запись; JVM-тест массива указателей и циклической ссылки.
+- Фоновая очередь миниатюр пропускает уже готовые файлы без изменения LRU, останавливает декодирование во время просмотра медиа и прокрутки альбомов; фиксированный пул из 128 mutex вместо бесконечно растущей таблицы блокировок.
+- **Приёмка S23 ещё нужна:** обновление через приложение с build31 на build32, Samsung DNG/Phase One/Hasselblad RAW, скорость миниатюр и отсутствие падений. QA31 ещё не был принят пользователем. Ни один PR не слит, stable не выпускался.
