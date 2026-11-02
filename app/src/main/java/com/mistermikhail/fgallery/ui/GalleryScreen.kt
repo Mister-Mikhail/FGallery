@@ -605,6 +605,7 @@ private fun AlbumsGrid(
                         .fillMaxWidth()
                         .height(156.dp),
                     livePreview = false,
+                    albumCover = true,
                 )
                 Column(
                     modifier = Modifier
@@ -911,6 +912,7 @@ private fun MediaPreview(
     item: MediaItem,
     modifier: Modifier,
     livePreview: Boolean,
+    albumCover: Boolean = false,
 ) {
     val context = LocalContext.current
     // Coil now owns generation and cancellation; no competing Compose
@@ -918,7 +920,18 @@ private fun MediaPreview(
     val cachedModel = remember(item.uri, item.dateModifiedMillis, item.sizeBytes) {
         ThumbnailCache.cached(context, item)
     }
-    var previewFailed by remember(item.uri) { mutableStateOf(false) }
+    var previewFailed by remember(item.uri, item.dateModifiedMillis, item.sizeBytes) { mutableStateOf(false) }
+    var primaryLoaded by remember(item.uri, item.dateModifiedMillis, item.sizeBytes) { mutableStateOf(false) }
+    var fallbackNeeded by remember(item.uri, item.dateModifiedMillis, item.sizeBytes) { mutableStateOf(false) }
+    var fallbackFailed by remember(item.uri, item.dateModifiedMillis, item.sizeBytes) { mutableStateOf(false) }
+    LaunchedEffect(item.uri, item.dateModifiedMillis, albumCover) {
+        // A slow or stuck custom cache fetch must not leave an album cover empty.
+        // Limit direct-URI fallback to album covers, not every scrolling tile.
+        if (albumCover && item.kind in listOf(MediaKind.IMAGE, MediaKind.VIDEO)) {
+            delay(750L)
+            if (!primaryLoaded) fallbackNeeded = true
+        }
+    }
     // Coil must decode for the actual tile bounds, not an unconditional 960px square.
     var tileSize by remember(item.uri) { mutableStateOf(IntSize(400, 400)) }
     var liveFailed by remember(item.uri) { mutableStateOf(false) }
@@ -930,14 +943,28 @@ private fun MediaPreview(
     Box(modifier.onSizeChanged { if (it != tileSize) tileSize = it }
         .background(MaterialTheme.colorScheme.surfaceVariant)) {
         AsyncImage(request, item.name, contentScale = ContentScale.Crop,
-            onError = { previewFailed = true }, modifier = Modifier.fillMaxSize())
+            onSuccess = { primaryLoaded = true; previewFailed = false },
+            onError = { previewFailed = true; fallbackNeeded = true },
+            modifier = Modifier.fillMaxSize())
+        if (albumCover && fallbackNeeded && !primaryLoaded &&
+            item.kind in listOf(MediaKind.IMAGE, MediaKind.VIDEO)) {
+            // The platform/Coil URI route is independent of the disk thumbnail
+            // fetcher; its result can fill a stalled cover while the cache warms.
+            val directRequest = ImageRequest.Builder(context)
+                .data(item.uri)
+                .size(tileSize.width.coerceAtLeast(1), tileSize.height.coerceAtLeast(1))
+                .build()
+            AsyncImage(directRequest, item.name, contentScale = ContentScale.Crop,
+                onError = { fallbackFailed = true },
+                modifier = Modifier.fillMaxSize())
+        }
         if (item.kind == MediaKind.IMAGE &&
             (item.name.endsWith(".gif", ignoreCase = true) || item.mimeType == "image/gif")) {
             AnimatedGifPreview(item, Modifier.fillMaxSize())
         }
         if (livePreview && item.kind == MediaKind.VIDEO && !liveFailed) {
             InlineVideoPreview(item, Modifier.fillMaxSize(), onError = { liveFailed = true })
-        } else if (previewFailed && cachedModel == null) {
+        } else if (previewFailed && cachedModel == null && (!fallbackNeeded || fallbackFailed)) {
             Text(if (item.kind == MediaKind.VIDEO) "Видео · нет превью" else item.name.substringAfterLast('.').uppercase(),
                 style = MaterialTheme.typography.labelSmall, modifier = Modifier.align(Alignment.Center))
         }
