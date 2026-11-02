@@ -36,7 +36,7 @@ class MediaRepository(private val context: Context) {
     ): List<MediaItem> = withContext(Dispatchers.IO) {
         if (forceFull || Build.VERSION.SDK_INT < Build.VERSION_CODES.R || !StorageFolders.hasFileAccess() ||
             savedVolumes.isEmpty()) return@withContext queryMediaStrict()
-        MediaStore.getExternalVolumeNames(context).flatMap { volume ->
+        checkedMediaStoreVolumes(MediaStore.getExternalVolumeNames(context)).flatMap { volume ->
             val old = savedVolumes[volume]
             val currentVersion = runCatching { MediaStore.getVersion(context, volume) }.getOrNull()
             val currentGeneration = runCatching { MediaStore.getGeneration(context, volume) }.getOrNull()
@@ -136,7 +136,7 @@ class MediaRepository(private val context: Context) {
      * fail atomically if any volume query fails. Otherwise a transient null
      * cursor can delete that volume's saved rows and advance its checkpoint. */
     private suspend fun queryMediaStrict(): List<MediaItem> =
-        MediaStore.getExternalVolumeNames(context).flatMap { volume -> queryVolume(volume, false) }
+        checkedMediaStoreVolumes(MediaStore.getExternalVolumeNames(context)).flatMap { volume -> queryVolume(volume, false) }
 
     private suspend fun queryVolume(volume: String, trashedOnly: Boolean, since: Long? = null): List<MediaItem> {
         val resolver = context.contentResolver
@@ -285,3 +285,15 @@ class MediaRepository(private val context: Context) {
 /** A stalled generation counter with new IDs requires a full volume read. */
 internal fun hasNewMediaStoreIds(currentIds: Set<Long>, previousIds: Set<Long>): Boolean =
     currentIds.any { it !in previousIds }
+
+/**
+ * Android devices with an accessible gallery always expose at least one
+ * external MediaStore volume (normally external_primary). A transient provider
+ * failure may return an empty inventory instead of throwing. Treat it as a
+ * failed reconciliation, not proof that every indexed photo was deleted.
+ * The caller keeps the last committed Room snapshot and retries later.
+ */
+internal fun checkedMediaStoreVolumes(volumes: Set<String>): Set<String> {
+    check(volumes.isNotEmpty()) { "MediaStore returned no accessible volumes" }
+    return volumes
+}
