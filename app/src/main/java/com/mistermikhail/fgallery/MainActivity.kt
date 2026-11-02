@@ -260,6 +260,16 @@ class MainActivity : ComponentActivity() {
         }
 
         fun requestMediaAccess() {
+            // Android does not show a permission dialog for permissions already granted.
+            // In that case, or after a permanent denial, open the app-specific settings
+            // rather than presenting a button that appears to do nothing.
+            if (fullMediaPermission() || StorageFolders.hasFileAccess()) {
+                runCatching {
+                    startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                        Uri.parse("package:$packageName")))
+                }.onFailure { notify("Откройте разрешения FGallery в настройках Android.") }
+                return
+            }
             val prefs = getSharedPreferences("fgallery_onboarding", MODE_PRIVATE)
             val blocked = prefs.getBoolean("media_requested", false) &&
                 !hasMediaPermission() &&
@@ -269,7 +279,10 @@ class MainActivity : ComponentActivity() {
                         !ActivityCompat.shouldShowRequestPermissionRationale(this@MainActivity, permission)
                 }
             if (blocked) {
-                mediaSettingsNeeded = true
+                runCatching {
+                    startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                        Uri.parse("package:$packageName")))
+                }.onFailure { notify("Откройте разрешения FGallery в настройках Android.") }
             } else {
                 prefs.edit().putBoolean("media_requested", true).apply()
                 permissionLauncher.launch(visualPermissionRequest())
