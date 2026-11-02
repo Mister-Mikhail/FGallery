@@ -171,4 +171,43 @@ class CatalogDatabaseTest {
         } finally { db.close() }
     }
 
+    @Test fun fingerprintMetadataSurvivesDeltaButInvalidatesWhenFileChanges() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val db = Room.inMemoryDatabaseBuilder(context, CatalogDatabase::class.java).build()
+        try {
+            val original = CatalogMediaRow(
+                uri = "content://media/external_primary/images/media/100",
+                mediaId = 100L, name = "photo.jpg", mimeType = "image/jpeg",
+                kind = "IMAGE", dateTakenMillis = 100L, width = 100, height = 100,
+                durationMillis = 0L, album = "Camera", relativePath = "DCIM/",
+                sizeBytes = 1000L, dateModifiedMillis = 200L,
+                storageId = "external_primary", storageName = "Phone",
+                folderTarget = "/phone/DCIM", sourcePath = "/phone/DCIM/photo.jpg",
+                quickHash = "edge", fullHash = "sha256",
+                perceptualHash = "visual", exifCamera = "Canon",
+            )
+            val dao = db.catalog()
+            val volume = CatalogVolumeRow("external_primary", "Phone", 5L, "v1", 200L, true)
+            dao.replaceSnapshot(listOf(original), emptyList(), listOf(volume))
+
+            // Incremental metadata query does not include cached fingerprints.
+            val renamed = original.copy(name = "renamed.jpg", quickHash = null,
+                fullHash = null, perceptualHash = null, exifCamera = null)
+            dao.synchronizeSnapshot(listOf(renamed), emptyList(), listOf(volume))
+            val afterRename = dao.allMedia().single()
+            assertEquals("renamed.jpg", afterRename.name)
+            assertEquals("sha256", afterRename.fullHash)
+            assertEquals("visual", afterRename.perceptualHash)
+
+            // A changed file cannot inherit hashes from its previous bytes.
+            dao.synchronizeSnapshot(listOf(renamed.copy(sizeBytes = 1001L)),
+                emptyList(), listOf(volume))
+            val changed = dao.allMedia().single()
+            assertNull(changed.quickHash)
+            assertNull(changed.fullHash)
+            assertNull(changed.perceptualHash)
+            assertNull(changed.exifCamera)
+        } finally { db.close() }
+    }
+
 }
