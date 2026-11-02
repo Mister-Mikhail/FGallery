@@ -96,6 +96,33 @@ internal interface CatalogDao {
     @Query("SELECT * FROM catalog_media")
     suspend fun allMedia(): List<CatalogMediaRow>
 
+    /** Query only pending candidates rather than materializing the whole Room
+     * catalogue on every idle batch. Do not LIMIT: inaccessible paths at the
+     * front would otherwise starve valid files farther down the index. */
+    @Query("""
+        SELECT m.* FROM catalog_media m
+        JOIN (SELECT sizeBytes FROM catalog_media
+              WHERE recycled = 0 AND sizeBytes > 0
+              GROUP BY sizeBytes HAVING COUNT(*) > 1) collisions
+          ON m.sizeBytes = collisions.sizeBytes
+        WHERE m.recycled = 0 AND m.quickHash IS NULL
+        ORDER BY m.sizeBytes, m.uri
+    """)
+    suspend fun pendingQuickHashCandidates(): List<CatalogMediaRow>
+
+    /** Matching nonempty edge digests are candidates, never proof of equality. */
+    @Query("""
+        SELECT m.* FROM catalog_media m
+        JOIN (SELECT sizeBytes, quickHash FROM catalog_media
+              WHERE recycled = 0 AND sizeBytes > 0
+                AND quickHash IS NOT NULL AND quickHash != ''
+              GROUP BY sizeBytes, quickHash HAVING COUNT(*) > 1) collisions
+          ON m.sizeBytes = collisions.sizeBytes AND m.quickHash = collisions.quickHash
+        WHERE m.recycled = 0 AND m.fullHash IS NULL
+        ORDER BY m.sizeBytes, m.uri
+    """)
+    suspend fun pendingFullHashCandidates(): List<CatalogMediaRow>
+
     @Query("SELECT * FROM catalog_volumes")
     suspend fun allVolumes(): List<CatalogVolumeRow>
 
