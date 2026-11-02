@@ -80,6 +80,9 @@ internal fun retainUnchangedFingerprints(
         old.dateModifiedMillis != incoming.dateModifiedMillis ||
         old.storageId != incoming.storageId
     ) return incoming
+    // A newly computed edge digest can reveal a same-size/same-mtime
+    // replacement. Never attach the previous full digest to new bytes.
+    if (incoming.quickHash != null && incoming.quickHash != old.quickHash) return incoming
     return incoming.copy(
         quickHash = incoming.quickHash ?: old.quickHash,
         fullHash = incoming.fullHash ?: old.fullHash,
