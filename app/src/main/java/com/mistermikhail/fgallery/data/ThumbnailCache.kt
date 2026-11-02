@@ -74,6 +74,11 @@ object ThumbnailCache {
     }
     private val foregroundDemand = AtomicInteger()
     private val lastForegroundRequest = AtomicLong()
+    /** Share foreground-idle detection with low-priority duplicate hashing. */
+    fun canRunBackgroundIndexing(): Boolean = !userBusy.get() && !viewerBusy.get() &&
+        foregroundDemand.get() == 0 &&
+        System.currentTimeMillis() - lastForegroundRequest.get() >= 1_500L
+
     private val migrationStarted = AtomicBoolean()
     private val completedWrites = AtomicInteger()
 
