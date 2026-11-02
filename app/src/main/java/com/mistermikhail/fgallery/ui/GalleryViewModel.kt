@@ -123,7 +123,6 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
         }
     }
 
-    // Stable album identity must include drive and exact folder, never just a leaf name.
     /**
      * Bulk prewarming of RAW without an embedded JPEG can trigger a native
      * demosaic of a 100 MP file before the user ever opens its folder.
@@ -132,6 +131,7 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
      */
     internal fun bulkPrewarmEligible(kind: MediaKind): Boolean = kind != MediaKind.RAW
 
+    // Stable album identity must include drive and exact folder, never just a leaf name.
     private fun albumKey(item: MediaItem): String = "${item.storageId}:${item.folderTarget.ifBlank { item.relativePath.ifBlank { item.album } }}"
 
     private fun sortItems(
