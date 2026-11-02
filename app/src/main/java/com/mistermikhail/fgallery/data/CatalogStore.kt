@@ -219,6 +219,16 @@ internal object CatalogStore {
         fun stableRead(row: CatalogMediaRow, quick: Boolean): String? {
             ensureIdle()
             return try {
+                // A file can be overwritten while Room still contains its old
+                // size/mtime. Do not hash newer bytes into that stale row. If
+                // the physical path is present but stale, do not bypass this
+                // guard by reopening the same file through content://.
+                val physical = row.sourcePath.takeIf { it.startsWith("/") }?.let(::File)
+                if (physical != null && physical.isFile &&
+                    !fingerprintMetadataMatchesIndexed(
+                        row.sizeBytes, row.dateModifiedMillis,
+                        physical.length(), physical.lastModified(),
+                    )) return null
                 val file = localFile(row)
                 if (file != null) {
                     val beforeSize = file.length()
@@ -233,7 +243,7 @@ internal object CatalogStore {
                     val uri = Uri.parse(row.uri)
                     if (uri.scheme != "content") return null
                     val before = provider.signature(uri) ?: return null
-                    if (before.size != row.sizeBytes) return null
+                    if (!provider.matchesCatalog(uri, row, before)) return null
                     val digest = if (quick) provider.quick(uri, row.sizeBytes, ::ensureIdle)
                         else provider.full(uri, row.sizeBytes, ::ensureIdle)
                     ensureIdle()
