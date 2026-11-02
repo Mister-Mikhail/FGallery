@@ -15,7 +15,14 @@ import android.provider.OpenableColumns
 internal class ContentFingerprintSource(private val context: Context) {
     private val resolver = context.contentResolver
 
+    /** All modification times are normalized to milliseconds. */
     data class Signature(val size: Long, val modified: Long)
+
+    fun matchesCatalog(uri: Uri, row: CatalogMediaRow, signature: Signature): Boolean =
+        fingerprintMetadataMatchesIndexed(
+            row.sizeBytes, row.dateModifiedMillis, signature.size, signature.modified,
+            precisionMillis = if (DocumentsContract.isDocumentUri(context, uri)) 0L else 999L,
+        )
 
     fun signature(uri: Uri): Signature? {
         val modifiedColumn = if (DocumentsContract.isDocumentUri(context, uri)) {
@@ -31,8 +38,11 @@ internal class ContentFingerprintSource(private val context: Context) {
                 if (sizeIndex < 0 || modifiedIndex < 0 ||
                     cursor.isNull(sizeIndex) || cursor.isNull(modifiedIndex)
                 ) return@use null
-                Signature(cursor.getLong(sizeIndex), cursor.getLong(modifiedIndex))
-                    .takeIf { it.size > 0L && it.modified > 0L }
+                Signature(
+                    cursor.getLong(sizeIndex),
+                    cursor.getLong(modifiedIndex) *
+                        (if (DocumentsContract.isDocumentUri(context, uri)) 1L else 1_000L),
+                ).takeIf { it.size > 0L && it.modified > 0L }
             }
     }
 
