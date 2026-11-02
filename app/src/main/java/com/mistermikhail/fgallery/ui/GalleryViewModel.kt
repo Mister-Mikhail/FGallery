@@ -328,12 +328,10 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
                 } else LibrarySnapshot.remember(snapshot)
             }
             thumbnailJob?.cancel()
-            val albumCovers = items
-                .groupBy { it.album }
-                .values
-                .mapNotNull { albumItems ->
-                    albumItems.maxByOrNull { it.dateTakenMillis }
-                }
+            // Match the actual on-screen covers (folder + volume + active sort).
+            // Grouping by leaf album name used to skip covers of same-named
+            // folders on different drives and generated the wrong prewarm queue.
+            val albumCovers = _uiState.value.albums.map { it.cover }
 
             thumbnailJob = viewModelScope.launch(Dispatchers.IO) {
                 // Cache generation must never drive Compose recomposition.
