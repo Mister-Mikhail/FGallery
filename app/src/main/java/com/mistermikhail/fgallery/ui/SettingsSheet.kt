@@ -16,6 +16,13 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import com.mistermikhail.fgallery.data.ThumbnailCache
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
@@ -111,6 +118,48 @@ fun SettingsSheet(
             }
                         SettingSwitch("Подтверждать перемещение", "Выключено по умолчанию", confirmMove, onConfirmMoveChanged)
             SettingSwitch("Подтверждать переименование", "", confirmRename, onConfirmRenameChanged)
+            Text(
+                text = "Кэш превью",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(top = 12.dp),
+            )
+            Text(
+                text = "Лимиты дискового кэша. Уменьшение освобождает старые миниатюры, оригиналы не затрагиваются.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = .72f),
+            )
+            val cacheScope = rememberCoroutineScope()
+            var microMb by remember { mutableIntStateOf(ThumbnailCache.limitMb(context, false)) }
+            var highMb by remember { mutableIntStateOf(ThumbnailCache.limitMb(context, true)) }
+            Text("Маленькие превью · ${microMb} МБ", style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(top = 8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                for (mb in listOf(250, 500, 1000)) {
+                    FilterChip(
+                        selected = microMb == mb,
+                        onClick = {
+                            microMb = mb
+                            cacheScope.launch { ThumbnailCache.setLimitMb(context, false, mb) }
+                        },
+                        label = { Text("${mb} МБ") },
+                    )
+                }
+            }
+            Text("Крупные превью · ${highMb} МБ", style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(top = 4.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                for (mb in listOf(512, 1024, 2048)) {
+                    FilterChip(
+                        selected = highMb == mb,
+                        onClick = {
+                            highMb = mb
+                            cacheScope.launch { ThumbnailCache.setLimitMb(context, true, mb) }
+                        },
+                        label = { Text("${mb} МБ") },
+                    )
+                }
+            }
             Text(
                 text = "Тест · масштаб PDF/SVG",
                 style = MaterialTheme.typography.titleSmall,
