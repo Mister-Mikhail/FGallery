@@ -210,4 +210,35 @@ class CatalogDatabaseTest {
         } finally { db.close() }
     }
 
+    @Test fun fingerprintWritesAreConditionalAndNewEdgesInvalidateStaleFullHashes() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val db = Room.inMemoryDatabaseBuilder(context, CatalogDatabase::class.java).build()
+        try {
+            val original = CatalogMediaRow(
+                uri = "content://media/external_primary/images/media/500",
+                mediaId = 500L, name = "image.jpg", mimeType = "image/jpeg",
+                kind = "IMAGE", dateTakenMillis = 1L, width = 40, height = 30,
+                durationMillis = 0L, album = "Camera", relativePath = "DCIM/",
+                sizeBytes = 400L, dateModifiedMillis = 100L,
+                storageId = "external_primary", storageName = "Phone",
+                folderTarget = "/phone/DCIM", sourcePath = "/phone/DCIM/image.jpg",
+            )
+            val dao = db.catalog()
+            dao.upsertMedia(listOf(original))
+            assertEquals(0, dao.setQuickHash(original.uri, 400L, 99L, "old"))
+            assertNull(dao.allMedia().single().quickHash)
+            assertEquals(1, dao.setQuickHash(original.uri, 400L, 100L, "edge1"))
+            assertEquals(0, dao.setFullHash(original.uri, 400L, 100L, "wrong", "bad"))
+            assertEquals(1, dao.setFullHash(original.uri, 400L, 100L, "edge1", "full1"))
+            assertEquals("full1", dao.allMedia().single().fullHash)
+            assertEquals(1, dao.setQuickHash(original.uri, 400L, 100L, "edge2"))
+            assertNull(dao.allMedia().single().fullHash)
+            assertEquals("edge2", dao.allMedia().single().quickHash)
+            // A newer scan supersedes the row while a large RAW is hashing.
+            dao.applyMediaChanges(listOf(original.copy(sizeBytes = 401L)), emptyList())
+            assertEquals(0, dao.setFullHash(original.uri, 400L, 100L, "edge2", "stale"))
+            assertNull(dao.allMedia().single().fullHash)
+        } finally { db.close() }
+    }
+
 }
