@@ -110,6 +110,7 @@ fun ViewerScreen(
     items: List<MediaItem>,
     initialItem: MediaItem,
     onBack: () -> Unit,
+    onVisibleItemChanged: (MediaItem) -> Unit = {},
     active: Boolean = true,
     onTrash: (MediaItem) -> Unit,
     onRestore: (MediaItem) -> Unit = {},
@@ -152,6 +153,9 @@ fun ViewerScreen(
     }
 
     val currentItem = items.getOrNull(pagerState.currentPage)
+    LaunchedEffect(currentItem?.uriKey) {
+        currentItem?.let(onVisibleItemChanged)
+    }
     val currentIsVideo = currentItem?.kind == MediaKind.VIDEO
     val deletingCurrent = currentItem?.uriKey == deletingItemUri && deletingItemUri != null
     val mediaAlpha by animateFloatAsState(if (deletingCurrent) .45f else 1f, tween(60), label = "trash-fade")
