@@ -1,5 +1,7 @@
 package com.mistermikhail.fgallery.data
 
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -17,4 +19,15 @@ class MediaStoreDeltaTest {
         assertFalse(hasNewMediaStoreIds(setOf(11L, 12L), setOf(11L, 12L)))
         assertFalse(hasNewMediaStoreIds(emptySet(), emptySet()))
     }
+    @Test fun missingMediaStoreVolumeInventoryCannotEraseCommittedRoomRows() {
+        assertThrows(IllegalStateException::class.java) {
+            checkedMediaStoreVolumes(emptySet())
+        }
+    }
+
+    @Test fun mountedVolumeInventoryRemainsUsableWhenItHasNoFiles() {
+        assertEquals(setOf("external_primary"),
+            checkedMediaStoreVolumes(setOf("external_primary")))
+    }
+
 }
