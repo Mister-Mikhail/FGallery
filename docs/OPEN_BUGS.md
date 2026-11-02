@@ -43,3 +43,5 @@
 - **P1 FG-ALBUM-DATE:** сортировка «новые/старые» по максимальной дате создания/съёмки или изменения **файла** в каждой папке. Реализовано и покрыто JVM-тестом; проверить на S23.
 - **P1 FG-INDEX:** полная модернизация индексации и задержки миниатюр отдельных файлов остаются открытыми; не считать закрытыми по улучшению DNG.
 - **QA31:** после CI R8/JVM/Android16 и публикации QA prerelease проверить обновление внутри приложения с build30. Stable не публиковать, PR #15 не сливать, USB/SD отложены.
+
+- **QA31 опубликован и CI успешен:** [ARM64 APK](https://github.com/Mister-Mikhail/FGallery/releases/download/qa-v0.4.0-b31/FGallery-0.4.0-b31-arm64-v8a.apk), SHA-256 `c2abf4f8e8aa4ab973e22e5cabf85bcca316835ce43ddb9fc221b3f42b8f5cd1`, исходный SHA `af72cbcf73c100b3010f62835853989d0e0dda21`, [R8/JVM/Android16 CI 41389681159](https://github.com/Mister-Mikhail/FGallery/actions/runs/41389681159) — success. **Все новые RAW-исправления и обновление через приложение требуют теста S23; crash без логов остаётся открытым.**
