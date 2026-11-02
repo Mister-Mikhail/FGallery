@@ -122,3 +122,9 @@
 - **Открыто:** SAF/USB, визуальные дубликаты (масштаб, кроп, защита от ретуши/цветокоррекции/серий), UI подтверждения, причина единичного падения. Нет автоматического удаления.
 
 - **Публикация QA40 запрошена:** release workflow опубликует prerelease только после успешных R8/JVM и Android16; статус ожидает проверки GitHub Actions.
+
+## QA 0.4.0 build40 — опубликован, CI success (2026-11-02)
+- **QA prerelease:** [qa-v0.4.0-b40](https://github.com/Mister-Mikhail/FGallery/releases/tag/qa-v0.4.0-b40); [ARM64 APK](https://github.com/Mister-Mikhail/FGallery/releases/download/qa-v0.4.0-b40/FGallery-0.4.0-b40-arm64-v8a.apk), SHA-256 `93ecf4c98e608049826eb62d28f223e54e766609ffe11c33d1ddab16e2b610ef` (проверен по GitHub asset digest).
+- Исходный SHA `092d906eeccd9a676431bece967fb22ce759df8e`; [R8/JVM + Android 16 instrumentation + publish, CI 41482305521](https://github.com/Mister-Mikhail/FGallery/actions/runs/41482305521) — **success**.
+- Stage 6: SQL-планирование точных SHA-256-кандидатов без повторной загрузки всего Room каталога в память на каждом пакете; Android 16 тест сравнивает SQL с JVM-планировщиком. Stage 5: корректная отмена сканирования live ID без ненужного полного прохода. Принятые build35 функции не менялись.
+- Проверить на S23 встроенное обновление с build39, скорость прокрутки/индексации, RAW и стабильность. **Физическая приёмка build40 ещё не проведена.** UI и визуальные дубликаты открыты. Не stable, PR #15 не сливать.
