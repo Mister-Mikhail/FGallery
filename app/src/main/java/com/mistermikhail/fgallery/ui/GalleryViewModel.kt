@@ -280,9 +280,11 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
         snapshotRestored = true
         refreshJob = viewModelScope.launch(Dispatchers.IO) {
             if (restoreSnapshot && _uiState.value.allItems.isEmpty()) {
-                (runCatching {
+                (try {
                     CatalogStore.restore(getApplication(), _uiState.value.hasPermission)
-                }.getOrNull() ?: LibrarySnapshot.load(getApplication(), _uiState.value.hasPermission))?.let { saved ->
+                } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                  catch (_: Exception) { null }
+                    ?: LibrarySnapshot.load(getApplication(), _uiState.value.hasPermission))?.let { saved ->
                     withContext(Dispatchers.Main) {
                         _uiState.update { derive(it.copy(allItems = saved.items, physicalBinUris = saved.bin)) }
                     }
@@ -294,15 +296,21 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
             // safety reconciliation runs on the I/O dispatcher.
             val fullSafetyScan = forceFull || CatalogStore.fullScanDue(getApplication())
             // Capture generations BEFORE scanning, so mid-scan changes cannot vanish.
-            val started = runCatching { CatalogStore.captureScanStart(getApplication()) }.getOrDefault(emptyMap())
+            val started = try { CatalogStore.captureScanStart(getApplication()) }
+                catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                catch (_: Exception) { emptyMap() }
             var scanSucceeded = true
             val normal = try {
-                val prior = runCatching { CatalogStore.priorVolumes(getApplication()) }.getOrDefault(emptyMap())
+                val prior = try { CatalogStore.priorVolumes(getApplication()) }
+                    catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                    catch (_: Exception) { emptyMap() }
                 val media = if (_uiState.value.hasPermission)
                     repository.loadIncremental(_uiState.value.allItems, prior, fullSafetyScan) else emptyList()
                 val documents = DocumentLibrary(getApplication()).load()
                 val folderSnapshot = if (fullSafetyScan) emptyList()
-                    else runCatching { CatalogStore.priorFolders(getApplication()) }.getOrDefault(emptyList())
+                    else try { CatalogStore.priorFolders(getApplication()) }
+                        catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                        catch (_: Exception) { emptyList() }
                 (media + documents + DriveLibrary.load(
                     getApplication(), media + documents,
                     if (fullSafetyScan) emptyList() else _uiState.value.allItems,
@@ -331,9 +339,13 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
             }
 
             val snapshot = LibrarySnapshot.Value(items, recycled.mapTo(hashSetOf()) { it.uriKey }, _uiState.value.hasPermission)
-            val roomStored = scanSucceeded && runCatching {
+            // A newer refresh cancels this one. Never turn cancellation into a
+            // successful checkpoint or continue writing stale JSON/thumbnail jobs.
+            val roomStored = if (!scanSucceeded) false else try {
                 CatalogStore.persist(getApplication(), snapshot, started)
-            }.isSuccess
+                true
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+              catch (_: Exception) { false }
             if (roomStored && fullSafetyScan) CatalogStore.recordFullScan(getApplication())
             if (roomStored) {
                 // Fingerprint only potential exact-copy candidates, with small
@@ -383,8 +395,11 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
             if (scanSucceeded) {
                 val now = System.currentTimeMillis()
                 if (!roomStored || restoreSnapshot || now - lastJsonBackupMillis >= 5 * 60 * 1000L) {
-                    runCatching { LibrarySnapshot.save(getApplication(), snapshot) }
-                    lastJsonBackupMillis = now
+                    try {
+                        LibrarySnapshot.save(getApplication(), snapshot)
+                        lastJsonBackupMillis = now
+                    } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                      catch (_: Exception) { /* Room remains the source of truth. */ }
                 } else LibrarySnapshot.remember(snapshot)
             }
             thumbnailJob?.cancel()
