@@ -27,8 +27,32 @@ object ThumbnailCache {
     private const val OLD_DIRECTORY = "fgallery_thumbnails_v3"
     private const val FAST_EDGE_PX = 400
     private const val HIGH_EDGE_PX = 1920
-    private const val FAST_LIMIT = 500L * 1024L * 1024L
-    private const val HIGH_LIMIT = 1024L * 1024L * 1024L
+    // Stage 3: configurable bounded disk cache. These are limits, not
+    // preallocation; the actual files are created only when requested.
+    private const val LIMIT_PREFS = "fgallery_thumbnail_limits"
+    private const val MICRO_LIMIT_KEY = "micro_mb"
+    private const val HQ_LIMIT_KEY = "hq_mb"
+    private const val DEFAULT_MICRO_MB = 500
+    private const val DEFAULT_HQ_MB = 1024
+    private const val MIN_LIMIT_MB = 100
+    private const val MAX_LIMIT_MB = 4096
+    private const val BYTES_PER_MB = 1024L * 1024L
+
+    fun limitMb(context: Context, highQuality: Boolean): Int {
+        val key = if (highQuality) HQ_LIMIT_KEY else MICRO_LIMIT_KEY
+        val fallback = if (highQuality) DEFAULT_HQ_MB else DEFAULT_MICRO_MB
+        return context.getSharedPreferences(LIMIT_PREFS, Context.MODE_PRIVATE)
+            .getInt(key, fallback).coerceIn(MIN_LIMIT_MB, MAX_LIMIT_MB)
+    }
+
+    /** Runs disk trimming off the UI thread; never touches source media. */
+    suspend fun setLimitMb(context: Context, highQuality: Boolean, megabytes: Int) =
+        withContext(Dispatchers.IO) {
+            val key = if (highQuality) HQ_LIMIT_KEY else MICRO_LIMIT_KEY
+            context.getSharedPreferences(LIMIT_PREFS, Context.MODE_PRIVATE).edit()
+                .putInt(key, megabytes.coerceIn(MIN_LIMIT_MB, MAX_LIMIT_MB)).apply()
+            trimCache(context, highQuality)
+        }
     private val generationLocks = ConcurrentHashMap<String, Mutex>()
     private val foregroundDecoders = Semaphore(3)
     private val backgroundDecoders = Semaphore(1)
@@ -144,7 +168,7 @@ object ThumbnailCache {
     private fun trimCache(context: Context, highQuality: Boolean) {
         val tier = if (highQuality) "hq" else "micro"
         val dir = File(File(context.cacheDir, DIRECTORY), tier)
-        val limit = if (highQuality) HIGH_LIMIT else FAST_LIMIT
+        val limit = limitMb(context, highQuality) * BYTES_PER_MB
         val candidates = dir.listFiles()?.filter { it.isFile && !it.name.endsWith(".tmp") }
             ?.sortedBy { it.lastModified() } ?: return
         var total = candidates.sumOf { it.length() }
