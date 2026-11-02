@@ -143,7 +143,7 @@ internal object RawEmbeddedJpeg {
         val top = ByteBuffer.wrap(header).order(order)
         if ((top.getShort(2).toInt() and 0xffff) != 42) return null
 
-        data class Directory(val jpeg: Slice?, val next: Long, val subIfd: Long)
+        data class Directory(val jpeg: Slice?, val next: Long, val subIfd: Long, val orientation: Int)
         fun directory(ifd: Long, inheritedOrientation: Int): Directory? {
             if (ifd < 8L || ifd > length - 2) return null
             val countBytes = read(channel, ifd, 2) ?: return null
@@ -191,7 +191,7 @@ internal object RawEmbeddedJpeg {
                     marker[1] == 0xd8.toByte()) Slice(start, size.toInt(), orientation)
                 else null
             } else null
-            return Directory(candidate, next, subIfd)
+            return Directory(candidate, next, subIfd, orientation)
         }
 
         val firstOffset = unsignedInt(top.getInt(4))
@@ -202,7 +202,7 @@ internal object RawEmbeddedJpeg {
         first.jpeg?.let(candidates::add)
         for (offset in listOf(first.next, first.subIfd)) {
             if (offset >= 8L && seen.add(offset)) {
-                directory(offset, first.jpeg?.orientation ?: 1)?.jpeg?.let(candidates::add)
+                directory(offset, first.orientation)?.jpeg?.let(candidates::add)
             }
         }
         // Prefer the largest camera JPEG. Some DNGs carry a tiny IFD0
