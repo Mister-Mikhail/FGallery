@@ -67,6 +67,27 @@ internal data class CatalogVolumeRow(
     val connected: Boolean,
 )
 
+/**
+ * Stage 6 fingerprints survive ordinary metadata refreshes and same-URI renames,
+ * but must be invalidated when the underlying bytes may have changed.
+ * An incoming non-null freshly computed fingerprint always wins.
+ */
+internal fun retainUnchangedFingerprints(
+    old: CatalogMediaRow?,
+    incoming: CatalogMediaRow,
+): CatalogMediaRow {
+    if (old == null || old.sizeBytes != incoming.sizeBytes ||
+        old.dateModifiedMillis != incoming.dateModifiedMillis ||
+        old.storageId != incoming.storageId
+    ) return incoming
+    return incoming.copy(
+        quickHash = incoming.quickHash ?: old.quickHash,
+        fullHash = incoming.fullHash ?: old.fullHash,
+        perceptualHash = incoming.perceptualHash ?: old.perceptualHash,
+        exifCamera = incoming.exifCamera ?: old.exifCamera,
+    )
+}
+
 @Dao
 internal interface CatalogDao {
     @Query("SELECT * FROM catalog_media")
@@ -87,6 +108,9 @@ internal interface CatalogDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertVolumes(items: List<CatalogVolumeRow>)
 
+    @Query("SELECT * FROM catalog_media WHERE uri IN (:uris)")
+    suspend fun mediaByUris(uris: List<String>): List<CatalogMediaRow>
+
     @Query("DELETE FROM catalog_media WHERE uri IN (:uris)")
     suspend fun deleteMedia(uris: List<String>)
 
@@ -95,7 +119,11 @@ internal interface CatalogDao {
     @Transaction
     suspend fun applyMediaChanges(upserts: List<CatalogMediaRow>, removedUris: Collection<String>) {
         removedUris.chunked(400).forEach { deleteMedia(it) }
-        if (upserts.isNotEmpty()) upsertMedia(upserts)
+        if (upserts.isNotEmpty()) {
+            val previous = upserts.map { it.uri }.chunked(400)
+                .flatMap { mediaByUris(it) }.associateBy { it.uri }
+            upsertMedia(upserts.map { retainUnchangedFingerprints(previous[it.uri], it) })
+        }
     }
 
     @Query("DELETE FROM catalog_media")
@@ -135,7 +163,9 @@ internal interface CatalogDao {
         oldMedia.values.filter { it.storageId in disconnectedIds }
             .forEach { current.putIfAbsent(it.uri, it) }
         oldMedia.keys.filterNot { it in current }.chunked(400).forEach { deleteMedia(it) }
-        upsertMedia(current.values.filter { oldMedia[it.uri] != it })
+        upsertMedia(current.values
+            .map { retainUnchangedFingerprints(oldMedia[it.uri], it) }
+            .filter { oldMedia[it.uri] != it })
 
         val oldFolders = allFolders().associateBy { it.key }
         val currentFolders = folders.associateBy { it.key }.toMutableMap()
