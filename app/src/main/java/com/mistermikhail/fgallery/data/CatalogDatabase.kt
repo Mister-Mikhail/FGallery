@@ -115,7 +115,7 @@ internal interface CatalogDao {
     suspend fun mediaByUris(uris: List<String>): List<CatalogMediaRow>
 
     /** Conditional writes avoid attaching a digest to a row changed by a concurrent scan. */
-    @Query("UPDATE catalog_media SET quickHash = :hash WHERE uri = :uri AND sizeBytes = :size AND dateModifiedMillis = :modified AND recycled = 0")
+    @Query("UPDATE catalog_media SET quickHash = :hash, fullHash = CASE WHEN quickHash = :hash THEN fullHash ELSE NULL END, perceptualHash = CASE WHEN quickHash = :hash THEN perceptualHash ELSE NULL END, exifCamera = CASE WHEN quickHash = :hash THEN exifCamera ELSE NULL END WHERE uri = :uri AND sizeBytes = :size AND dateModifiedMillis = :modified AND recycled = 0")
     suspend fun setQuickHash(uri: String, size: Long, modified: Long, hash: String): Int
 
     @Query("UPDATE catalog_media SET fullHash = :hash WHERE uri = :uri AND sizeBytes = :size AND dateModifiedMillis = :modified AND quickHash = :quick AND recycled = 0")
