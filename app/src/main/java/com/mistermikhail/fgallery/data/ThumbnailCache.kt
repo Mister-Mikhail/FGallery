@@ -201,7 +201,7 @@ object ThumbnailCache {
             else (if (item.kind == MediaKind.RAW) RawEmbeddedJpeg.preview(context, item, edge) else null)
                 ?: runCatching { context.contentResolver.loadThumbnail(item.uri, Size(edge, edge), null) }
                     .getOrNull() ?: embeddedPreview(context, item)
-                    ?: if (item.kind == MediaKind.IMAGE) sampled(context, item, edge) else null
+                    ?: if (item.kind == MediaKind.RAW) rawPreview(context, item) else sampled(context, item, edge)
     }
 
     }
