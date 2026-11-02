@@ -53,6 +53,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
@@ -133,6 +134,17 @@ class MainActivity : ComponentActivity() {
     private fun FGalleryRoot(viewModel: GalleryViewModel) {
         val state by viewModel.uiState.collectAsState()
         var selectedItem by remember { mutableStateOf<MediaItem?>(null) }
+        // Save only the stable URI key: MediaItem itself is not Bundle-saveable.
+        // Keep the existing object while scanning, so a refresh cannot close the viewer.
+        var savedViewerUri by rememberSaveable { mutableStateOf<String?>(null) }
+        LaunchedEffect(state.allItems, savedViewerUri) {
+            if (selectedItem == null && savedViewerUri != null) {
+                selectedItem = state.allItems.firstOrNull { it.uriKey == savedViewerUri }
+            }
+        }
+        LaunchedEffect(selectedItem?.uriKey) {
+            selectedItem?.let { savedViewerUri = it.uriKey }
+        }
         var cleanupMode by remember { mutableStateOf(false) }
         val zoomTestPrefs = remember { getSharedPreferences("fgallery_zoom_test", MODE_PRIVATE) }
         var zoomSecondPower by remember {
@@ -806,7 +818,7 @@ class MainActivity : ComponentActivity() {
             pendingMoveItems = items
             moveQuery = ""
             moveDestinationAlbum = null
-            selectedItem = null
+            selectedItem = null; savedViewerUri = null
         }
 
         val deleteForeverLauncher = rememberLauncherForActivityResult(
@@ -852,6 +864,7 @@ class MainActivity : ComponentActivity() {
                 try {
                     viewModel.moveToRecycleBin(items)
                     selectedItem = if (keepViewerOpen) nextViewerItem else null
+                    savedViewerUri = selectedItem?.uriKey
                     selectedIds = emptySet()
                     if (!cleanupMode) notify("Перемещено в корзину")
                 } catch (e: Exception) { notify("Не удалось переместить в корзину: ${e.localizedMessage}") }
@@ -884,7 +897,7 @@ class MainActivity : ComponentActivity() {
                 try {
                     viewModel.restoreFromRecycleBin(items)
                     selectedIds = emptySet()
-                    if (items.any { it.uriKey == selectedItem?.uriKey }) selectedItem = null
+                    if (items.any { it.uriKey == selectedItem?.uriKey }) selectedItem = null; savedViewerUri = null
                 }
                 catch (e: Exception) { notify("Не удалось восстановить: ${e.localizedMessage}") }
                 finally { operationBusy = false }
@@ -1021,7 +1034,7 @@ class MainActivity : ComponentActivity() {
         val current = selectedItem
 
         BackHandler(enabled = current != null) {
-            selectedItem = null
+            selectedItem = null; savedViewerUri = null
         }
 
         BackHandler(enabled = current == null && pendingMoveItems.isNotEmpty()) {
@@ -1112,7 +1125,7 @@ class MainActivity : ComponentActivity() {
                     },
                     onRestore = ::restoreFromRecycleBin,
                     onDeleteForever = ::deleteForever,
-                    onOpenItem = { selectedItem = it },
+                    onOpenItem = { selectedItem = it; savedViewerUri = it.uriKey },
                 )
             } else {
                 GalleryScreen(
@@ -1133,7 +1146,7 @@ class MainActivity : ComponentActivity() {
                     },
                     onOpenMedia = {
                         selectedIds = emptySet()
-                        selectedItem = it
+                        selectedItem = it; savedViewerUri = it.uriKey
                     },
                     onToggleGridMode = viewModel::toggleGridMode,
                     onToggleSearch = viewModel::toggleSearch,
@@ -1160,7 +1173,7 @@ class MainActivity : ComponentActivity() {
                     livePreviewEnabled = current == null && pendingMoveItems.isEmpty(),
                     onOpenRecycleBin = {
                         selectedIds = emptySet()
-                        selectedItem = null
+                        selectedItem = null; savedViewerUri = null
                         viewModel.openRecycleBin()
                     },
                     cleanupMode = cleanupMode,
@@ -1224,7 +1237,7 @@ class MainActivity : ComponentActivity() {
                     ViewerScreen(
                         items = if (state.recycleBinVisible) state.recycleBinItems else state.visibleItems,
                         initialItem = animatedItem,
-                        onBack = { selectedItem = null },
+                        onBack = { selectedItem = null; savedViewerUri = null },
                         active = videoCropItem == null && !operationBusy,
                         onTrash = { requestTrash(listOf(it), keepViewerOpen = true) },
                         onRestore = { restoreFromRecycleBin(listOf(it)) },
