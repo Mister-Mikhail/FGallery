@@ -146,6 +146,17 @@ class DuplicateFingerprintsTest {
             fullHashCandidates(withEdges))
     }
 
+    @Test fun repeatedCatalogueUriCannotCreateFalseDuplicateOrHashWork() {
+        val a = row("content://same", quick = "edge", full = "sha")
+        assertTrue(exactDuplicateGroups(listOf(a, a.copy(name = "renamed.jpg"))).isEmpty())
+        val pending = row("content://pending", size = 500)
+        assertTrue(quickHashCandidates(listOf(pending, pending)).isEmpty())
+        val edge = pending.copy(quickHash = "edge")
+        assertTrue(fullHashCandidates(listOf(edge, edge)).isEmpty())
+        val b = a.copy(uri = "content://other")
+        assertEquals(1, exactDuplicateGroups(listOf(a, a, b)).single().size - 1)
+    }
+
     @Test fun exactCopyProposalPrefersOriginalFormatThenResolutionThenCaptureDate() {
         // Only verified equal bytes may enter a group; the order is advisory.
         val jpeg = row("file:///jpeg", quick = "edge", full = "sha")
