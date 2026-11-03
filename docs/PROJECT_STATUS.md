@@ -1,13 +1,13 @@
 # FGallery — текущее состояние
-Обновлено: **2026-11-02**. Полная история до build45: [архив](history/PROJECT_STATUS-through-2026-11-02-build45.md). Приоритеты: [инструкции](CHATGPT_PROJECT_INSTRUCTIONS.md), [утверждённое ТЗ](FGallery_TZ_v1.md), [открытые проблемы](OPEN_BUGS.md).
+Обновлено: **2026-11-03**. Полная история до build45: [архив](history/PROJECT_STATUS-through-2026-11-02-build45.md). Приоритеты: [инструкции](CHATGPT_PROJECT_INSTRUCTIONS.md), [утверждённое ТЗ](FGallery_TZ_v1.md), [открытые проблемы](OPEN_BUGS.md).
 
 ## Приёмка на Samsung S23 / Android 16
 **ПРИНЯТО пользователем в build35, не менять без обнаруженной регрессии:** Samsung DNG, Phase One IIQ, Hasselblad 3FR/FFF RAW и их превью; сортировка альбомов по последним датам файлов; перечисленные исправления индексации; встроенное обновление APK. Приняты также функции build30: обложки, сохранение текущего альбома/медиа при возврате, разрешения, сортировка папок назначения, видеожесты. Последующие QA-сборки требуют отдельной физической проверки. Единичное прежнее падение не диагностировано без журнала.
 
 ## Репозиторий и публикации
 - Единственная рабочая ветка: `feature/fgallery-0.4.0-integration`; [draft PR #15](https://github.com/Mister-Mikhail/FGallery/pull/15), **не сливать**.
-- Последний проверенный опубликованный QA: **0.4.0 build46**, [prerelease](https://github.com/Mister-Mikhail/FGallery/releases/tag/qa-v0.4.0-b46), [ARM64 APK](https://github.com/Mister-Mikhail/FGallery/releases/download/qa-v0.4.0-b46/FGallery-0.4.0-b46-arm64-v8a.apk), SHA-256 `6e6b0f589273cf951a6963364d21503ce853e28265826f99e7d9c57445d17507`; исходный SHA `a717c29ac085a27ca3211fbc61e09e9b5bdfbbf8`; [CI R8/JVM/Android16/publish](https://github.com/Mister-Mikhail/FGallery/actions/runs/41537325111) success.
-- **Кандидат build47** (не объявлять опубликованным до CI): Stage5 сравнивает Room-строки уже после восстановления сохранённых Stage6-отпечатков, чтобы неизменённые файлы не перезаписывались при каждом инкрементальном сканировании. Добавлены JVM-тесты выбора изменённых строк и Android16-тест сохранения SQLite rowid и хешей. Первый Android16 CI выявил только ошибку самого нового теста: R8 удалил неиспользуемый в приложении метод `SupportSQLiteOpenHelper.getReadableDatabase()`. Тест переведён на чтение SQLite-файла через Android framework; поведение приложения не менялось. QA prerelease публикуется workflow **только после** зелёного R8/JVM/Android16 на точном коммите. versionCode=47.
+- Последний проверенный опубликованный QA: **0.4.0 build47**, [prerelease](https://github.com/Mister-Mikhail/FGallery/releases/tag/qa-v0.4.0-b47), [ARM64 APK](https://github.com/Mister-Mikhail/FGallery/releases/download/qa-v0.4.0-b47/FGallery-0.4.0-b47-arm64-v8a.apk), SHA-256 `09c80f57dd2f1ef83cc44f24ac8be5b9cdaa1650a362d9acb119725c98472b00`; исходный SHA `c411ae9d6dd2c3530ec06412909dc47f0392c3fe`; [CI R8/JVM/Android16/publish](https://github.com/Mister-Mikhail/FGallery/actions/runs/41552229034) success.
+- **Build47 принят по CI, но не по физической проверке:** Room пропускает REPLACE неизменённых записей после восстановления Stage6-отпечатков; добавлены JVM и Android16 регрессионные тесты. versionCode=47.
 - Stable и публикация в магазины запрещены без решения пользователя. Сохранить то же тестовое подписание для встроенного обновления.
 
 ## Stage5 — каталог и сканирование
