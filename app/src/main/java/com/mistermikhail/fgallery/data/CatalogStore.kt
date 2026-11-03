@@ -257,7 +257,7 @@ internal object CatalogStore {
                 null
             }
         }
-        val quickRows = dao.pendingQuickHashCandidates().filter(::candidateAccessible)
+        val quickRows = if (quickBudget > 0) dao.pendingQuickHashCandidates().filter(::candidateAccessible) else emptyList()
         val quickWindow = fingerprintCandidateWindow(
             quickRows, nextQuickCandidate, maxOf(quickBudget * 8, 64),
         )
@@ -278,7 +278,7 @@ internal object CatalogStore {
             nextQuickCandidate = Math.floorMod(nextQuickCandidate + quickAttempted, quickRows.size)
         }
 
-        val fullRows = dao.pendingFullHashCandidates().filter(::candidateAccessible)
+        val fullRows = if (fullBudget > 0) dao.pendingFullHashCandidates().filter(::candidateAccessible) else emptyList()
         val fullWindow = fingerprintCandidateWindow(
             fullRows, nextFullCandidate, maxOf(fullBudget * 8, 32),
         )
