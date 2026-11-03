@@ -134,6 +134,9 @@ internal fun <T> fingerprintCandidateWindow(
  */
 internal fun exactDuplicateGroups(rows: List<CatalogMediaRow>): List<List<CatalogMediaRow>> =
     rows.asSequence()
+        // A URI may appear twice during a partial SAF/MediaStore reconciliation.
+        // Repeated catalogue rows are one physical item, never two copies.
+        .distinctBy { it.uri }
         .filterNot { it.recycled }
         .filter { it.sizeBytes > 0L && !it.quickHash.isNullOrBlank() && !it.fullHash.isNullOrBlank() }
         .groupBy { Triple(it.sizeBytes, it.quickHash, it.fullHash) }
@@ -176,7 +179,7 @@ private fun duplicateFormatPriority(row: CatalogMediaRow): Int {
  * Never hash a singleton or an already completed fingerprint.
  */
 internal fun quickHashCandidates(rows: List<CatalogMediaRow>): List<CatalogMediaRow> =
-    rows.asSequence().filter { !it.recycled && it.sizeBytes > 0L }
+    rows.asSequence().distinctBy { it.uri }.filter { !it.recycled && it.sizeBytes > 0L }
         .groupBy { it.sizeBytes }.values.asSequence()
         .filter { it.size > 1 }.flatten()
         .filter { it.quickHash == null }
@@ -184,7 +187,7 @@ internal fun quickHashCandidates(rows: List<CatalogMediaRow>): List<CatalogMedia
         .toList()
 
 internal fun fullHashCandidates(rows: List<CatalogMediaRow>): List<CatalogMediaRow> =
-    rows.asSequence().filter { !it.recycled && it.sizeBytes > 0L && !it.quickHash.isNullOrBlank() }
+    rows.asSequence().distinctBy { it.uri }.filter { !it.recycled && it.sizeBytes > 0L && !it.quickHash.isNullOrBlank() }
         .groupBy { it.sizeBytes to it.quickHash }.values.asSequence()
         .filter { it.size > 1 }.flatten()
         .filter { it.fullHash == null }
