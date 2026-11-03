@@ -1,5 +1,5 @@
 # FGallery — открытые проблемы и ограничения
-Обновлено: **2026-11-02**. История до build45: [архив](history/OPEN_BUGS-through-2026-11-02-build45.md). [Статус](PROJECT_STATUS.md) · [ТЗ](FGallery_TZ_v1.md).
+Обновлено: **2026-11-03**. История до build45: [архив](history/OPEN_BUGS-through-2026-11-02-build45.md). [Статус](PROJECT_STATUS.md) · [ТЗ](FGallery_TZ_v1.md).
 
 ## Принято, не переделывать без регрессии
 - **S23 build35:** RAW Samsung DNG / Phase One IIQ / Hasselblad 3FR/FFF, превью, сортировка альбомов по датам файлов, индексация и встроенный апдейтер — работают по отчёту пользователя.
@@ -9,7 +9,7 @@
 - **FG-INDEX-SAF-DELTA:** полноценная инкрементальная сверка SAF/USB по папкам и MediaStore; сравнение full-vs-delta, корректность при FAT/exFAT с грубым mtime, при отключении/подключении носителя и перезаписи файла под тем же именем. USB/SD тесты пользователь отложил.
 - **FG-INDEX-MUTATIONS:** все успешные move/rename/delete/restore/crop должны атомарно обновлять Room, сохранять незатронутые записи и корректно восстанавливать каталог после частичных операций. Существующие фиксы удаления/корзины и отмены сканирования сохранять.
 - **FG-SAF-METADATA:** build46 сохраняет обогащённые метаданные неизменённого SAF URI при очередном обходе; Android16 CI пройден, физическая проверка S23 впереди. Не переиспользовать при изменении версии файла.
-- **FG-INDEX-ROOM-DELTA:** build47-кандидат устраняет повторные REPLACE неизменённых Room-строк с сохранёнными хешами; проверка JVM/Android16 CI впереди.
+- **FG-INDEX-ROOM-DELTA:** build47 устраняет повторные REPLACE неизменённых Room-строк с сохранёнными хешами; JVM/Android16 CI пройден, физическая проверка S23 впереди.
 - **FG-CRASH:** ранее было одно неповторённое падение на S23, журнал отсутствует; причину не объявлять устранённой.
 
 ## P1 — Stage6
@@ -18,4 +18,4 @@
 - **FG-DUP-KEEP:** ранжирование оригинала учитывает формат/разрешение/размер/время/камеру, но JPEG quantization и полнота EXIF ещё не реализованы; объяснять пользователю, почему файл предпочтителен.
 
 ## Выпуск
-Последний опубликованный и прошедший CI QA: [build46](https://github.com/Mister-Mikhail/FGallery/releases/tag/qa-v0.4.0-b46), коммит `a717c29ac085a27ca3211fbc61e09e9b5bdfbbf8`, [CI](https://github.com/Mister-Mikhail/FGallery/actions/runs/41537325111). Build47 — только кандидат до полного зелёного R8/JVM/Android16 и prerelease. PR #15 draft; stable/merge запрещены.
+Последний опубликованный и прошедший CI QA: [build47](https://github.com/Mister-Mikhail/FGallery/releases/tag/qa-v0.4.0-b47), коммит `c411ae9d6dd2c3530ec06412909dc47f0392c3fe`, [CI](https://github.com/Mister-Mikhail/FGallery/actions/runs/41552229034). Build47 ещё не принят пользователем на S23. PR #15 draft; stable/merge запрещены.
