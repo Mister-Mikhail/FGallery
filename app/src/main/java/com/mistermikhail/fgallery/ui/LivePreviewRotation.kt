@@ -23,3 +23,11 @@ internal class LivePreviewRotation {
         return activeId
     }
 }
+
+/** Fraction of a tile visible inside the scrolling viewport; excludes clipped rows. */
+internal fun visibleHeightFraction(top: Int, height: Int, viewportStart: Int, viewportEnd: Int): Float {
+    if (height <= 0 || viewportEnd <= viewportStart) return 0f
+    val visible = (minOf(top.toLong() + height, viewportEnd.toLong()) -
+        maxOf(top.toLong(), viewportStart.toLong())).coerceIn(0L, height.toLong())
+    return visible.toFloat() / height
+}
