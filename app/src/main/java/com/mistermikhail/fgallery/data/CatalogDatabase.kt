@@ -91,6 +91,17 @@ internal fun retainUnchangedFingerprints(
     )
 }
 
+/**
+ * A scan does not contain cached Stage 6 hashes. Compare the merged row,
+ * not the raw scan row: otherwise every refresh REPLACEs every hashed file,
+ * needlessly invalidating Room observers and churning SQLite on large drives.
+ */
+internal fun changedMediaRows(
+    previous: Map<String, CatalogMediaRow>,
+    scanned: Collection<CatalogMediaRow>,
+): List<CatalogMediaRow> = scanned.map { retainUnchangedFingerprints(previous[it.uri], it) }
+    .filter { previous[it.uri] != it }
+
 @Dao
 internal interface CatalogDao {
     @Query("SELECT * FROM catalog_media")
@@ -224,9 +235,7 @@ internal interface CatalogDao {
         oldMedia.values.filter { it.storageId in disconnectedIds }
             .forEach { current.putIfAbsent(it.uri, it) }
         oldMedia.keys.filterNot { it in current }.chunked(400).forEach { deleteMedia(it) }
-        upsertMedia(current.values
-            .map { retainUnchangedFingerprints(oldMedia[it.uri], it) }
-            .filter { oldMedia[it.uri] != it })
+        upsertMedia(changedMediaRows(oldMedia, current.values))
 
         val oldFolders = allFolders().associateBy { it.key }
         val currentFolders = folders.associateBy { it.key }.toMutableMap()

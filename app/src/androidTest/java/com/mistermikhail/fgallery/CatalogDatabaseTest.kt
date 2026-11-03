@@ -326,4 +326,49 @@ class CatalogDatabaseTest {
     }
 
 
+
+    @Test fun unchangedHashedRowsKeepTheirSqliteIdentityAcrossIncrementalScans() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val db = Room.inMemoryDatabaseBuilder(context, CatalogDatabase::class.java).build()
+        try {
+            val cached = CatalogMediaRow(
+                uri = "media://cached", mediaId = 1L, name = "photo.jpg",
+                mimeType = "image/jpeg", kind = "IMAGE", dateTakenMillis = 100L,
+                width = 1200, height = 800, durationMillis = 0L,
+                album = "DCIM", relativePath = "DCIM/", sizeBytes = 1000L,
+                dateModifiedMillis = 200L, storageId = "external_primary",
+                storageName = "Phone", folderTarget = "/phone/DCIM",
+                sourcePath = "/phone/DCIM/photo.jpg",
+                quickHash = "edge", fullHash = "full", perceptualHash = "visual",
+            )
+            // A second row prevents SQLite from reusing the deleted maximum
+            // rowid if a regression reintroduces INSERT OR REPLACE.
+            val untouched = cached.copy(uri = "media://sentinel", mediaId = 2L)
+            val dao = db.catalog()
+            dao.upsertMedia(listOf(cached, untouched))
+            fun rowId(): Long = db.openHelper.readableDatabase
+                .query("SELECT rowid FROM catalog_media WHERE uri = 'media://cached'")
+                .use { cursor ->
+                    assertTrue(cursor.moveToFirst())
+                    cursor.getLong(0)
+                }
+            val before = rowId()
+            val scan = cached.copy(quickHash = null, fullHash = null, perceptualHash = null)
+            dao.synchronizeSnapshot(listOf(scan, untouched), emptyList(), emptyList())
+            assertEquals("Unchanged file must not be REPLACEd by a hash-free scan", before, rowId())
+            assertEquals(cached, dao.allMedia().single { it.uri == cached.uri })
+
+            // Real metadata changes still propagate without dropping the
+            // fingerprint when size, mtime and volume are unchanged.
+            dao.synchronizeSnapshot(
+                listOf(scan.copy(name = "renamed.jpg"), untouched),
+                emptyList(), emptyList(),
+            )
+            val renamed = dao.allMedia().single { it.uri == cached.uri }
+            assertEquals("renamed.jpg", renamed.name)
+            assertEquals("full", renamed.fullHash)
+            assertEquals("visual", renamed.perceptualHash)
+        } finally { db.close() }
+    }
+
 }
