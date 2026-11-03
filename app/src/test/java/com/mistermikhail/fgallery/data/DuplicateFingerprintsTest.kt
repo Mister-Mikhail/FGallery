@@ -204,6 +204,26 @@ class DuplicateFingerprintsTest {
         }
     }
 
+    @Test fun edgeHashRejectsProviderSizeChangeAfterRead() {
+        val file = Files.createTempFile("fgallery-shrinking-provider", ".bin").toFile()
+        try {
+            file.writeBytes(ByteArray(100) { 42 })
+            FileInputStream(file).use { input ->
+                var checks = 0
+                try {
+                    DuplicateFingerprints.quick(input.channel) {
+                        if (++checks == 2) java.io.RandomAccessFile(file, "rw").use {
+                            it.setLength(50)
+                        }
+                    }
+                    org.junit.Assert.fail("A changed provider length must invalidate the edge hash")
+                } catch (_: java.io.IOException) { /* expected */ }
+            }
+        } finally {
+            file.delete()
+        }
+    }
+
     @Test fun hashOfEmptyFileIsStable() {
         val empty = Files.createTempFile("fgallery-empty", ".bin").toFile()
         try {
