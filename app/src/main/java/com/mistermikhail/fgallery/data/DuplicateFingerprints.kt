@@ -57,6 +57,10 @@ internal object DuplicateFingerprints {
             channel.position(length - EDGE_BYTES)
             updateExact(channel, digest, EDGE_BYTES, checkActive)
         }
+        // SAF providers may replace/truncate a document while the two edges
+        // are read. Never cache a digest for a different observed length.
+        checkActive()
+        if (channel.size() != length) throw IOException("File size changed during fingerprinting")
         return digest.digest().toHexString()
     }
 
