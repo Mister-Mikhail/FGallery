@@ -68,4 +68,17 @@ class VisualPixelScreenTest {
             assertTrue(checked > 0)
         }
     }
+    @Test fun cropSearchChecksCancellationInsideEachWidth() {
+        val original = patterned()
+        var checks = 0
+        val found = VisualPixelScreen.cropCandidate(
+            original, recolor(original, 60),
+            4000, 3000, 2000, 1500,
+        ) { checks++ }
+        assertFalse(found)
+        // Eleven candidate widths alone are insufficient for responsive
+        // cancellation: each width can evaluate dozens of crop windows.
+        assertTrue("Cancellation should be checked within each width: $checks", checks > 11)
+    }
+
 }
