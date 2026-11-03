@@ -58,6 +58,8 @@ internal object VisualPixelScreen {
             val height = width * aspectRatio
             if (height < 0.30 || height > 0.95) continue
             for (iy in 0..8) {
+                // Stop promptly during long crop searches, not only between widths.
+                checkActive()
                 val top = (1.0 - height) * iy / 8.0
                 for (ix in 0..8) {
                     val left = (1.0 - width) * ix / 8.0
