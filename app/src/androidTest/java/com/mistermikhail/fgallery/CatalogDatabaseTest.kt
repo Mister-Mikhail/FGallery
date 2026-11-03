@@ -329,7 +329,11 @@ class CatalogDatabaseTest {
 
     @Test fun unchangedHashedRowsKeepTheirSqliteIdentityAcrossIncrementalScans() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val db = Room.inMemoryDatabaseBuilder(context, CatalogDatabase::class.java).build()
+        // R8 removes SupportSQLiteOpenHelper.getReadableDatabase() from the
+        // minified target APK because production code never calls it. Query
+        // the actual on-disk SQLite file through the Android framework instead.
+        val dbName = "fgallery-rowid-${System.nanoTime()}.db"
+        val db = Room.databaseBuilder(context, CatalogDatabase::class.java, dbName).build()
         try {
             val cached = CatalogMediaRow(
                 uri = "media://cached", mediaId = 1L, name = "photo.jpg",
@@ -346,12 +350,19 @@ class CatalogDatabaseTest {
             val untouched = cached.copy(uri = "media://sentinel", mediaId = 2L)
             val dao = db.catalog()
             dao.upsertMedia(listOf(cached, untouched))
-            fun rowId(): Long = db.openHelper.readableDatabase
-                .query("SELECT rowid FROM catalog_media WHERE uri = 'media://cached'")
-                .use { cursor ->
+            fun rowId(): Long = android.database.sqlite.SQLiteDatabase.openDatabase(
+                context.getDatabasePath(dbName).absolutePath,
+                null,
+                android.database.sqlite.SQLiteDatabase.OPEN_READONLY,
+            ).use { sqlite ->
+                sqlite.rawQuery(
+                    "SELECT rowid FROM catalog_media WHERE uri = ?",
+                    arrayOf(cached.uri),
+                ).use { cursor ->
                     assertTrue(cursor.moveToFirst())
                     cursor.getLong(0)
                 }
+            }
             val before = rowId()
             val scan = cached.copy(quickHash = null, fullHash = null, perceptualHash = null)
             dao.synchronizeSnapshot(listOf(scan, untouched), emptyList(), emptyList())
@@ -368,7 +379,10 @@ class CatalogDatabaseTest {
             assertEquals("renamed.jpg", renamed.name)
             assertEquals("full", renamed.fullHash)
             assertEquals("visual", renamed.perceptualHash)
-        } finally { db.close() }
+        } finally {
+            db.close()
+            context.deleteDatabase(dbName)
+        }
     }
 
 }
