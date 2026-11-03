@@ -168,11 +168,25 @@ fun GalleryScreen(
             } else {
                 when (state.gridMode) {
                     GridMode.UNIFORM -> uniformGridState.layoutInfo.visibleItemsInfo
+                        .filter { info ->
+                            visibleHeightFraction(
+                                info.offset.y, info.size.height,
+                                uniformGridState.layoutInfo.viewportStartOffset,
+                                uniformGridState.layoutInfo.viewportEndOffset,
+                            ) >= 0.5f
+                        }
                         .mapNotNull { info -> visibleItems.getOrNull(info.index) }
                         .filter { it.kind == MediaKind.VIDEO }
                         .map { it.id }
 
                     GridMode.MOSAIC -> mosaicListState.layoutInfo.visibleItemsInfo
+                        .filter { info ->
+                            visibleHeightFraction(
+                                info.offset, info.size,
+                                mosaicListState.layoutInfo.viewportStartOffset,
+                                mosaicListState.layoutInfo.viewportEndOffset,
+                            ) >= 0.5f
+                        }
                         .flatMap { info -> visibleMosaicRows.getOrNull(info.index).orEmpty() }
                         .filter { it.kind == MediaKind.VIDEO }
                         .map { it.id }
