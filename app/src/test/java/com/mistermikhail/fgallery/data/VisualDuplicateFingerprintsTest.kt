@@ -76,4 +76,30 @@ class VisualDuplicateFingerprintsTest {
         // frames must still be rejected by the future strict pixel verifier.
         assertTrue(potentialResizedDuplicate(original, colorEdited))
     }
+    @Test fun hashComparisonHandlesUnsigned64BitAndMalformedInputs() {
+        assertEquals(64, VisualDuplicateFingerprints.hammingDistance("0000000000000000", "ffffffffffffffff"))
+        assertEquals(1, VisualDuplicateFingerprints.hammingDistance("8000000000000000", "0000000000000000"))
+        assertEquals(0, VisualDuplicateFingerprints.hammingDistance("ABCDEF0123456789", "abcdef0123456789"))
+        assertNull(VisualDuplicateFingerprints.hammingDistance("000000000000000", "0000000000000000"))
+        assertNull(VisualDuplicateFingerprints.hammingDistance("00000000000000000", "0000000000000000"))
+    }
+
+    @Test fun cameraRawExtensionsAreExcludedEvenWhenMediaStoreReportsImage() {
+        val jpeg = row("content://jpeg", "0123456789abcdef")
+        for (extension in listOf("DNG", "CR2", "CR3", "NEF", "ARW", "RAF", "RW2", "3FR", "FFF", "IIQ")) {
+            val raw = row("content://raw-$extension", "0123456789abcdef").copy(name = "frame.$extension")
+            assertFalse("RAW + JPEG must not be merged: $extension", potentialResizedDuplicate(jpeg, raw))
+            assertFalse("RAW + JPEG must not be merged: $extension", potentialResizedDuplicate(raw, jpeg))
+        }
+    }
+
+    @Test fun visualCandidatesRejectRecycledAndBurstFramesRegardlessOfHash() {
+        val original = row("content://a", "0123456789abcdef")
+        val second = row("content://b", "0123456789abcdef")
+        assertFalse(potentialResizedDuplicate(original.copy(recycled = true), second))
+        assertFalse(potentialResizedDuplicate(original, second.copy(recycled = true)))
+        assertFalse(potentialResizedDuplicate(original, second.copy(dateTakenMillis = 1_002_001L)))
+        assertTrue(potentialResizedDuplicate(original, second.copy(dateTakenMillis = 1_002_000L)))
+    }
+
 }
