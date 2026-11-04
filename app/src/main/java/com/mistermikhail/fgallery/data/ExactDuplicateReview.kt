@@ -12,6 +12,8 @@ internal data class ExactDuplicateReview(
     val groups: List<List<CatalogMediaRow>>,
     val selectedUris: Set<String>,
     val protectedUris: Set<String>,
+    val includedStorageIds: Set<String>,
+    val includedFolderTargets: Set<String>,
 ) {
     val selectedCount: Int get() = selectedUris.size
 }
@@ -32,7 +34,8 @@ internal fun planExactDuplicateReview(
     val protected = groups.map { it.first().uri }.toSet()
     val eligible = groups.flatMap { it.drop(1) }.map { it.uri }.toSet()
     // Explicit opt-in only; never preselect anything for the trash.
-    return ExactDuplicateReview(groups, requestedUris.intersect(eligible), protected)
+    return ExactDuplicateReview(groups, requestedUris.intersect(eligible), protected,
+        includedStorageIds.toSet(), includedFolderTargets.toSet())
 }
 
 /**
@@ -48,6 +51,10 @@ internal fun confirmedExactDuplicateUris(
     explicitlyConfirmed: Boolean,
 ): Set<String> {
     if (!explicitlyConfirmed || reviewed.selectedUris.isEmpty()) return emptySet()
+    // The confirmation must use exactly the scope shown during review.
+    // Otherwise a caller could silently widen or narrow the affected folders.
+    if (includedStorageIds != reviewed.includedStorageIds ||
+        includedFolderTargets != reviewed.includedFolderTargets) return emptySet()
     val current = planExactDuplicateReview(
         currentRows, includedStorageIds, includedFolderTargets, reviewed.selectedUris
     )
