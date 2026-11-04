@@ -1,13 +1,13 @@
 # FGallery — текущее состояние
-Обновлено: **2026-11-03**. Полная история до build45: [архив](history/PROJECT_STATUS-through-2026-11-02-build45.md). Приоритеты: [инструкции](CHATGPT_PROJECT_INSTRUCTIONS.md), [утверждённое ТЗ](FGallery_TZ_v1.md), [открытые проблемы](OPEN_BUGS.md).
+Обновлено: **2026-11-04**. Полная история до build45: [архив](history/PROJECT_STATUS-through-2026-11-02-build45.md). Приоритеты: [инструкции](CHATGPT_PROJECT_INSTRUCTIONS.md), [утверждённое ТЗ](FGallery_TZ_v1.md), [открытые проблемы](OPEN_BUGS.md).
 
 ## Приёмка на Samsung S23 / Android 16
 **ПРИНЯТО пользователем в build35, не менять без обнаруженной регрессии:** Samsung DNG, Phase One IIQ, Hasselblad 3FR/FFF RAW и их превью; сортировка альбомов по последним датам файлов; перечисленные исправления индексации; встроенное обновление APK. Приняты также функции build30: обложки, сохранение текущего альбома/медиа при возврате, разрешения, сортировка папок назначения, видеожесты. Последующие QA-сборки требуют отдельной физической проверки. Единичное прежнее падение не диагностировано без журнала.
 
 ## Репозиторий и публикации
 - Единственная рабочая ветка: `feature/fgallery-0.4.0-integration`; [draft PR #15](https://github.com/Mister-Mikhail/FGallery/pull/15), **не сливать**.
-- Последний проверенный опубликованный QA: **0.4.0 build47**, [prerelease](https://github.com/Mister-Mikhail/FGallery/releases/tag/qa-v0.4.0-b47), [ARM64 APK](https://github.com/Mister-Mikhail/FGallery/releases/download/qa-v0.4.0-b47/FGallery-0.4.0-b47-arm64-v8a.apk), SHA-256 `09c80f57dd2f1ef83cc44f24ac8be5b9cdaa1650a362d9acb119725c98472b00`; исходный SHA `c411ae9d6dd2c3530ec06412909dc47f0392c3fe`; [CI R8/JVM/Android16/publish](https://github.com/Mister-Mikhail/FGallery/actions/runs/41552229034) success.
-- **Build47 принят по CI, но не по физической проверке:** Room пропускает REPLACE неизменённых записей после восстановления Stage6-отпечатков; добавлены JVM и Android16 регрессионные тесты. versionCode=47.
+- Последний опубликованный и прошедший CI QA: **0.4.0 build48**, [prerelease](https://github.com/Mister-Mikhail/FGallery/releases/tag/qa-v0.4.0-b48), [ARM64 APK](https://github.com/Mister-Mikhail/FGallery/releases/download/qa-v0.4.0-b48/FGallery-0.4.0-b48-arm64-v8a.apk), SHA-256 `c0b254a8cdb20c2fe803854e4afd1e42b0c0cdf911b80f9db3d5ceb46b692090`; исходный SHA `89d2c20ec9f8eb7980e76e13843a4ed0b81c1fd4`; [CI R8/JVM/Android16/publish](https://github.com/Mister-Mikhail/FGallery/actions/runs/41849218013) success. Проверка на S23 ещё не подтверждена пользователем.
+- **Build47 принят по CI, но не по физической проверке:** Room пропускает REPLACE неизменённых записей после восстановления Stage6-отпечатков; добавлены JVM и Android16 регрессионные тесты. versionCode=48 (build48; изменения build47 сохранены).
 - Stable и публикация в магазины запрещены без решения пользователя. Сохранить то же тестовое подписание для встроенного обновления.
 
 ## Stage5 — каталог и сканирование
