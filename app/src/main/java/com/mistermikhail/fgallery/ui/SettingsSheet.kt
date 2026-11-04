@@ -142,66 +142,80 @@ fun SettingsSheet(
             }
             SettingSwitch("Подтверждать перемещение", "Выключено по умолчанию", confirmMove, onConfirmMoveChanged)
             SettingSwitch("Подтверждать переименование", "", confirmRename, onConfirmRenameChanged)
-            Text(
-                text = "Кэш превью",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(top = 12.dp),
-            )
-            Text(
-                text = "Лимиты дискового кэша. Уменьшение освобождает старые миниатюры, оригиналы не затрагиваются.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = .72f),
-            )
-            val cacheScope = rememberCoroutineScope()
-            var microMb by remember { mutableIntStateOf(ThumbnailCache.limitMb(context, false)) }
-            var highMb by remember { mutableIntStateOf(ThumbnailCache.limitMb(context, true)) }
-            Text("Маленькие превью · ${microMb} МБ", style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(top = 8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                for (mb in listOf(250, 500, 1000)) {
-                    FilterChip(
-                        selected = microMb == mb,
-                        onClick = {
-                            microMb = mb
-                            cacheScope.launch { ThumbnailCache.setLimitMb(context, false, mb) }
-                        },
-                        label = { Text("${mb} МБ") },
-                    )
-                }
+            // Keep everyday settings visible on a phone without hiding advanced controls.
+            var advancedExpanded by remember { mutableStateOf(false) }
+            Row(
+                modifier = Modifier.fillMaxWidth().clickable { advancedExpanded = !advancedExpanded }
+                    .padding(vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("Кэш и масштаб", style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                Text(if (advancedExpanded) "Свернуть" else "Открыть",
+                    style = MaterialTheme.typography.labelMedium)
             }
-            Text("Крупные превью · ${highMb} МБ", style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(top = 4.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                for (mb in listOf(512, 1024, 2048)) {
-                    FilterChip(
-                        selected = highMb == mb,
-                        onClick = {
-                            highMb = mb
-                            cacheScope.launch { ThumbnailCache.setLimitMb(context, true, mb) }
-                        },
-                        label = { Text("${mb} МБ") },
-                    )
+            if (advancedExpanded) {
+                Text(
+                    text = "Кэш превью",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(top = 12.dp),
+                )
+                Text(
+                    text = "Лимиты дискового кэша. Уменьшение освобождает старые миниатюры, оригиналы не затрагиваются.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = .72f),
+                )
+                val cacheScope = rememberCoroutineScope()
+                var microMb by remember { mutableIntStateOf(ThumbnailCache.limitMb(context, false)) }
+                var highMb by remember { mutableIntStateOf(ThumbnailCache.limitMb(context, true)) }
+                Text("Маленькие превью · ${microMb} МБ", style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(top = 8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    for (mb in listOf(250, 500, 1000)) {
+                        FilterChip(
+                            selected = microMb == mb,
+                            onClick = {
+                                microMb = mb
+                                cacheScope.launch { ThumbnailCache.setLimitMb(context, false, mb) }
+                            },
+                            label = { Text("${mb} МБ") },
+                        )
+                    }
                 }
-            }
-            Text(
-                text = "Тест · масштаб PDF/SVG",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(top = 12.dp),
-            )
-            Text(
-                text = "Для больших фотографий и RAW: 50% → 160% по индикатору, независимо от формата. Параметр p ниже относится только к PDF/SVG.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = .72f),
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                for (percentage in listOf(80, 85, 90)) {
-                    FilterChip(
-                        selected = kotlin.math.abs(zoomSecondPower - percentage / 100f) < .005f,
-                        onClick = { onZoomSecondPowerChanged(percentage / 100f) },
-                        label = { Text("$percentage%") },
-                    )
+                Text("Крупные превью · ${highMb} МБ", style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(top = 4.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    for (mb in listOf(512, 1024, 2048)) {
+                        FilterChip(
+                            selected = highMb == mb,
+                            onClick = {
+                                highMb = mb
+                                cacheScope.launch { ThumbnailCache.setLimitMb(context, true, mb) }
+                            },
+                            label = { Text("${mb} МБ") },
+                        )
+                    }
+                }
+                Text(
+                    text = "Тест · масштаб PDF/SVG",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(top = 12.dp),
+                )
+                Text(
+                    text = "Для больших фотографий и RAW: 50% → 160% по индикатору, независимо от формата. Параметр p ниже относится только к PDF/SVG.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = .72f),
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    for (percentage in listOf(80, 85, 90)) {
+                        FilterChip(
+                            selected = kotlin.math.abs(zoomSecondPower - percentage / 100f) < .005f,
+                            onClick = { onZoomSecondPowerChanged(percentage / 100f) },
+                            label = { Text("$percentage%") },
+                        )
+                    }
                 }
             }
             TextButton(onClick = onCheckForUpdates) { Text("Проверить обновления") }
