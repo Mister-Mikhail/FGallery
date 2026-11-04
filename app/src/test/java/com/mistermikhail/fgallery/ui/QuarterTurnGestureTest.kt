@@ -46,4 +46,33 @@ class QuarterTurnGestureTest {
         gesture.cancel()
         assertEquals(270, gesture.end())
     }
+    @Test fun snapThresholdAndNegativeDirection() {
+        val gesture = QuarterTurnGesture()
+        gesture.begin(1f, 0f)
+        gesture.move(0.8f, 0.6f) // ~37 degrees: no turn
+        assertEquals(0, gesture.end())
+        gesture.begin(1f, 0f)
+        gesture.move(0.6f, -0.8f) // ~-53 degrees: one negative turn
+        assertEquals(270, gesture.end())
+    }
+
+    @Test fun accumulatedMotionCanCrossMultipleQuarterTurns() {
+        val gesture = QuarterTurnGesture()
+        gesture.begin(1f, 0f)
+        gesture.move(0f, 1f)
+        gesture.move(-1f, 0f)
+        gesture.move(0f, -1f)
+        assertEquals(270, gesture.end())
+    }
+
+    @Test fun gestureStateDoesNotCarryOverAfterEnd() {
+        val gesture = QuarterTurnGesture()
+        gesture.begin(1f, 0f)
+        gesture.move(0f, 1f)
+        assertEquals(90, gesture.end())
+        gesture.begin(1f, 0f)
+        gesture.move(1f, 0.1f)
+        assertEquals(90, gesture.end())
+    }
+
 }
