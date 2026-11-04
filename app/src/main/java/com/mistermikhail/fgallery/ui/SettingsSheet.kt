@@ -1,5 +1,6 @@
 package com.mistermikhail.fgallery.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.rememberScrollState
@@ -56,9 +57,12 @@ fun SettingsSheet(
         "Версия ${info.versionName} · сборка ${info.longVersionCode}"
     }.getOrDefault("Версия не определена")
 
+    BackHandler(onBack = onDismiss)
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
+        sheetGesturesEnabled = false,
     ) {
         Column(
             modifier = Modifier
