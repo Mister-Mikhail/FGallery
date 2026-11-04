@@ -1,5 +1,5 @@
 # FGallery — открытые проблемы и ограничения
-Обновлено: **2026-11-03**. История до build45: [архив](history/OPEN_BUGS-through-2026-11-02-build45.md). [Статус](PROJECT_STATUS.md) · [ТЗ](FGallery_TZ_v1.md).
+Обновлено: **2026-11-04**. История до build45: [архив](history/OPEN_BUGS-through-2026-11-02-build45.md). [Статус](PROJECT_STATUS.md) · [ТЗ](FGallery_TZ_v1.md).
 
 ## Принято, не переделывать без регрессии
 - **S23 build35:** RAW Samsung DNG / Phase One IIQ / Hasselblad 3FR/FFF, превью, сортировка альбомов по датам файлов, индексация и встроенный апдейтер — работают по отчёту пользователя.
@@ -34,4 +34,4 @@
 - **FG-DUP-KEEP:** ранжирование оригинала учитывает формат/разрешение/размер/время/камеру, но JPEG quantization и полнота EXIF ещё не реализованы; объяснять пользователю, почему файл предпочтителен.
 
 ## Выпуск
-Последний опубликованный и прошедший CI QA: [build47](https://github.com/Mister-Mikhail/FGallery/releases/tag/qa-v0.4.0-b47), коммит `c411ae9d6dd2c3530ec06412909dc47f0392c3fe`, [CI](https://github.com/Mister-Mikhail/FGallery/actions/runs/41552229034). Build47 ещё не принят пользователем на S23. PR #15 draft; stable/merge запрещены.
+Последний опубликованный и прошедший CI QA: [build48](https://github.com/Mister-Mikhail/FGallery/releases/tag/qa-v0.4.0-b48), коммит `89d2c20ec9f8eb7980e76e13843a4ed0b81c1fd4`, [CI](https://github.com/Mister-Mikhail/FGallery/actions/runs/41849218013). ARM64 SHA-256 `c0b254a8cdb20c2fe803854e4afd1e42b0c0cdf911b80f9db3d5ceb46b692090`; universal SHA-256 `e030a6f2e609062df11c858b92483446e324041b6edf3d7c9e93e30c68c56651`. Build48 ещё не принят пользователем на S23. PR #15 draft; stable/merge запрещены.
