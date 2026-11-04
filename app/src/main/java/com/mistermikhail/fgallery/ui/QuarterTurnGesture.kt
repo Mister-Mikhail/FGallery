@@ -16,12 +16,18 @@ internal class QuarterTurnGesture(initialQuarterTurns: Int = 0) {
     private var accumulatedDegrees = 0.0
 
     fun begin(dx: Float, dy: Float) {
-        lastAngle = angle(dx, dy)
+        lastAngle = if (validVector(dx, dy)) angle(dx, dy) else null
         accumulatedDegrees = 0.0
     }
 
     /** Returns transient rotation in degrees relative to the last committed quarter-turn. */
     fun move(dx: Float, dy: Float): Float {
+        // Overlapping pointers have no defined angle: retain the current preview
+        // rather than treating atan2(0, 0) as a real rotation.
+        if (!validVector(dx, dy)) {
+            lastAngle = null
+            return accumulatedDegrees.toFloat()
+        }
         val current = angle(dx, dy)
         val previous = lastAngle ?: run {
             lastAngle = current
@@ -56,6 +62,9 @@ internal class QuarterTurnGesture(initialQuarterTurns: Int = 0) {
         quarterTurns = 0
         cancel()
     }
+
+    private fun validVector(dx: Float, dy: Float): Boolean =
+        dx.isFinite() && dy.isFinite() && dx * dx + dy * dy > 1e-4f
 
     private fun angle(dx: Float, dy: Float): Double =
         atan2(dy.toDouble(), dx.toDouble()) * 180.0 / PI
