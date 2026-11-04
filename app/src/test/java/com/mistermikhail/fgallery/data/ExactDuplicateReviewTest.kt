@@ -54,4 +54,15 @@ class ExactDuplicateReviewTest {
         assertTrue(confirmedExactDuplicateUris(review,
             listOf(item("a")), explicitlyConfirmed = true).isEmpty())
     }
+    @Test fun confirmationRejectsMovedFileEvenWithUnchangedHashesAndMtime() {
+        val rows = listOf(item("a"), item("b"))
+        val review = planExactDuplicateReview(rows, requestedUris = setOf("b"))
+        assertTrue(confirmedExactDuplicateUris(review,
+            listOf(item("a"), item("b", storage = "usb")),
+            explicitlyConfirmed = true).isEmpty())
+        assertTrue(confirmedExactDuplicateUris(review,
+            listOf(item("a"), item("b", folder = "Pictures/")),
+            explicitlyConfirmed = true).isEmpty())
+    }
+
 }
