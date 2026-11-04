@@ -1,5 +1,6 @@
 package com.mistermikhail.fgallery.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -17,6 +18,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -68,7 +70,7 @@ fun SettingsSheet(
                 text = "Настройки",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(bottom = 6.dp),
+                modifier = Modifier.padding(bottom = 2.dp),
             )
 
             Row(
@@ -99,24 +101,42 @@ fun SettingsSheet(
                 )
             }
 
-            Text("Доступы", style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            var accessExpanded by remember { mutableStateOf(false) }
+            Row(
+                modifier = Modifier.fillMaxWidth().clickable { accessExpanded = !accessExpanded }
+                    .padding(vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Column(Modifier.weight(1f)) {
-                    Text("Фото и видео")
-                    Text("Статус: $mediaAccessStatus", style = MaterialTheme.typography.bodySmall)
+                    Text("Доступы", style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "Фото и видео: $mediaAccessStatus · Все файлы: " +
+                            if (allFilesGranted) "выдан" else "не выдан",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
                 }
-                TextButton(onClick = onMediaAccess) { Text("Настроить") }
+                Text(if (accessExpanded) "Свернуть" else "Открыть",
+                    style = MaterialTheme.typography.labelMedium)
             }
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("Доступ ко всем файлам")
-                    Text(if (allFilesGranted) "Статус: выдан" else "Статус: не выдан",
-                        style = MaterialTheme.typography.bodySmall)
+            if (accessExpanded) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Фото и видео")
+                        Text("Статус: $mediaAccessStatus", style = MaterialTheme.typography.bodySmall)
+                    }
+                    TextButton(onClick = onMediaAccess) { Text("Настроить") }
                 }
-                TextButton(onClick = onFilesAccess) { Text("Настроить") }
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Доступ ко всем файлам")
+                        Text(if (allFilesGranted) "Статус: выдан" else "Статус: не выдан",
+                            style = MaterialTheme.typography.bodySmall)
+                    }
+                    TextButton(onClick = onFilesAccess) { Text("Настроить") }
+                }
             }
-                        SettingSwitch("Подтверждать перемещение", "Выключено по умолчанию", confirmMove, onConfirmMoveChanged)
+            SettingSwitch("Подтверждать перемещение", "Выключено по умолчанию", confirmMove, onConfirmMoveChanged)
             SettingSwitch("Подтверждать переименование", "", confirmRename, onConfirmRenameChanged)
             Text(
                 text = "Кэш превью",
