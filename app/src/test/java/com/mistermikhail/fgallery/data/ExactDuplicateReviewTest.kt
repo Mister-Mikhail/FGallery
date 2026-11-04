@@ -65,4 +65,20 @@ class ExactDuplicateReviewTest {
             explicitlyConfirmed = true).isEmpty())
     }
 
+    @Test fun confirmationRequiresTheSameReviewedScope() {
+        val rows = listOf(item("a"), item("b"))
+        val storageScope = setOf("phone")
+        val folderScope = setOf("DCIM/")
+        val review = planExactDuplicateReview(rows, storageScope, folderScope,
+            requestedUris = setOf("b"))
+        assertEquals(setOf("b"), confirmedExactDuplicateUris(review, rows,
+            storageScope, folderScope, explicitlyConfirmed = true))
+        assertTrue(confirmedExactDuplicateUris(review, rows,
+            explicitlyConfirmed = true).isEmpty())
+        assertTrue(confirmedExactDuplicateUris(review, rows,
+            storageScope, setOf("Pictures/"), explicitlyConfirmed = true).isEmpty())
+        assertTrue(confirmedExactDuplicateUris(review, rows,
+            setOf("phone", "usb"), folderScope, explicitlyConfirmed = true).isEmpty())
+    }
+
 }
