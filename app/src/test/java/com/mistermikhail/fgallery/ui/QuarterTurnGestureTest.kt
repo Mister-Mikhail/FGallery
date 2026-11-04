@@ -93,4 +93,13 @@ class QuarterTurnGestureTest {
         assertEquals(90, gesture.end())
     }
 
+    @Test fun previewKeepsAccumulatedNegativeRotationAfterPointersOverlap() {
+        val gesture = QuarterTurnGesture()
+        gesture.begin(1f, 0f)
+        assertEquals(-90f, gesture.move(0f, -1f), 0.001f)
+        assertEquals(-90f, gesture.move(0f, 0f), 0.001f)
+        assertEquals(-90f, gesture.move(-1f, 0f), 0.001f)
+        assertEquals(270, gesture.end())
+    }
+
 }
