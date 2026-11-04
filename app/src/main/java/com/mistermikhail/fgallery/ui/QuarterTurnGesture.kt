@@ -31,7 +31,7 @@ internal class QuarterTurnGesture(initialQuarterTurns: Int = 0) {
         val current = angle(dx, dy)
         val previous = lastAngle ?: run {
             lastAngle = current
-            return 0f
+            return accumulatedDegrees.toFloat()
         }
         var delta = current - previous
         if (delta > 180.0) delta -= 360.0
