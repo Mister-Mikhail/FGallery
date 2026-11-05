@@ -81,4 +81,20 @@ class ExactDuplicateReviewTest {
             setOf("phone", "usb"), folderScope, explicitlyConfirmed = true).isEmpty())
     }
 
+    @Test fun confirmationRejectsChangedOriginalMetadataEvenWhenHashesMatch() {
+        val rows = listOf(item("a"), item("b"))
+        val review = planExactDuplicateReview(rows, requestedUris = setOf("b"))
+        assertEquals(setOf("b"), confirmedExactDuplicateUris(review, rows,
+            explicitlyConfirmed = true))
+        assertTrue(confirmedExactDuplicateUris(review,
+            listOf(rows[0].copy(width = 200), rows[1]),
+            explicitlyConfirmed = true).isEmpty())
+        assertTrue(confirmedExactDuplicateUris(review,
+            listOf(rows[0], rows[1].copy(name = "renamed.jpg")),
+            explicitlyConfirmed = true).isEmpty())
+        assertTrue(confirmedExactDuplicateUris(review,
+            listOf(rows[0].copy(sourcePath = "/Pictures/photo.jpg"), rows[1]),
+            explicitlyConfirmed = true).isEmpty())
+    }
+
 }
