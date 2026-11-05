@@ -97,4 +97,16 @@ class ExactDuplicateReviewTest {
             explicitlyConfirmed = true).isEmpty())
     }
 
+    @Test fun confirmationRejectsConflictingCatalogueRowsForSameUri() {
+        val rows = listOf(item("a"), item("b"))
+        val review = planExactDuplicateReview(rows, requestedUris = setOf("b"))
+        assertEquals(setOf("b"), confirmedExactDuplicateUris(review, rows,
+            explicitlyConfirmed = true))
+        // During SAF/MediaStore reconciliation a stale row may coexist with
+        // the updated row. Never silently trust distinctBy(uri) here.
+        val conflicting = rows + rows[1].copy(dateModifiedMillis = 999L)
+        assertTrue(confirmedExactDuplicateUris(review, conflicting,
+            explicitlyConfirmed = true).isEmpty())
+    }
+
 }
