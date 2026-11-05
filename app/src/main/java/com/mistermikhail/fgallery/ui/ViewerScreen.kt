@@ -11,6 +11,7 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.platform.LocalDensity
@@ -749,8 +750,37 @@ internal fun TiledZoomableImage(
         }
     }
 
+    // Rotation is display-only and scoped to this media item. Observe at Final pass
+    // without consuming events so Telephoto retains pinch zoom and pan.
+    val quarterTurnGesture = remember(item.uriKey) { QuarterTurnGesture() }
+    var displayRotation by remember(item.uriKey) { mutableFloatStateOf(0f) }
     Box(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize()
+            .pointerInput(item.uriKey, active) {
+                if (!active) return@pointerInput
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    var tracking = false
+                    do {
+                        val event = awaitPointerEvent(PointerEventPass.Final)
+                        val pointers = event.changes.filter { it.pressed }
+                        if (pointers.size == 2) {
+                            val vector = pointers[1].position - pointers[0].position
+                            if (!tracking) {
+                                quarterTurnGesture.begin(vector.x, vector.y)
+                                tracking = true
+                            } else {
+                                quarterTurnGesture.move(vector.x, vector.y)
+                            }
+                        } else if (tracking) {
+                            displayRotation = quarterTurnGesture.end().toFloat()
+                            tracking = false
+                        }
+                    } while (event.changes.any { it.pressed })
+                    if (tracking) displayRotation = quarterTurnGesture.end().toFloat()
+                }
+            }
+            .graphicsLayer { rotationZ = displayRotation },
         contentAlignment = Alignment.Center,
     ) {
         if (cachedPreview != null && !imageState.isImageDisplayed) {
