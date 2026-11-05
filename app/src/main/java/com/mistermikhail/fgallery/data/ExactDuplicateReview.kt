@@ -30,6 +30,13 @@ internal fun planExactDuplicateReview(
         (includedStorageIds.isEmpty() || row.storageId in includedStorageIds) &&
             (includedFolderTargets.isEmpty() || row.folderTarget in includedFolderTargets)
     }
+    // A transient SAF/MediaStore reconciliation may expose multiple generations
+    // of the same URI. Do not present an actionable review from ambiguous rows.
+    // The caller can retry after catalogue reconciliation completes.
+    if (scoped.map { it.uri }.toSet().size != scoped.size) {
+        return ExactDuplicateReview(emptyList(), emptySet(), emptySet(),
+            includedStorageIds.toSet(), includedFolderTargets.toSet())
+    }
     val groups = exactDuplicateGroups(scoped)
     val protected = groups.map { it.first().uri }.toSet()
     val eligible = groups.flatMap { it.drop(1) }.map { it.uri }.toSet()
