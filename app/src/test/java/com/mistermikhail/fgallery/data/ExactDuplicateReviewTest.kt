@@ -121,5 +121,32 @@ class ExactDuplicateReviewTest {
             requestedUris = setOf("b")).selectedUris)
     }
 
+    @Test fun confirmationRejectsRecycledOrRehashedCandidates() {
+        val rows = listOf(item("a"), item("b"))
+        val review = planExactDuplicateReview(rows, requestedUris = setOf("b"))
+        assertEquals(setOf("b"), confirmedExactDuplicateUris(review, rows,
+            explicitlyConfirmed = true))
+        // A file that changed on disk or entered the trash cannot be acted
+        // upon using the earlier review, even if the URI is unchanged.
+        assertTrue(confirmedExactDuplicateUris(review,
+            listOf(rows[0], rows[1].copy(fullHash = "new-content")),
+            explicitlyConfirmed = true).isEmpty())
+        assertTrue(confirmedExactDuplicateUris(review,
+            listOf(rows[0], rows[1].copy(quickHash = "new-edge")),
+            explicitlyConfirmed = true).isEmpty())
+        assertTrue(confirmedExactDuplicateUris(review,
+            listOf(rows[0], rows[1].copy(recycled = true)),
+            explicitlyConfirmed = true).isEmpty())
+    }
+
+    @Test fun reviewCannotSelectAnUnrelatedFileOrTheProtectedOriginal() {
+        val rows = listOf(item("a"), item("b"), item("unrelated", full = "different"))
+        val review = planExactDuplicateReview(rows,
+            requestedUris = setOf("a", "b", "unrelated", "missing"))
+        assertEquals(setOf("b"), review.selectedUris)
+        assertEquals(setOf("a"), review.protectedUris)
+        assertEquals(setOf("b"), confirmedExactDuplicateUris(review, rows,
+            explicitlyConfirmed = true))
+    }
 
 }
