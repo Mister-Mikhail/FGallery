@@ -55,4 +55,26 @@ class ViewerRegressionTest {
         assertEquals(2L, rotation.update(listOf(2L), false, 1800))
         assertEquals(2L, rotation.update(listOf(2L), false, 100000))
     }
+    @Test fun videoVisibilityUsesHalfTileHeightIncludingViewportClipping() {
+        assertEquals(0.5f, visibleHeightFraction(-50, 100, 0, 200), 0.0001f)
+        assertTrue(visibleHeightFraction(-51, 100, 0, 200) < 0.5f)
+        assertEquals(0.5f, visibleHeightFraction(150, 100, 0, 200), 0.0001f)
+        assertTrue(visibleHeightFraction(151, 100, 0, 200) < 0.5f)
+        assertEquals(1f, visibleHeightFraction(50, 100, 0, 200), 0.0001f)
+        assertEquals(0f, visibleHeightFraction(200, 100, 0, 200), 0.0001f)
+        assertEquals(0f, visibleHeightFraction(0, 0, 0, 200), 0.0001f)
+        assertEquals(0f, visibleHeightFraction(0, 100, 200, 100), 0.0001f)
+    }
+
+    @Test fun partiallyHiddenVideoStopsAndNextEligibleVideoStartsAfterScroll() {
+        val rotation = LivePreviewRotation()
+        rotation.update(listOf(1L, 2L), false, 0)
+        assertEquals(1L, rotation.update(listOf(1L, 2L), false, 700))
+        // Tile 1 is now less than half visible; caller excludes it.
+        assertNull(rotation.update(listOf(2L), true, 800))
+        assertNull(rotation.update(listOf(2L), false, 900))
+        assertEquals(2L, rotation.update(listOf(2L), false, 1600))
+        assertNull(rotation.update(emptyList(), true, 1700))
+    }
+
 }
