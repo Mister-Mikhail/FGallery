@@ -109,4 +109,17 @@ class ExactDuplicateReviewTest {
             explicitlyConfirmed = true).isEmpty())
     }
 
+    @Test fun reviewDoesNotOfferActionsForAmbiguousUriGenerations() {
+        val rows = listOf(item("a"), item("b"))
+        val ambiguous = rows + rows[1].copy(dateModifiedMillis = 999L)
+        val review = planExactDuplicateReview(ambiguous, requestedUris = setOf("b"))
+        assertTrue(review.groups.isEmpty())
+        assertTrue(review.selectedUris.isEmpty())
+        assertTrue(review.protectedUris.isEmpty())
+        // Once reconciliation completes, the ordinary review is available.
+        assertEquals(setOf("b"), planExactDuplicateReview(rows,
+            requestedUris = setOf("b")).selectedUris)
+    }
+
+
 }
