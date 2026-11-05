@@ -63,7 +63,9 @@ internal fun confirmedExactDuplicateUris(
             group.map { row ->
                 listOf(row.uri, row.sizeBytes.toString(), row.dateModifiedMillis.toString(),
                     row.quickHash.orEmpty(), row.fullHash.orEmpty(), row.storageId,
-                    row.folderTarget, row.recycled.toString())
+                    row.folderTarget, row.recycled.toString(), row.name, row.mimeType,
+                    row.kind, row.width.toString(), row.height.toString(),
+                    row.dateTakenMillis.toString(), row.sourcePath.orEmpty())
             }
         }
     }
