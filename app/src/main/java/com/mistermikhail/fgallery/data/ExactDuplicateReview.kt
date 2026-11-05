@@ -55,6 +55,14 @@ internal fun confirmedExactDuplicateUris(
     // Otherwise a caller could silently widen or narrow the affected folders.
     if (includedStorageIds != reviewed.includedStorageIds ||
         includedFolderTargets != reviewed.includedFolderTargets) return emptySet()
+    // Reconciliation can briefly expose two rows for one URI. distinctBy in
+    // exactDuplicateGroups would hide a conflicting second generation; do not
+    // authorize trash until the catalogue has converged to one row per URI.
+    val scopedRows = currentRows.filter { row ->
+        (includedStorageIds.isEmpty() || row.storageId in includedStorageIds) &&
+            (includedFolderTargets.isEmpty() || row.folderTarget in includedFolderTargets)
+    }
+    if (scopedRows.map { it.uri }.distinct().size != scopedRows.size) return emptySet()
     val current = planExactDuplicateReview(
         currentRows, includedStorageIds, includedFolderTargets, reviewed.selectedUris
     )
