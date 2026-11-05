@@ -7,6 +7,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -29,6 +30,7 @@ import com.mistermikhail.fgallery.data.ThumbnailCache
 import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -83,7 +85,8 @@ fun SettingsSheet(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 3.dp),
+                    .heightIn(min = 48.dp)
+                    .padding(vertical = 1.dp),
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -98,13 +101,14 @@ fun SettingsSheet(
                         text = "Показывать вместе с панелью просмотра.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
-                        modifier = Modifier.padding(top = 4.dp),
+                        modifier = Modifier.padding(top = 1.dp),
                     )
                 }
 
                 Switch(
                     checked = quickExifEnabled,
                     onCheckedChange = onQuickExifChanged,
+                    modifier = Modifier.graphicsLayer { scaleX = 0.82f; scaleY = 0.82f },
                 )
             }
 
@@ -242,7 +246,7 @@ private fun SettingSwitch(
     onCheckedChange: (Boolean) -> Unit,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(vertical = 1.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -254,6 +258,7 @@ private fun SettingSwitch(
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
             )
         }
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
+        Switch(checked = checked, onCheckedChange = onCheckedChange,
+            modifier = Modifier.graphicsLayer { scaleX = 0.82f; scaleY = 0.82f })
     }
 }
