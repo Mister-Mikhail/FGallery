@@ -149,4 +149,22 @@ class ExactDuplicateReviewTest {
             explicitlyConfirmed = true))
     }
 
+    @Test fun confirmationRejectsChangedCatalogueIdentityOutsideHashFields() {
+        val rows = listOf(item("a"), item("b"))
+        val review = planExactDuplicateReview(rows, requestedUris = setOf("b"))
+        assertEquals(setOf("b"), confirmedExactDuplicateUris(review, rows,
+            explicitlyConfirmed = true))
+        val changes = listOf(
+            rows[1].copy(mediaId = 99),
+            rows[1].copy(storageName = "renamed volume"),
+            rows[1].copy(album = "Other album"),
+            rows[1].copy(relativePath = "Pictures/"),
+            rows[1].copy(durationMillis = 1000L),
+        )
+        changes.forEach { changed ->
+            assertTrue(confirmedExactDuplicateUris(review, listOf(rows[0], changed),
+                explicitlyConfirmed = true).isEmpty())
+        }
+    }
+
 }
