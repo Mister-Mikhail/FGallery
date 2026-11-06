@@ -160,6 +160,7 @@ class ExactDuplicateReviewTest {
             rows[1].copy(album = "Other album"),
             rows[1].copy(relativePath = "Pictures/"),
             rows[1].copy(durationMillis = 1000L),
+            rows[1].copy(exifCamera = "Canon EOS R5"),
         )
         changes.forEach { changed ->
             assertTrue(confirmedExactDuplicateUris(review, listOf(rows[0], changed),
