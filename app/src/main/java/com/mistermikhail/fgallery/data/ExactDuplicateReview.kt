@@ -82,7 +82,8 @@ internal fun confirmedExactDuplicateUris(
                     row.kind, row.width.toString(), row.height.toString(),
                     row.dateTakenMillis.toString(), row.sourcePath.orEmpty(),
                     row.mediaId.toString(), row.storageName, row.album,
-                    row.relativePath, row.durationMillis.toString())
+                    row.relativePath, row.durationMillis.toString(),
+                    row.exifCamera.orEmpty())
             }
         }
     }
