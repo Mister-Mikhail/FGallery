@@ -432,6 +432,7 @@ private fun VideoPlayer(
     }
     var format360 by remember(item.uriKey) { mutableStateOf(false) }
     var firstFrameRendered by remember(item.uriKey) { mutableStateOf(false) }
+    var playbackFailure by remember(item.uriKey) { mutableStateOf<String?>(null) }
     val spherical = detected360 == true || format360
     val latestDetection by rememberUpdatedState(detected360)
 
@@ -446,7 +447,18 @@ private fun VideoPlayer(
 
     DisposableEffect(player) {
         val listener = object : Player.Listener {
-            override fun onRenderedFirstFrame() { firstFrameRendered = true }
+            override fun onRenderedFirstFrame() { firstFrameRendered = true; playbackFailure = null }
+            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                playbackFailure = when (error.errorCode) {
+                    androidx.media3.common.PlaybackException.ERROR_CODE_DECODING_FAILED,
+                    androidx.media3.common.PlaybackException.ERROR_CODE_DECODER_INIT_FAILED ->
+                        "Не удалось декодировать видео. Кодек может не поддерживаться устройством."
+                    androidx.media3.common.PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED,
+                    androidx.media3.common.PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED ->
+                        "Неподдерживаемый или повреждённый видеоконтейнер."
+                    else -> "Не удалось воспроизвести видео (${error.errorCodeName})."
+                }
+            }
             override fun onIsPlayingChanged(isPlaying: Boolean) { latestPlayingChanged(isPlaying) }
             override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
                 format360 = tracks.groups.any { group ->
@@ -615,6 +627,12 @@ private fun VideoPlayer(
                     )
                 },
             )
+        }
+
+        playbackFailure?.let { message ->
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text(text = message, color = Color.White, modifier = Modifier.background(Color.Black.copy(alpha = 0.82f)).padding(20.dp))
+            }
         }
 
         UnifiedVideoChrome(
