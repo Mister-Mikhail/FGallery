@@ -220,6 +220,34 @@ class MainActivity : ComponentActivity() {
             startActivity(Intent.createChooser(intent, "Отправить"))
         }
 
+        fun shareSelectedMedia(items: List<MediaItem>) {
+            if (items.isEmpty()) return
+            runCatching {
+                val uris = items.map { item ->
+                    if (item.uri.scheme == "file") {
+                        androidx.core.content.FileProvider.getUriForFile(
+                            this@MainActivity, "$packageName.files", java.io.File(requireNotNull(item.uri.path))
+                        )
+                    } else item.uri
+                }
+                val mimeTypes = items.map { item ->
+                    item.mimeType?.takeIf { it.isNotBlank() }
+                        ?: if (item.kind == MediaKind.VIDEO) "video/*" else "image/*"
+                }
+                val commonType = mimeTypes.distinct().singleOrNull() ?: "*/*"
+                val intent = Intent(if (items.size == 1) Intent.ACTION_SEND else Intent.ACTION_SEND_MULTIPLE).apply {
+                    type = commonType
+                    if (items.size == 1) putExtra(Intent.EXTRA_STREAM, uris.first())
+                    else putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(uris))
+                    val clips = android.content.ClipData.newRawUri(items.first().name, uris.first())
+                    uris.drop(1).forEach { clips.addItem(android.content.ClipData.Item(it)) }
+                    clipData = clips
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                startActivity(Intent.createChooser(intent, "Поделиться"))
+            }.onFailure { notify("Не удалось поделиться: ${it.localizedMessage ?: "нет доступа к файлу"}") }
+        }
+
         val cropLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
             val source = pendingCropItem
             pendingCropItem = null
@@ -1202,6 +1230,7 @@ class MainActivity : ComponentActivity() {
                     },
                     onClearSelection = { selectedIds = emptySet(); selectionAnchor = null },
                     onTrashSelected = { items -> requestTrash(items, keepViewerOpen = false) },
+                    onShareSelected = ::shareSelectedMedia,
                     onRenameSelected = { plan ->
                         val existing = state.allItems.filterNot { media -> plan.any { it.first.uriKey == media.uriKey } }
                         val collisions = plan.any { (source, name) ->
