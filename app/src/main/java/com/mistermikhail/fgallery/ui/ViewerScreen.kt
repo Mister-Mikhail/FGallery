@@ -472,6 +472,24 @@ private fun VideoPlayer(
         onDispose { player.removeListener(listener) }
     }
 
+    // Media3 has no general-purpose AVI extractor. Report the actual AVI video
+    // FOURCC when playback fails instead of claiming that every AVI is supported.
+    LaunchedEffect(item.uriKey, playbackFailure) {
+        if (playbackFailure == null || !item.name.endsWith(".avi", ignoreCase = true) ||
+            playbackFailure?.contains("FOURCC:") == true) return@LaunchedEffect
+        val codec = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching {
+                context.contentResolver.openInputStream(item.uri)?.use {
+                    com.mistermikhail.fgallery.data.AviCodecInfo.fourCc(it)
+                }
+            }.getOrNull()
+        }
+        if (codec != null && playbackFailure != null && playbackFailure?.contains("FOURCC:") != true) {
+            playbackFailure = "AVI: видеокодек FOURCC: $codec. " +
+                "Контейнер или кодек не поддерживается текущим проигрывателем."
+        }
+    }
+
     var startedPlayback by remember(item.uri) { mutableStateOf(false) }
     var wasPlayingAtLifecyclePause by remember(item.uri) { mutableStateOf(false) }
 
