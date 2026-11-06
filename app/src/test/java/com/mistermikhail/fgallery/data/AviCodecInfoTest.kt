@@ -33,6 +33,28 @@ class AviCodecInfoTest {
         assertEquals("XVID", AviCodecInfo.fourCc(ByteArrayInputStream(sample("XVID"))))
     }
 
+    @Test fun fallsBackToBitmapInfoCompressionWhenVideoHandlerIsBlank() {
+        val streamHeader = ByteArray(56)
+        "vids".toByteArray(Charsets.US_ASCII).copyInto(streamHeader, 0)
+        val bitmapInfo = ByteArray(40)
+        bitmapInfo[0] = 40 // biSize
+        "MJPG".toByteArray(Charsets.US_ASCII).copyInto(bitmapInfo, 16)
+        val body = "AVI ".toByteArray(Charsets.US_ASCII) +
+            list("hdrl", list("strl", chunk("strh", streamHeader), chunk("strf", bitmapInfo)))
+        assertEquals("MJPG", AviCodecInfo.fourCc(ByteArrayInputStream(chunk("RIFF", body))))
+    }
+
+    @Test fun ignoresBitmapInfoCompressionForAudioStreams() {
+        val streamHeader = ByteArray(56)
+        "auds".toByteArray(Charsets.US_ASCII).copyInto(streamHeader, 0)
+        val bitmapInfo = ByteArray(40)
+        bitmapInfo[0] = 40
+        "MJPG".toByteArray(Charsets.US_ASCII).copyInto(bitmapInfo, 16)
+        val body = "AVI ".toByteArray(Charsets.US_ASCII) +
+            list("hdrl", list("strl", chunk("strh", streamHeader), chunk("strf", bitmapInfo)))
+        assertNull(AviCodecInfo.fourCc(ByteArrayInputStream(chunk("RIFF", body))))
+    }
+
     @Test fun ignoresAudioStream() {
         assertNull(AviCodecInfo.fourCc(ByteArrayInputStream(sample("MJPG", "auds"))))
     }
