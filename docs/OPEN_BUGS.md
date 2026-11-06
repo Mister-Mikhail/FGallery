@@ -42,3 +42,7 @@
 
 ## Выпуск
 Последний опубликованный и прошедший CI QA: [build48](https://github.com/Mister-Mikhail/FGallery/releases/tag/qa-v0.4.0-b48), коммит `89d2c20ec9f8eb7980e76e13843a4ed0b81c1fd4`, [CI](https://github.com/Mister-Mikhail/FGallery/actions/runs/41849218013). ARM64 SHA-256 `c0b254a8cdb20c2fe803854e4afd1e42b0c0cdf911b80f9db3d5ceb46b692090`; universal SHA-256 `e030a6f2e609062df11c858b92483446e324041b6edf3d7c9e93e30c68c56651`. Build48 ещё не принят пользователем на S23. PR #15 draft; stable/merge запрещены.
+
+## Внешнее открытие файлов — код 2026-11-06, ещё не проверен
+- **FG-EXTERNAL-VIEW:** зарегистрированы ACTION_VIEW для content:// и file:// с MIME image/*, video/* и рядом document/RAW MIME; MainActivity открывает полученный URI в просмотрщике, даже если файл отсутствует в каталоге. Коммиты `16aaff916`, `55489b3b`. Требуется Android16 CI и тест из Samsung «Мои файлы»/другого проводника: AVI/M4V/AVIF/DNG/IIQ/PDF/SVG; при неверном MIME `application/octet-stream` системный chooser может не показывать приложение — нужна отдельная совместимая обработка, не захватывая все неизвестные типы. Проверить SAF URI grants, смену файла и отсутствие регрессий в навигации. Это **не подтверждение декодирования AVI**.
+- **FG-SHARE-MULTI:** кнопка «Поделиться» для выделения и ACTION_SEND_MULTIPLE в коде (`8375dccc`, `75807681`); требуется JVM/Android16 тест одного и нескольких URI, доступности для внешнего получателя и проверки разных типов файлов.
