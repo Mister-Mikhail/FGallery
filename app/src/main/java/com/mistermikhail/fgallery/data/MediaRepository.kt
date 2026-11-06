@@ -90,7 +90,7 @@ class MediaRepository(private val context: Context) {
         // queryVolume(). Otherwise a RAW renamed to .txt retains its ID in
         // MediaStore.Files and survives incremental reconciliation as a ghost.
         val extensions = if (StorageFolders.hasFileAccess())
-            RAW_EXTENSIONS + listOf(".tif", ".tiff") else emptyList()
+            RAW_EXTENSIONS + listOf(".tif", ".tiff", ".avi", ".m4v") else emptyList()
         val selection = buildString {
             append("${MediaStore.Files.FileColumns.MEDIA_TYPE}=? OR ${MediaStore.Files.FileColumns.MEDIA_TYPE}=?")
             extensions.forEach {
