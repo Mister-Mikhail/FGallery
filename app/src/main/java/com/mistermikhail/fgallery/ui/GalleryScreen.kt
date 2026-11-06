@@ -39,6 +39,7 @@ import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.GridOn
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.Sort
 import androidx.compose.material.icons.outlined.Usb
 import androidx.compose.material.icons.outlined.SdStorage
@@ -136,6 +137,7 @@ fun GalleryScreen(
     onLongPressSelection: (MediaItem) -> Unit,
     onClearSelection: () -> Unit,
     onTrashSelected: (List<MediaItem>) -> Unit,
+    onShareSelected: (List<MediaItem>) -> Unit,
     onRenameSelected: (List<Pair<MediaItem, String>>) -> Unit,
     onMoveSelected: (List<MediaItem>) -> Unit,
 ) {
@@ -250,6 +252,9 @@ fun GalleryScreen(
                             containerColor = MaterialTheme.colorScheme.surfaceVariant,
                         ),
                         actions = {
+                            IconButton(onClick = { onShareSelected(selectedItems) }) {
+                                Icon(Icons.Outlined.Share, contentDescription = "Поделиться выбранными")
+                            }
                             IconButton(
                                 onClick = { onMoveSelected(selectedItems) },
                             ) {
