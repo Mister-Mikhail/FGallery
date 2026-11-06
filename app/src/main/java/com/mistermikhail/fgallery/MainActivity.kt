@@ -121,10 +121,18 @@ private sealed interface PendingWriteOperation {
 
 class MainActivity : ComponentActivity() {
     private val viewModel: GalleryViewModel by viewModels()
+    private val externalViewUri = mutableStateOf<Uri?>(null)
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent.action == Intent.ACTION_VIEW) externalViewUri.value = intent.data
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        if (intent?.action == Intent.ACTION_VIEW) externalViewUri.value = intent?.data
         setContent {
             FGalleryTheme { FGalleryRoot(viewModel) }
         }
@@ -134,6 +142,51 @@ class MainActivity : ComponentActivity() {
     private fun FGalleryRoot(viewModel: GalleryViewModel) {
         val state by viewModel.uiState.collectAsState()
         var selectedItem by remember { mutableStateOf<MediaItem?>(null) }
+        val incomingUri by externalViewUri
+        LaunchedEffect(incomingUri) {
+            val uri = incomingUri ?: return@LaunchedEffect
+            externalViewUri.value = null
+            runCatching {
+                val metadata = withContext(Dispatchers.IO) {
+                    var displayName = uri.lastPathSegment?.substringAfterLast('/') ?: "Файл"
+                    var size = 0L
+                    if (uri.scheme == "content") {
+                        contentResolver.query(uri, arrayOf(
+                            android.provider.OpenableColumns.DISPLAY_NAME,
+                            android.provider.OpenableColumns.SIZE,
+                        ), null, null, null)?.use { cursor ->
+                            if (cursor.moveToFirst()) {
+                                val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                                val sizeIndex = cursor.getColumnIndex(android.provider.OpenableColumns.SIZE)
+                                if (nameIndex >= 0 && !cursor.isNull(nameIndex)) displayName = cursor.getString(nameIndex)
+                                if (sizeIndex >= 0 && !cursor.isNull(sizeIndex)) size = cursor.getLong(sizeIndex)
+                            }
+                        }
+                    }
+                    Triple(displayName, size, contentResolver.getType(uri))
+                }
+                val (name, size, mime) = metadata
+                val ext = name.substringAfterLast('.', "").lowercase(java.util.Locale.ROOT)
+                val kind = when {
+                    ext in setOf("avi", "m4v", "mp4", "mov", "mkv", "webm", "3gp", "wmv", "mpeg", "mpg", "ts", "m2ts") ||
+                        mime?.startsWith("video/") == true -> MediaKind.VIDEO
+                    ext == "pdf" -> MediaKind.PDF
+                    ext == "svg" -> MediaKind.SVG
+                    ext in setOf("dng", "cr2", "cr3", "nef", "nrw", "arw", "raf", "rw2", "orf", "pef", "srw", "iiq", "3fr", "fff") -> MediaKind.RAW
+                    else -> MediaKind.IMAGE
+                }
+                val item = MediaItem(
+                    id = uri.toString().hashCode().toLong(), uri = uri, name = name,
+                    mimeType = mime, kind = kind, dateTakenMillis = 0L,
+                    width = 0, height = 0, durationMillis = 0L, album = "",
+                    relativePath = "", sizeBytes = size,
+                )
+                selectedItem = state.allItems.firstOrNull { it.uriKey == item.uriKey } ?: item
+            }.onFailure {
+                Toast.makeText(this@MainActivity,
+                    "Не удалось открыть файл: ${it.localizedMessage ?: "нет доступа"}", Toast.LENGTH_LONG).show()
+            }
+        }
         // Save only the stable URI key: MediaItem itself is not Bundle-saveable.
         // Keep the existing object while scanning, so a refresh cannot close the viewer.
         var savedViewerUri by rememberSaveable { mutableStateOf<String?>(null) }
@@ -1276,7 +1329,9 @@ class MainActivity : ComponentActivity() {
             ) { animatedItem ->
                 if (animatedItem != null) {
                     ViewerScreen(
-                        items = if (state.recycleBinVisible) state.recycleBinItems else state.visibleItems,
+                        items = (if (state.recycleBinVisible) state.recycleBinItems else state.visibleItems).let { items ->
+                            if (items.any { it.uriKey == animatedItem.uriKey }) items else listOf(animatedItem)
+                        },
                         initialItem = animatedItem,
                         onVisibleItemChanged = { savedViewerUri = it.uriKey },
                         onBack = { selectedItem = null; savedViewerUri = null },
