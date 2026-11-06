@@ -162,13 +162,13 @@ class MediaRepository(private val context: Context) {
         )
         val mediaSelection =
             "${MediaStore.Files.FileColumns.MEDIA_TYPE}=? OR ${MediaStore.Files.FileColumns.MEDIA_TYPE}=?" +
-                if (StorageFolders.hasFileAccess()) (RAW_EXTENSIONS + listOf(".tif", ".tiff")).joinToString("", prefix = "") { " OR LOWER(${MediaStore.MediaColumns.DISPLAY_NAME}) LIKE ?" } else ""
+                if (StorageFolders.hasFileAccess()) (RAW_EXTENSIONS + listOf(".tif", ".tiff", ".avi", ".m4v")).joinToString("", prefix = "") { " OR LOWER(${MediaStore.MediaColumns.DISPLAY_NAME}) LIKE ?" } else ""
         val selection = "($mediaSelection)" +
             if (since != null) " AND ${MediaStore.MediaColumns.GENERATION_MODIFIED} > ?" else ""
         val args = arrayOf(
             MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString(),
             MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString(),
-        ) + (if (StorageFolders.hasFileAccess()) (RAW_EXTENSIONS + listOf(".tif", ".tiff")).map { "%$it" }.toTypedArray() else emptyArray()) +
+        ) + (if (StorageFolders.hasFileAccess()) (RAW_EXTENSIONS + listOf(".tif", ".tiff", ".avi", ".m4v")).map { "%$it" }.toTypedArray() else emptyArray()) +
             (if (since != null) arrayOf(since.toString()) else emptyArray())
         val sort =
             "${MediaStore.MediaColumns.DATE_TAKEN} DESC, ${MediaStore.MediaColumns.DATE_ADDED} DESC"
@@ -223,7 +223,7 @@ class MediaRepository(private val context: Context) {
                     val name = it.getString(nameC).orEmpty()
                     val mime = it.getString(mimeC)
                     val kind = when {
-                        mediaType == MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO -> MediaKind.VIDEO
+                        mediaType == MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO || name.endsWith(".avi", true) || name.endsWith(".m4v", true) -> MediaKind.VIDEO
                         mime == "image/svg+xml" || name.endsWith(".svg", true) -> MediaKind.SVG
                         isRaw(name, mime) -> MediaKind.RAW
                         else -> MediaKind.IMAGE
@@ -235,7 +235,7 @@ class MediaRepository(private val context: Context) {
                         java.io.File(sourcePath).lastModified() else 0L
 
                     val itemCollection =
-                        if (mediaType == MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO) {
+                        if (kind == MediaKind.VIDEO && mediaType == MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO) {
                             MediaStore.Video.Media.getContentUri(volume)
                         } else if (mediaType == MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE) {
                             MediaStore.Images.Media.getContentUri(volume)
