@@ -30,6 +30,24 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- External file managers normally supply content:// URIs and MIME types.
+                 Keep VIEW separate from the launcher and grant read access at runtime. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:mimeType="image/*" />
+                <data android:mimeType="video/*" />
+                <data android:mimeType="application/pdf" />
+                <data android:mimeType="image/svg+xml" />
+                <data android:mimeType="application/vnd.adobe.photoshop" />
+                <data android:mimeType="application/postscript" />
+                <data android:mimeType="application/x-raw-image" />
+                <data android:mimeType="application/x-dcraw" />
+                <data android:mimeType="application/x-avi" />
+                <data android:mimeType="application/vnd.ms-asf" />
+            </intent-filter>
         </activity>
     </application>
 </manifest>
