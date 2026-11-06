@@ -439,7 +439,6 @@ private fun VideoPlayer(
     val player = remember(item.uri) {
         ExoPlayer.Builder(context).build().apply {
             setMediaItem(PlayerMediaItem.Builder().setUri(item.uri).setMimeType(com.mistermikhail.fgallery.data.VideoPlaybackMime.forFile(item.name, item.mimeType)).build())
-            prepare()
             playWhenReady = false
             volume = 0f
         }
@@ -468,6 +467,8 @@ private fun VideoPlayer(
             }
         }
         player.addListener(listener)
+        // Attach error reporting before asynchronous extractor/decoder initialization.
+        player.prepare()
         onDispose { player.removeListener(listener) }
     }
 
