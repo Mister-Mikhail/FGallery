@@ -12,7 +12,7 @@ internal object VideoPlaybackMime {
         val extension = name.substringAfterLast('.', "").lowercase(Locale.ROOT)
         // Prefer a recognized extension over an unreliable provider MIME.
         return when (extension) {
-            "m4v", "mp4", "m4p", "m4a", "mov" -> "video/mp4"
+            "m4v", "mp4", "m4p", "mov" -> "video/mp4"
             "avi" -> "video/avi"
             "mkv", "mk3d" -> "video/x-matroska"
             "webm" -> "video/webm"
