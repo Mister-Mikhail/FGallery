@@ -166,15 +166,8 @@ class MainActivity : ComponentActivity() {
                     Triple(displayName, size, contentResolver.getType(uri))
                 }
                 val (name, size, mime) = metadata
-                val ext = name.substringAfterLast('.', "").lowercase(java.util.Locale.ROOT)
-                val kind = when {
-                    ext in setOf("avi", "m4v", "mp4", "mov", "mkv", "webm", "3gp", "wmv", "mpeg", "mpg", "ts", "m2ts") ||
-                        mime?.startsWith("video/") == true -> MediaKind.VIDEO
-                    ext == "pdf" -> MediaKind.PDF
-                    ext == "svg" -> MediaKind.SVG
-                    ext in setOf("dng", "cr2", "cr3", "nef", "nrw", "arw", "raf", "rw2", "orf", "pef", "srw", "iiq", "3fr", "fff") -> MediaKind.RAW
-                    else -> MediaKind.IMAGE
-                }
+                val kind = com.mistermikhail.fgallery.data.ExternalMediaKind.classify(name, mime)
+                    ?: throw IllegalArgumentException("Формат файла не поддерживается: $name")
                 val item = MediaItem(
                     id = uri.toString().hashCode().toLong(), uri = uri, name = name,
                     mimeType = mime, kind = kind, dateTakenMillis = 0L,
