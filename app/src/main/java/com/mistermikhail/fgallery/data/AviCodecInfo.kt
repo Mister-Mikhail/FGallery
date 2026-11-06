@@ -29,6 +29,8 @@ internal object AviCodecInfo {
 
     private fun findVideoHeader(bytes: ByteArray, start: Int, end: Int, insideStream: Boolean): String? {
         var offset = start
+        var videoStream = false
+        var formatCompression: String? = null
         while (offset.toLong() + 8 <= end.toLong()) {
             val size = uint32(bytes, offset + 4)
             val dataStart = offset + 8
@@ -45,15 +47,29 @@ internal object AviCodecInfo {
                 }
                 "strh" -> if (insideStream && size >= 56L &&
                     ascii(bytes, dataStart, 4) == "vids") {
-                    val codec = ascii(bytes, dataStart + 4, 4).trim().uppercase(Locale.ROOT)
+                    videoStream = true
+                    val codec = ascii(bytes, dataStart + 4, 4).uppercase(Locale.ROOT)
+                    // Some AVI writers leave fccHandler unset; strf.biCompression
+                    // then contains the actual video FOURCC.
                     if (codec.length == 4 && codec.all { it.code in 33..126 }) return codec
+                }
+                "strf" -> if (insideStream && size >= 20L) {
+                    // BITMAPINFOHEADER: biSize at 0, biCompression at 16.
+                    // A non-video strf must never be interpreted as a codec.
+                    val headerSize = uint32(bytes, dataStart)
+                    if (headerSize >= 20L) {
+                        val codec = ascii(bytes, dataStart + 16, 4).uppercase(Locale.ROOT)
+                        if (codec.length == 4 && codec.all { it.code in 33..126 }) {
+                            formatCompression = codec
+                        }
+                    }
                 }
             }
             val next = dataEnd + (size and 1L)
             if (next <= offset || next > Int.MAX_VALUE) return null
             offset = next.toInt()
         }
-        return null
+        return if (insideStream && videoStream) formatCompression else null
     }
 
     private fun uint32(bytes: ByteArray, offset: Int): Long =
