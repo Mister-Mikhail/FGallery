@@ -437,7 +437,7 @@ private fun VideoPlayer(
 
     val player = remember(item.uri) {
         ExoPlayer.Builder(context).build().apply {
-            setMediaItem(PlayerMediaItem.fromUri(item.uri))
+            setMediaItem(PlayerMediaItem.Builder().setUri(item.uri).setMimeType(com.mistermikhail.fgallery.data.VideoPlaybackMime.forFile(item.name, item.mimeType)).build())
             prepare()
             playWhenReady = false
             volume = 0f
