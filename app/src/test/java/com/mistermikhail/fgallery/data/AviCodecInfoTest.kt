@@ -6,19 +6,23 @@ import org.junit.Test
 import java.io.ByteArrayInputStream
 
 class AviCodecInfoTest {
+    private fun chunk(tag: String, payload: ByteArray): ByteArray {
+        val size = payload.size
+        return tag.toByteArray(Charsets.US_ASCII) +
+            byteArrayOf(size.toByte(), (size ushr 8).toByte(), (size ushr 16).toByte(), (size ushr 24).toByte()) +
+            payload + if (size % 2 != 0) byteArrayOf(0) else byteArrayOf()
+    }
+
+    private fun list(type: String, vararg children: ByteArray): ByteArray =
+        chunk("LIST", type.toByteArray(Charsets.US_ASCII) + children.fold(byteArrayOf()) { a, b -> a + b })
+
     private fun sample(codec: String, streamType: String = "vids"): ByteArray {
-        val bytes = ByteArray(100)
-        fun put(offset: Int, text: String) {
-            text.toByteArray(Charsets.US_ASCII).copyInto(bytes, offset)
-        }
-        put(0, "RIFF")
-        put(8, "AVI ")
-        put(12, "LIST")
-        put(24, "strh")
-        bytes[28] = 56
-        put(32, streamType)
-        put(36, codec)
-        return bytes
+        val streamHeader = ByteArray(56)
+        streamType.toByteArray(Charsets.US_ASCII).copyInto(streamHeader, 0)
+        codec.toByteArray(Charsets.US_ASCII).copyInto(streamHeader, 4)
+        val body = "AVI ".toByteArray(Charsets.US_ASCII) +
+            list("hdrl", list("strl", chunk("strh", streamHeader)))
+        return chunk("RIFF", body)
     }
 
     @Test fun detectsMjpegAviCodec() {
@@ -31,6 +35,21 @@ class AviCodecInfoTest {
 
     @Test fun ignoresAudioStream() {
         assertNull(AviCodecInfo.fourCc(ByteArrayInputStream(sample("MJPG", "auds"))))
+    }
+
+    @Test fun ignoresFakeHeaderInsideFramePayload() {
+        val fake = chunk("strh", ByteArray(56).also {
+            "vidsMJPG".toByteArray(Charsets.US_ASCII).copyInto(it)
+        })
+        val body = "AVI ".toByteArray(Charsets.US_ASCII) + list("movi", fake)
+        assertNull(AviCodecInfo.fourCc(ByteArrayInputStream(chunk("RIFF", body))))
+    }
+
+    @Test fun rejectsMalformedRiffChunkLengths() {
+        val malformed = sample("MJPG").clone()
+        // LIST claims to extend beyond the RIFF container.
+        malformed[16] = 0x7f
+        assertNull(AviCodecInfo.fourCc(ByteArrayInputStream(malformed)))
     }
 
     @Test fun rejectsNonAviAndTruncatedHeaders() {
