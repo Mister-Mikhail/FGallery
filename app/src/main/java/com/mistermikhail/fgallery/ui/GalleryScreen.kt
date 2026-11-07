@@ -1030,7 +1030,12 @@ private fun InlineVideoPreview(
     val latestError by rememberUpdatedState(onError)
     val player = remember(item.uri) {
         ExoPlayer.Builder(context).build().apply {
-            setMediaItem(PlayerMediaItem.fromUri(item.uri))
+            setMediaItem(
+                PlayerMediaItem.Builder()
+                    .setUri(item.uri)
+                    .setMimeType(com.mistermikhail.fgallery.data.VideoPlaybackMime.forFile(item.name, item.mimeType))
+                    .build()
+            )
             volume = 0f
             repeatMode = Player.REPEAT_MODE_ONE
             addListener(object : Player.Listener {
