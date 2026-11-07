@@ -11,6 +11,15 @@ class VideoPlaybackMimeTest {
         assertEquals("video/mp4", VideoPlaybackMime.forFile("clip.MOV", "application/octet-stream"))
     }
 
+    @Test fun m4vAndM4pOverrideMisreportedImageMime() {
+        for (extension in listOf("m4v", "M4V", "m4p", "M4P")) {
+            assertEquals("clip.$extension", "video/mp4",
+                VideoPlaybackMime.forFile("clip.$extension", "image/jpeg"))
+            assertEquals("clip.$extension", "video/mp4",
+                VideoPlaybackMime.forFile("clip.$extension", "application/octet-stream"))
+        }
+    }
+
     @Test fun aviKeepsItsContainerIdentityAndDoesNotPretendToBeMp4() {
         assertEquals("video/avi", VideoPlaybackMime.forFile("clip.AVI", null))
         assertEquals("video/avi", VideoPlaybackMime.forFile("clip.avi", "image/jpeg"))
