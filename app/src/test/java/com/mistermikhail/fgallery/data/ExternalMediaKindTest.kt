@@ -11,6 +11,15 @@ class ExternalMediaKindTest {
         }
     }
 
+    @Test fun media3SupportedContainerExtensionsAreRecognizedFromSafNames() {
+        for (extension in listOf("m4p", "M4P", "mk3d", "MK3D", "3gpp", "3GPP")) {
+            assertEquals("clip.$extension", MediaKind.VIDEO,
+                ExternalMediaKind.classify("clip.$extension", "application/octet-stream"))
+            assertEquals("clip.$extension", MediaKind.VIDEO,
+                ExternalMediaKind.classify("clip.$extension", "image/jpeg"))
+        }
+    }
+
     @Test fun avifAndCameraRawWithGenericMimeAreRecognized() {
         assertEquals(MediaKind.IMAGE, ExternalMediaKind.classify("photo.AVIF", null))
         for (extension in listOf("DNG", "CR3", "NEF", "ARW", "RAF", "RW2")) {
