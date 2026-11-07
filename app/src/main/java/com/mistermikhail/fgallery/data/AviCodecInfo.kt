@@ -9,6 +9,17 @@ import java.util.Locale
  * an accidental "strh" signature. The input is capped to 256 KiB.
  */
 internal object AviCodecInfo {
+    /** Human-readable hint only: decoder availability must be checked separately. */
+    fun codecDescription(fourCc: String): String = when (fourCc.uppercase(Locale.ROOT)) {
+        "MJPG", "JPEG" -> "Motion JPEG (MJPEG)"
+        "XVID", "DIVX", "DX50" -> "MPEG-4 Part 2 (DivX/Xvid)"
+        "H264", "X264", "AVC1" -> "H.264/AVC"
+        "HEVC", "H265", "X265" -> "H.265/HEVC"
+        "HFYU" -> "HuffYUV"
+        "FFV1" -> "FFV1"
+        else -> "неизвестный или нестандартный видеокодек"
+    }
+
     fun fourCc(input: InputStream): String? {
         val bytes = ByteArray(256 * 1024)
         var count = 0
