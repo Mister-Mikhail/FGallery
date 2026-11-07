@@ -25,6 +25,14 @@ class AviCodecInfoTest {
         return chunk("RIFF", body)
     }
 
+    @Test fun describesCommonCodecFamiliesWithoutClaimingDecoderSupport() {
+        assertEquals("Motion JPEG (MJPEG)", AviCodecInfo.codecDescription("mjpg"))
+        assertEquals("MPEG-4 Part 2 (DivX/Xvid)", AviCodecInfo.codecDescription("XVID"))
+        assertEquals("H.264/AVC", AviCodecInfo.codecDescription("h264"))
+        assertEquals("H.265/HEVC", AviCodecInfo.codecDescription("HEVC"))
+        assertEquals("неизвестный или нестандартный видеокодек", AviCodecInfo.codecDescription("ZZZZ"))
+    }
+
     @Test fun detectsMjpegAviCodec() {
         assertEquals("MJPG", AviCodecInfo.fourCc(ByteArrayInputStream(sample("MJPG"))))
     }
