@@ -82,6 +82,28 @@ class AviCodecInfoTest {
         assertNull(AviCodecInfo.fourCc(ByteArrayInputStream(malformed)))
     }
 
+
+    @Test fun selectsVideoStreamAfterAudioWithBlankHandlerAndOddChunkPadding() {
+        val audioHeader = ByteArray(56)
+        "auds".toByteArray(Charsets.US_ASCII).copyInto(audioHeader)
+        val videoHeader = ByteArray(56)
+        "vids".toByteArray(Charsets.US_ASCII).copyInto(videoHeader)
+        val bitmapInfo = ByteArray(40)
+        bitmapInfo[0] = 40
+        "XVID".toByteArray(Charsets.US_ASCII).copyInto(bitmapInfo, 16)
+        val body = "AVI ".toByteArray(Charsets.US_ASCII) + list(
+            "hdrl",
+            list("strl", chunk("strh", audioHeader), chunk("strf", byteArrayOf(1, 2, 3))),
+            list("strl", chunk("JUNK", byteArrayOf(7)), chunk("strh", videoHeader), chunk("strf", bitmapInfo)),
+        )
+        assertEquals("XVID", AviCodecInfo.fourCc(ByteArrayInputStream(chunk("RIFF", body))))
+    }
+
+    @Test fun truncatedAviNeverReportsCodecFromIncompleteVideoHeader() {
+        val complete = sample("MJPG")
+        assertNull(AviCodecInfo.fourCc(ByteArrayInputStream(complete.copyOf(complete.size - 1))))
+    }
+
     @Test fun rejectsNonAviAndTruncatedHeaders() {
         assertNull(AviCodecInfo.fourCc(ByteArrayInputStream(byteArrayOf(1, 2, 3))))
         assertNull(AviCodecInfo.fourCc(ByteArrayInputStream(ByteArray(128))))
