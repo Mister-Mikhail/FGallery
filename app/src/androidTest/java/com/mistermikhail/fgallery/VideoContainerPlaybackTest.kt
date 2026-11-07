@@ -85,6 +85,50 @@ class VideoContainerPlaybackTest {
         }
     }
 
+    /** Preparing alone does not exercise the actual decoder. Play the M4V sample. */
+    @Test fun m4vDecodesFramesWithMedia3OnDevice() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val context = instrumentation.targetContext
+        val file = File(context.cacheDir, "fgallery-m4v-decode-test.m4v")
+        try {
+            instrumentation.context.assets.open("crop-video.mp4").use { source ->
+                file.outputStream().use { destination -> source.copyTo(destination) }
+            }
+            val finished = CountDownLatch(1)
+            val error = AtomicReference<String?>(null)
+            val playerRef = AtomicReference<ExoPlayer>()
+            instrumentation.runOnMainSync {
+                val player = ExoPlayer.Builder(context).build()
+                playerRef.set(player)
+                player.addListener(object : Player.Listener {
+                    override fun onPlayerError(exception: PlaybackException) {
+                        error.set(exception.errorCodeName + ": " + exception.message)
+                        finished.countDown()
+                    }
+                    override fun onPlaybackStateChanged(state: Int) {
+                        if (state == Player.STATE_ENDED) finished.countDown()
+                    }
+                })
+                player.setMediaItem(
+                    PlayerMediaItem.Builder().setUri(Uri.fromFile(file))
+                        .setMimeType(VideoPlaybackMime.forFile(file.name, "application/octet-stream"))
+                        .build()
+                )
+                player.prepare()
+                player.play()
+            }
+            try {
+                assertTrue("Media3 did not finish decoding the M4V sample within 45s: ${error.get()}",
+                    finished.await(45, TimeUnit.SECONDS))
+                assertEquals("Media3 failed to decode M4V", null, error.get())
+            } finally {
+                instrumentation.runOnMainSync { playerRef.get()?.release() }
+            }
+        } finally {
+            file.delete()
+        }
+    }
+
     @Test fun aviIsNotMislabelledAsMp4() {
         assertEquals("video/avi", VideoPlaybackMime.forFile("legacy.AVI", "application/octet-stream"))
     }
