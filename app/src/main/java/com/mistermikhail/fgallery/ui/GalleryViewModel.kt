@@ -1,0 +1,614 @@
+package com.mistermikhail.fgallery.ui
+
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.viewModelScope
+import com.mistermikhail.fgallery.data.LibrarySnapshot
+import com.mistermikhail.fgallery.data.CatalogStore
+import com.mistermikhail.fgallery.data.DriveLibrary
+import com.mistermikhail.fgallery.data.DriveRecycleBin
+import com.mistermikhail.fgallery.data.DocumentLibrary
+import com.mistermikhail.fgallery.data.AppSettingsRepository
+import com.mistermikhail.fgallery.data.MediaItem
+import com.mistermikhail.fgallery.data.MediaKind
+import com.mistermikhail.fgallery.data.MediaRepository
+import com.mistermikhail.fgallery.data.ThumbnailCache
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.withContext
+
+/** Album date is the latest timestamp of a contained file, not the folder mtime. */
+internal fun albumFileTimestamp(capturedOrCreated: Long, modified: Long): Long =
+    maxOf(capturedOrCreated, modified)
+
+enum class MediaFilter { ALL, PHOTOS, VIDEOS, RAW }
+enum class GridMode { MOSAIC, UNIFORM }
+enum class SortMode {
+    DATE_DESC,
+    DATE_ASC,
+    NAME_ASC,
+    NAME_DESC,
+    SIZE_DESC,
+    SIZE_ASC,
+    TYPE_ASC,
+    TYPE_DESC,
+}
+
+data class AlbumSummary(
+    val name: String,
+    val cover: MediaItem,
+    val count: Int,
+    val newestDateMillis: Long,
+    val totalSizeBytes: Long,
+    val key: String = name,
+)
+
+data class GalleryUiState(
+    val allItems: List<MediaItem> = emptyList(),
+    val visibleItems: List<MediaItem> = emptyList(),
+    val albums: List<AlbumSummary> = emptyList(),
+    val recycleBinItems: List<MediaItem> = emptyList(),
+    val isLoading: Boolean = false,
+    val hasPermission: Boolean = false,
+    val query: String = "",
+    val searchVisible: Boolean = false,
+    val filter: MediaFilter = MediaFilter.ALL,
+    val gridMode: GridMode = GridMode.MOSAIC,
+    val sortMode: SortMode = SortMode.DATE_DESC,
+    val selectedAlbum: String? = null,
+    val quickExifEnabled: Boolean = true,
+    val confirmMove: Boolean = false,
+    val confirmRename: Boolean = false,
+    val settingsVisible: Boolean = false,
+    val recycleBinVisible: Boolean = false,
+    val recycleBinUris: Set<String> = emptySet(),
+    val physicalBinUris: Set<String> = emptySet(),
+)
+
+class GalleryViewModel(application: Application, private val savedStateHandle: SavedStateHandle) : AndroidViewModel(application) {
+    private val driveBin = DriveRecycleBin(application)
+    private var lastJsonBackupMillis: Long = 0L
+    private var thumbnailJob: kotlinx.coroutines.Job? = null
+    private var albumWarmJob: kotlinx.coroutines.Job? = null
+    private var refreshJob: kotlinx.coroutines.Job? = null
+    private var fingerprintJob: kotlinx.coroutines.Job? = null
+    private val repository = MediaRepository(application)
+    private val settingsRepository = AppSettingsRepository(application)
+    private val _uiState = MutableStateFlow(LibrarySnapshot.memory?.let {
+        derive(GalleryUiState(allItems = it.items, physicalBinUris = it.bin, hasPermission = it.permission, selectedAlbum = savedStateHandle["selected_album"]))
+    } ?: GalleryUiState(selectedAlbum = savedStateHandle["selected_album"]))
+    val uiState: StateFlow<GalleryUiState> = _uiState.asStateFlow()
+    private var snapshotRestored = false
+
+    init {
+        viewModelScope.launch {
+            settingsRepository.confirmMove.collect { value ->
+                _uiState.update { it.copy(confirmMove = value) }
+            }
+        }
+        viewModelScope.launch {
+            settingsRepository.confirmRename.collect { value ->
+                _uiState.update { it.copy(confirmRename = value) }
+            }
+        }
+        viewModelScope.launch {
+            settingsRepository.quickExifEnabled.collect { enabled ->
+                _uiState.update { it.copy(quickExifEnabled = enabled) }
+            }
+        }
+
+        viewModelScope.launch {
+            settingsRepository.sortModeName.collect { saved ->
+                val mode = runCatching {
+                    SortMode.valueOf(saved)
+                }.getOrDefault(SortMode.DATE_DESC)
+
+                _uiState.update { current ->
+                    derive(current.copy(sortMode = mode))
+                }
+            }
+        }
+
+        viewModelScope.launch {
+            settingsRepository.recycleBinUris.collect { uris ->
+                _uiState.update { current ->
+                    derive(current.copy(recycleBinUris = uris))
+                }
+            }
+        }
+    }
+
+    /**
+     * Bulk prewarming of RAW without an embedded JPEG can trigger a native
+     * demosaic of a 100 MP file before the user ever opens its folder.
+     * Keep the first album cover in the priority queue; other RAW thumbnails
+     * are requested by visible Coil tiles instead of consuming idle memory.
+     */
+    internal fun bulkPrewarmEligible(kind: MediaKind): Boolean = kind != MediaKind.RAW
+
+    // Stable album identity must include drive and exact folder, never just a leaf name.
+    private fun albumKey(item: MediaItem): String = "${item.storageId}:${item.folderTarget.ifBlank { item.relativePath.ifBlank { item.album } }}"
+
+    private fun sortItems(
+        items: List<MediaItem>,
+        mode: SortMode,
+    ): List<MediaItem> =
+        when (mode) {
+            SortMode.DATE_DESC -> items.sortedWith(compareByDescending<MediaItem> { it.dateTakenMillis }.thenBy { it.name.lowercase() })
+            SortMode.DATE_ASC -> items.sortedWith(compareBy<MediaItem> { it.dateTakenMillis }.thenBy { it.name.lowercase() })
+            SortMode.NAME_ASC -> items.sortedBy { it.name.lowercase() }
+            SortMode.NAME_DESC -> items.sortedByDescending { it.name.lowercase() }
+            SortMode.SIZE_DESC -> items.sortedByDescending { it.sizeBytes }
+            SortMode.SIZE_ASC -> items.sortedBy { it.sizeBytes }
+            SortMode.TYPE_ASC -> items.sortedWith(compareBy<MediaItem> { it.kind.name }.thenBy { it.name.lowercase() })
+            SortMode.TYPE_DESC -> items.sortedWith(compareByDescending<MediaItem> { it.kind.name }.thenBy { it.name.lowercase() })
+        }
+
+    /**
+     * Expensive filtering/grouping/sorting happens only when its actual inputs change.
+     * Compose reads already-materialized immutable lists during scroll/recomposition.
+     */
+    private fun derive(state: GalleryUiState): GalleryUiState {
+        val available = state.allItems.asSequence()
+            .filterNot { it.uriKey in (state.recycleBinUris + state.physicalBinUris) }
+            .filter { item ->
+                when (state.filter) {
+                    MediaFilter.ALL -> true
+                    MediaFilter.PHOTOS -> item.kind == MediaKind.IMAGE
+                    MediaFilter.VIDEOS -> item.kind == MediaKind.VIDEO
+                    MediaFilter.RAW -> item.kind == MediaKind.RAW
+                }
+            }
+            .toList()
+
+        val visible = sortItems(
+            available.asSequence()
+                .filter {
+                    state.selectedAlbum == null ||
+                        albumKey(it) == state.selectedAlbum
+                }
+                .filter {
+                    state.query.isBlank() ||
+                        it.name.contains(state.query, ignoreCase = true) ||
+                        it.album.contains(state.query, ignoreCase = true)
+                }
+                .toList(),
+            state.sortMode,
+        )
+
+        val recycle = sortItems(
+            state.allItems.filter { it.uriKey in (state.recycleBinUris + state.physicalBinUris) },
+            state.sortMode,
+        )
+
+        val unsortedAlbums = available
+            .groupBy(::albumKey)
+            .mapNotNull { (key, items) ->
+                val name = items.first().album
+                if (
+                    state.query.isNotBlank() &&
+                    !name.contains(state.query, ignoreCase = true)
+                ) {
+                    return@mapNotNull null
+                }
+
+                val sorted = sortItems(items, state.sortMode)
+                val cover = sorted.firstOrNull() ?: return@mapNotNull null
+
+                AlbumSummary(
+                    name = name,
+                    key = key,
+                    cover = cover,
+                    count = items.size,
+                    // Sort albums by the newest file timestamp, never the folder timestamp.
+                    // Prefer whichever is newer: capture/creation or last modification.
+                    newestDateMillis = items.maxOfOrNull { albumFileTimestamp(it.dateTakenMillis, it.dateModifiedMillis) } ?: 0L,
+                    totalSizeBytes = items.sumOf { it.sizeBytes },
+                )
+            }
+
+        val albums = when (state.sortMode) {
+            SortMode.DATE_DESC -> unsortedAlbums.sortedByDescending { it.newestDateMillis }
+            SortMode.DATE_ASC -> unsortedAlbums.sortedBy { it.newestDateMillis }
+            SortMode.NAME_ASC -> unsortedAlbums.sortedBy { it.name.lowercase() }
+            SortMode.NAME_DESC -> unsortedAlbums.sortedByDescending { it.name.lowercase() }
+            SortMode.SIZE_DESC -> unsortedAlbums.sortedByDescending { it.totalSizeBytes }
+            SortMode.SIZE_ASC -> unsortedAlbums.sortedBy { it.totalSizeBytes }
+            SortMode.TYPE_ASC -> unsortedAlbums.sortedBy { it.cover.kind.name }
+            SortMode.TYPE_DESC -> unsortedAlbums.sortedByDescending { it.cover.kind.name }
+        }
+
+        return state.copy(
+            visibleItems = visible,
+            recycleBinItems = recycle,
+            albums = albums,
+        )
+    }
+
+    /** Insert a successful edited copy immediately, rather than waiting for Android's media scanner. */
+    fun onSavedCopy(source: MediaItem, uri: android.net.Uri, mime: String) {
+        val filename = if (uri.scheme == "file") java.io.File(uri.path.orEmpty()).name else
+            getApplication<Application>().contentResolver.query(uri,
+                arrayOf(android.provider.MediaStore.MediaColumns.DISPLAY_NAME), null, null, null)
+                ?.use { if (it.moveToFirst()) it.getString(0) else null }
+                ?: source.name
+        val copy = source.copy(
+            id = com.mistermikhail.fgallery.data.StorageAccess.stableId(uri.toString()),
+            uri = uri,
+            name = filename,
+            mimeType = mime,
+            kind = if (mime.startsWith("video/")) MediaKind.VIDEO else MediaKind.IMAGE,
+            dateModifiedMillis = System.currentTimeMillis(),
+            sourcePath = if (uri.scheme == "file") uri.path.orEmpty() else "",
+        )
+        _uiState.update { current ->
+            derive(current.copy(
+                allItems = current.allItems.filterNot { it.uriKey == copy.uriKey } + copy,
+                filter = if (current.filter == MediaFilter.RAW && source.kind == MediaKind.RAW) MediaFilter.ALL else current.filter,
+            ))
+        }
+        viewModelScope.launch {
+            // A successful edit is visible in the durable catalogue before
+            // Android's asynchronous MediaStore scanner notices the new URI.
+            try { CatalogStore.upsertItems(getApplication(), listOf(copy)) }
+            catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (_: Exception) { /* A full scan below remains the fallback. */ }
+            delay(900L) // Allow MediaStore.scanFile to include the copy before reconciling the catalogue.
+            refresh()
+        }
+    }
+
+    fun onPermissionChanged(granted: Boolean) {
+        _uiState.update { current ->
+            if (granted != current.hasPermission) derive(current.copy(hasPermission = granted, allItems = emptyList()))
+            else current.copy(hasPermission = granted)
+        }
+        refresh()
+    }
+
+    fun refresh(forceFull: Boolean = false) {
+        fingerprintJob?.cancel()
+        refreshJob?.cancel()
+        val restoreSnapshot = !snapshotRestored
+        snapshotRestored = true
+        refreshJob = viewModelScope.launch(Dispatchers.IO) {
+            if (restoreSnapshot && _uiState.value.allItems.isEmpty()) {
+                (try {
+                    CatalogStore.restore(getApplication(), _uiState.value.hasPermission)
+                } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                  catch (_: Exception) { null }
+                    ?: LibrarySnapshot.load(getApplication(), _uiState.value.hasPermission))?.let { saved ->
+                    withContext(Dispatchers.Main) {
+                        _uiState.update { derive(it.copy(allItems = saved.items, physicalBinUris = saved.bin)) }
+                    }
+                }
+            }
+            _uiState.update { it.copy(isLoading = it.allItems.isEmpty()) }
+
+            // The grid stays usable from Room while a daily/explicit full
+            // safety reconciliation runs on the I/O dispatcher.
+            val fullSafetyScan = forceFull || CatalogStore.fullScanDue(getApplication())
+            // Capture generations BEFORE scanning, so mid-scan changes cannot vanish.
+            val started = try { CatalogStore.captureScanStart(getApplication()) }
+                catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                catch (_: Exception) { emptyMap() }
+            var scanSucceeded = true
+            val normal = try {
+                val prior = try { CatalogStore.priorVolumes(getApplication()) }
+                    catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                    catch (_: Exception) { emptyMap() }
+                val media = if (_uiState.value.hasPermission)
+                    repository.loadIncremental(_uiState.value.allItems, prior, fullSafetyScan) else emptyList()
+                val documents = DocumentLibrary(getApplication()).load()
+                val folderSnapshot = if (fullSafetyScan) emptyList()
+                    else try { CatalogStore.priorFolders(getApplication()) }
+                        catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                        catch (_: Exception) { emptyList() }
+                (media + documents + DriveLibrary.load(
+                    getApplication(), media + documents,
+                    if (fullSafetyScan) emptyList() else _uiState.value.allItems,
+                    folderSnapshot,
+                )).distinctBy { it.uriKey }
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) {
+                // Preserve the last good Room/JSON checkpoint if a provider
+                // fails. A failed scan must never be committed as an empty
+                // library or advance MediaStore generation counters.
+                scanSucceeded = false
+                _uiState.value.allItems.filterNot { it.uriKey in _uiState.value.physicalBinUris }
+            }
+            val recycled = driveBin.load()
+            val items = normal + recycled
+
+            withContext(Dispatchers.Main) {
+                _uiState.update { current ->
+                    derive(
+                        current.copy(
+                            allItems = items,
+                            physicalBinUris = recycled.mapTo(mutableSetOf()) { it.uriKey },
+                            isLoading = false,
+                        )
+                    )
+                }
+            }
+
+            val snapshot = LibrarySnapshot.Value(items, recycled.mapTo(hashSetOf()) { it.uriKey }, _uiState.value.hasPermission)
+            // A newer refresh cancels this one. Never turn cancellation into a
+            // successful checkpoint or continue writing stale JSON/thumbnail jobs.
+            val roomStored = if (!scanSucceeded) false else try {
+                CatalogStore.persist(getApplication(), snapshot, started)
+                true
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+              catch (_: Exception) { false }
+            if (roomStored && fullSafetyScan) CatalogStore.recordFullScan(getApplication())
+            if (roomStored) {
+                // Fingerprint only potential exact-copy candidates, with small
+                // per-refresh budgets. Never compete with scrolling or viewing.
+                fingerprintJob = viewModelScope.launch(Dispatchers.IO) {
+                    delay(8_000L)
+                    var waits = 0
+                    while (!ThumbnailCache.canRunBackgroundIndexing() && waits++ < 40) delay(1_500L)
+                    if (ThumbnailCache.canRunBackgroundIndexing()) {
+                        try {
+                            // Compute cheap dHash candidates only from already
+                            // cached ordinary image posters. No RAW decode and
+                            // no visual duplicate proposals until strict pixel
+                            // verification rejects edits, crops and burst shots.
+                            var lastVisualUri = ""
+                            for (page in 0 until 96) {
+                                if (!ThumbnailCache.canRunBackgroundIndexing()) return@launch
+                                val next = CatalogStore.indexVisualCandidateHashes(
+                                    getApplication(), ThumbnailCache::canRunBackgroundIndexing,
+                                    afterUri = lastVisualUri,
+                                ) ?: break
+                                lastVisualUri = next
+                                delay(350L)
+                            }
+                            // One refresh may expose hundreds of same-size files.
+                            // Drain small bounded batches while idle, rather than
+                            // indexing only 12 candidates until the NEXT refresh.
+                            // Never compete with a visible tile or RAW viewer.
+                            repeat(48) {
+                                if (!ThumbnailCache.canRunBackgroundIndexing()) return@launch
+                                val progressed = CatalogStore.indexExactDuplicateCandidates(
+                                    getApplication(), ThumbnailCache::canRunBackgroundIndexing)
+                                if (!progressed) return@launch
+                                delay(3_000L)
+                            }
+                        } catch (e: kotlinx.coroutines.CancellationException) {
+                            // Foreground interaction or a newer scan supersedes the work.
+                            if (!kotlinx.coroutines.currentCoroutineContext().isActive) throw e
+                        } catch (_: Exception) {
+                            // Fingerprints are optional; media and the catalogue stay intact.
+                        }
+                    }
+                }
+            }
+            // A failed scan must not replace the previous JSON fallback either.
+            // Leave the last good checkpoint intact for the next retry.
+            if (scanSucceeded) {
+                val now = System.currentTimeMillis()
+                if (!roomStored || restoreSnapshot || now - lastJsonBackupMillis >= 5 * 60 * 1000L) {
+                    try {
+                        LibrarySnapshot.save(getApplication(), snapshot)
+                        lastJsonBackupMillis = now
+                    } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                      catch (_: Exception) { /* Room remains the source of truth. */ }
+                } else LibrarySnapshot.remember(snapshot)
+            }
+            thumbnailJob?.cancel()
+            // Match the actual on-screen covers (folder + volume + active sort).
+            // Grouping by leaf album name used to skip covers of same-named
+            // folders on different drives and generated the wrong prewarm queue.
+            val albumCovers = _uiState.value.albums.map { it.cover }
+
+            thumbnailJob = viewModelScope.launch(Dispatchers.IO) {
+                // Cache generation must never drive Compose recomposition.
+                preloadThumbnailBatches(
+                    items = albumCovers,
+                    batchSize = 12,
+                    highQuality = false,
+                    pauseBetweenBatchesMs = 0L,
+                )
+
+                val coverIds = albumCovers.mapTo(hashSetOf()) { it.id }
+                val remaining = items.filterNot { it.id in coverIds || !bulkPrewarmEligible(it.kind) }
+
+                preloadThumbnailBatches(
+                    items = remaining,
+                    batchSize = 18,
+                    highQuality = false,
+                    pauseBetweenBatchesMs = 45L,
+                )
+                preloadThumbnailBatches(
+                    items = albumCovers.filter { bulkPrewarmEligible(it.kind) },
+                    batchSize = 8,
+                    highQuality = true,
+                    pauseBetweenBatchesMs = 40L,
+                )
+
+            }
+        }
+    }
+
+    private suspend fun preloadThumbnailBatches(
+        items: List<MediaItem>,
+        batchSize: Int,
+        highQuality: Boolean,
+        pauseBetweenBatchesMs: Long,
+    ) {
+        val batches = items.chunked(batchSize)
+
+        batches.forEachIndexed { index, batch ->
+            ThumbnailCache.preload(
+                context = getApplication<Application>(),
+                items = batch,
+                highQuality = highQuality,
+            )
+
+            if (pauseBetweenBatchesMs > 0L && index < batches.lastIndex) {
+                delay(pauseBetweenBatchesMs)
+            }
+        }
+    }
+
+    private fun prewarmAlbum(name: String) {
+        val snapshot = _uiState.value
+        val items = snapshot.allItems.filter {
+            albumKey(it) == name && it.uriKey !in (snapshot.recycleBinUris + snapshot.physicalBinUris) &&
+                bulkPrewarmEligible(it.kind)
+        }
+
+        albumWarmJob?.cancel()
+        albumWarmJob = viewModelScope.launch(Dispatchers.IO) {
+            // No StateFlow updates here: creating cache files must not invalidate
+            // the entire gallery while the user is scrolling.
+            preloadThumbnailBatches(
+                items = items,
+                batchSize = 12,
+                highQuality = false,
+                pauseBetweenBatchesMs = 25L,
+            )
+
+            delay(350L)
+
+            preloadThumbnailBatches(
+                items = items.take(24),
+                batchSize = 6,
+                highQuality = true,
+                pauseBetweenBatchesMs = 80L,
+            )
+        }
+    }
+
+    suspend fun moveToRecycleBin(items: List<MediaItem>) {
+        try {
+            driveBin.trash(items)
+            // The move completed; drop the original identities from Room now.
+            // A catalogue write failure must never undo or misreport a physical move.
+            runCatching { CatalogStore.removeUris(getApplication(), items.mapTo(hashSetOf()) { it.uriKey }) }
+            kotlinx.coroutines.withContext(Dispatchers.Main) {
+                refreshJob?.cancel()
+                val removed = items.mapTo(hashSetOf()) { it.uriKey }
+                _uiState.update { derive(it.copy(allItems = it.allItems.filterNot { item -> item.uriKey in removed })) }
+                LibrarySnapshot.removeItems(removed)
+            }
+        } finally { refresh() }
+    }
+
+    suspend fun restoreFromRecycleBin(items: List<MediaItem>) {
+        try {
+            driveBin.restore(items)
+            // A successful restore changes the URI identity. Remove the old
+            // bin entry immediately; refresh() will index the restored URI.
+            // Never delete the catalogue entry before the physical move succeeds.
+            runCatching {
+                CatalogStore.removeUris(getApplication(), items.mapTo(hashSetOf()) { it.uriKey })
+            }
+            settingsRepository.removeFromRecycleBin(items.map { it.uriKey })
+        } finally { refresh() }
+    }
+
+    fun onPermanentlyDeleted(uris: Collection<String>) {
+        viewModelScope.launch {
+            driveBin.deleted(uris)
+            settingsRepository.removeFromRecycleBin(uris)
+            runCatching { CatalogStore.removeUris(getApplication(), uris.toSet()) }
+            refresh()
+        }
+    }
+
+    fun openRecycleBin() {
+        savedStateHandle.remove<String>("selected_album")
+        _uiState.update {
+            it.copy(
+                recycleBinVisible = true,
+                selectedAlbum = null,
+                query = "",
+                searchVisible = false,
+            ).let(::derive)
+        }
+    }
+
+    fun closeRecycleBin() =
+        _uiState.update { it.copy(recycleBinVisible = false) }
+
+    fun openAlbum(name: String) {
+        savedStateHandle["selected_album"] = name
+        _uiState.update {
+            derive(
+                it.copy(
+                    selectedAlbum = name,
+                    query = "",
+                    searchVisible = false,
+                )
+            )
+        }
+        prewarmAlbum(name)
+    }
+
+    fun closeAlbum() {
+        savedStateHandle.remove<String>("selected_album")
+        _uiState.update {
+            derive(
+                it.copy(
+                    selectedAlbum = null,
+                    query = "",
+                    searchVisible = false,
+                )
+            )
+        }
+    }
+
+    fun setFilter(filter: MediaFilter) =
+        _uiState.update { derive(it.copy(filter = filter)) }
+
+    fun setConfirmMove(enabled: Boolean) = settingsRepository.setConfirmMove(enabled)
+
+    fun setConfirmRename(enabled: Boolean) = settingsRepository.setConfirmRename(enabled)
+
+    fun setSortMode(sortMode: SortMode) {
+        _uiState.update { derive(it.copy(sortMode = sortMode)) }
+        settingsRepository.setSortModeName(sortMode.name)
+    }
+
+    fun toggleGridMode() =
+        _uiState.update {
+            it.copy(
+                gridMode = if (it.gridMode == GridMode.MOSAIC) {
+                    GridMode.UNIFORM
+                } else {
+                    GridMode.MOSAIC
+                }
+            )
+        }
+
+    fun toggleSearch() =
+        _uiState.update {
+            derive(
+                it.copy(
+                    searchVisible = !it.searchVisible,
+                    query = "",
+                )
+            )
+        }
+
+    fun setQuery(query: String) =
+        _uiState.update { derive(it.copy(query = query)) }
+
+    fun showSettings() =
+        _uiState.update { it.copy(settingsVisible = true) }
+
+    fun hideSettings() =
+        _uiState.update { it.copy(settingsVisible = false) }
+
+    fun setQuickExifEnabled(enabled: Boolean) {
+        settingsRepository.setQuickExifEnabled(enabled)
+    }
+}

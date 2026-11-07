@@ -1,0 +1,1073 @@
+package com.mistermikhail.fgallery.ui
+
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.items as lazyItems
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyGridState
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items as gridItems
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.DriveFileMove
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.GridOn
+import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.outlined.Sort
+import androidx.compose.material.icons.outlined.Usb
+import androidx.compose.material.icons.outlined.SdStorage
+import androidx.compose.material.icons.outlined.ViewQuilt
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import androidx.media3.common.MediaItem as PlayerMediaItem
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.ui.PlayerView
+import coil3.compose.AsyncImage
+import android.graphics.ImageDecoder
+import android.graphics.drawable.AnimatedImageDrawable
+import android.widget.ImageView
+import coil3.request.ImageRequest
+import coil3.video.videoFrameMillis
+import com.mistermikhail.fgallery.data.MediaItem
+import com.mistermikhail.fgallery.data.MediaKind
+import com.mistermikhail.fgallery.data.StorageFolders
+import com.mistermikhail.fgallery.data.ThumbnailCache
+import kotlinx.coroutines.delay
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun GalleryScreen(
+    state: GalleryUiState,
+    onRequestPermission: () -> Unit,
+    onRefresh: () -> Unit,
+    onImportDocuments: () -> Unit,
+    onAddStorage: () -> Unit,
+    onManageFileAccess: () -> Unit,
+    limitedMediaAccess: Boolean,
+    onOpenAlbum: (String) -> Unit,
+    onBackToAlbums: () -> Unit,
+    onOpenMedia: (MediaItem) -> Unit,
+    onToggleGridMode: () -> Unit,
+    onToggleSearch: () -> Unit,
+    onQueryChanged: (String) -> Unit,
+    onFilterChanged: (MediaFilter) -> Unit,
+    onSortChanged: (SortMode) -> Unit,
+    onShowSettings: () -> Unit,
+    onHideSettings: () -> Unit,
+    onQuickExifChanged: (Boolean) -> Unit,
+    onCheckForUpdates: () -> Unit,
+    zoomSecondPower: Float,
+    onZoomSecondPowerChanged: (Float) -> Unit,
+    onConfirmMoveChanged: (Boolean) -> Unit,
+    onConfirmRenameChanged: (Boolean) -> Unit,
+    onOpenRecycleBin: () -> Unit,
+    livePreviewEnabled: Boolean,
+    cleanupMode: Boolean,
+    onCleanupModeChanged: (Boolean) -> Unit,
+    selectedIds: Set<Long>,
+    onToggleSelection: (MediaItem) -> Unit,
+    onLongPressSelection: (MediaItem) -> Unit,
+    onClearSelection: () -> Unit,
+    onTrashSelected: (List<MediaItem>) -> Unit,
+    onShareSelected: (List<MediaItem>) -> Unit,
+    onRenameSelected: (List<Pair<MediaItem, String>>) -> Unit,
+    onMoveSelected: (List<MediaItem>) -> Unit,
+) {
+    var menuExpanded by remember { mutableStateOf(false) }
+    var sortMenuExpanded by remember { mutableStateOf(false) }
+    var confirmCleanupEnable by remember { mutableStateOf(false) }
+    var renameItems by remember { mutableStateOf<List<MediaItem>>(emptyList()) }
+
+    val albumsGridState = rememberLazyGridState()
+    val mosaicListState = rememberLazyListState()
+    val uniformGridState = rememberLazyGridState()
+    var activeLiveVideoId by remember { mutableStateOf<Long?>(null) }
+
+    val inAlbum = state.selectedAlbum != null
+    val visibleItems = state.visibleItems
+    val albums = state.albums
+    val visibleMosaicRows = remember(visibleItems) {
+        buildMosaicRows(visibleItems)
+    }
+
+    val visibleVideoIds by remember(
+        inAlbum,
+        state.gridMode,
+        visibleItems,
+        visibleMosaicRows,
+    ) {
+        derivedStateOf {
+            if (!inAlbum) {
+                emptyList()
+            } else {
+                when (state.gridMode) {
+                    GridMode.UNIFORM -> uniformGridState.layoutInfo.visibleItemsInfo
+                        .filter { info ->
+                            visibleHeightFraction(
+                                info.offset.y, info.size.height,
+                                uniformGridState.layoutInfo.viewportStartOffset,
+                                uniformGridState.layoutInfo.viewportEndOffset,
+                            ) >= 0.5f
+                        }
+                        .mapNotNull { info -> visibleItems.getOrNull(info.index) }
+                        .filter { it.kind == MediaKind.VIDEO }
+                        .map { it.id }
+
+                    GridMode.MOSAIC -> mosaicListState.layoutInfo.visibleItemsInfo
+                        .filter { info ->
+                            visibleHeightFraction(
+                                info.offset, info.size,
+                                mosaicListState.layoutInfo.viewportStartOffset,
+                                mosaicListState.layoutInfo.viewportEndOffset,
+                            ) >= 0.5f
+                        }
+                        .flatMap { info -> visibleMosaicRows.getOrNull(info.index).orEmpty() }
+                        .filter { it.kind == MediaKind.VIDEO }
+                        .map { it.id }
+                }
+            }
+        }
+    }
+
+    val mediaGridScrolling by remember(inAlbum, state.gridMode) {
+        derivedStateOf {
+            inAlbum && when (state.gridMode) {
+                GridMode.UNIFORM -> uniformGridState.isScrollInProgress
+                GridMode.MOSAIC -> mosaicListState.isScrollInProgress
+            }
+        }
+    }
+
+    val galleryScrolling = mediaGridScrolling || (!inAlbum && albumsGridState.isScrollInProgress)
+    LaunchedEffect(galleryScrolling) {
+        // Album covers also need priority while scrolling the album grid.
+        // Keep the video rotation logic tied only to mediaGridScrolling.
+        ThumbnailCache.setUserBusy(galleryScrolling)
+    }
+    DisposableEffect(Unit) {
+        onDispose { ThumbnailCache.setUserBusy(false) }
+    }
+
+    val effectiveLiveVideoId = if (livePreviewEnabled) activeLiveVideoId else null
+
+    val latestVisibleVideoIds by rememberUpdatedState(visibleVideoIds)
+    val latestScrolling by rememberUpdatedState(mediaGridScrolling)
+    LaunchedEffect(inAlbum, livePreviewEnabled) {
+        if (!inAlbum || !livePreviewEnabled) { activeLiveVideoId = null; return@LaunchedEffect }
+        val rotation = LivePreviewRotation()
+        while (true) {
+            activeLiveVideoId = rotation.update(latestVisibleVideoIds, latestScrolling, android.os.SystemClock.elapsedRealtime())
+            delay(100L)
+        }
+    }
+    val selectedItems = visibleItems.filter { it.id in selectedIds }
+    val selectionMode = selectedItems.isNotEmpty()
+
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
+        topBar = {
+            Column {
+                if (selectionMode) {
+                    TopAppBar(
+                        navigationIcon = {
+                            IconButton(onClick = onClearSelection) {
+                                Icon(Icons.Outlined.Close, contentDescription = "Отменить выбор")
+                            }
+                        },
+                        title = {
+                            Text(
+                                text = "${selectedItems.size} выбрано",
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        ),
+                        actions = {
+                            IconButton(onClick = { onShareSelected(selectedItems) }) {
+                                Icon(Icons.Outlined.Share, contentDescription = "Поделиться выбранными")
+                            }
+                            IconButton(
+                                onClick = { onMoveSelected(selectedItems) },
+                            ) {
+                                Icon(Icons.Outlined.DriveFileMove, contentDescription = "Переместить")
+                            }
+
+                            IconButton(onClick = { renameItems = selectedItems }) {
+                                Icon(Icons.Outlined.Edit, contentDescription = "Переименовать выбранные")
+                            }
+
+                            IconButton(onClick = { onTrashSelected(selectedItems) }) {
+                                Icon(Icons.Outlined.DeleteOutline, contentDescription = "В корзину")
+                            }
+                        },
+                    )
+                } else {
+                    TopAppBar(
+                        navigationIcon = {
+                            if (inAlbum) {
+                                IconButton(onClick = onBackToAlbums) {
+                                    Icon(Icons.Outlined.ArrowBack, contentDescription = "Назад к альбомам")
+                                }
+                            }
+                        },
+                        title = {
+                            Column {
+                                Text(
+                                    text = state.albums.firstOrNull { it.key == state.selectedAlbum }?.name ?: "FGallery",
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = if (inAlbum) 14.sp else 22.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                Text(
+                                    text = if (inAlbum) {
+                                        "${visibleItems.size} объектов"
+                                    } else {
+                                        "${albums.size} альбомов"
+                                    },
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
+                                )
+                            }
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = MaterialTheme.colorScheme.background,
+                        ),
+                        actions = {
+                            IconButton(onClick = onToggleSearch, modifier = Modifier.size(40.dp)) {
+                                Icon(Icons.Outlined.Search, contentDescription = "Поиск")
+                            }
+                            CleanupToggleButton(
+                                enabled = cleanupMode,
+                                onEnableRequest = { confirmCleanupEnable = true },
+                                onDisable = { onCleanupModeChanged(false) },
+                            )
+
+                            Box {
+                                IconButton(onClick = { sortMenuExpanded = true }, modifier = Modifier.size(40.dp)) {
+                                    Icon(Icons.Outlined.Sort, contentDescription = "Сортировка")
+                                }
+                                DropdownMenu(
+                                    expanded = sortMenuExpanded,
+                                    onDismissRequest = { sortMenuExpanded = false },
+                                ) {
+                                    SortMenuItem("Сначала новые", state.sortMode == SortMode.DATE_DESC) {
+                                        sortMenuExpanded = false; onSortChanged(SortMode.DATE_DESC)
+                                    }
+                                    SortMenuItem("Сначала старые", state.sortMode == SortMode.DATE_ASC) {
+                                        sortMenuExpanded = false; onSortChanged(SortMode.DATE_ASC)
+                                    }
+                                    SortMenuItem(
+                                        if (state.sortMode == SortMode.NAME_ASC) "Имя ↓ А–Я" else "Имя ↑ Я–А",
+                                        state.sortMode in listOf(SortMode.NAME_ASC, SortMode.NAME_DESC),
+                                    ) {
+                                        sortMenuExpanded = false
+                                        onSortChanged(if (state.sortMode == SortMode.NAME_ASC) SortMode.NAME_DESC else SortMode.NAME_ASC)
+                                    }
+                                    SortMenuItem(
+                                        if (state.sortMode == SortMode.SIZE_ASC) "Размер ↑ · маленькие" else "Размер ↓ · крупные",
+                                        state.sortMode in listOf(SortMode.SIZE_ASC, SortMode.SIZE_DESC),
+                                    ) {
+                                        sortMenuExpanded = false
+                                        onSortChanged(if (state.sortMode == SortMode.SIZE_ASC) SortMode.SIZE_DESC else SortMode.SIZE_ASC)
+                                    }
+                                    SortMenuItem(
+                                        if (state.sortMode == SortMode.TYPE_ASC) "Тип ↑" else "Тип ↓",
+                                        state.sortMode in listOf(SortMode.TYPE_ASC, SortMode.TYPE_DESC),
+                                    ) {
+                                        sortMenuExpanded = false
+                                        onSortChanged(if (state.sortMode == SortMode.TYPE_ASC) SortMode.TYPE_DESC else SortMode.TYPE_ASC)
+                                    }
+                                }
+                            }
+
+                            if (inAlbum) {
+                                IconButton(onClick = onToggleGridMode, modifier = Modifier.size(40.dp)) {
+                                    Icon(
+                                        if (state.gridMode == GridMode.MOSAIC) {
+                                            Icons.Outlined.GridOn
+                                        } else {
+                                            Icons.Outlined.ViewQuilt
+                                        },
+                                        contentDescription = "Вид сетки",
+                                    )
+                                }
+                            }
+
+                            Box {
+                                IconButton(onClick = { menuExpanded = true }, modifier = Modifier.size(40.dp)) {
+                                    Icon(Icons.Outlined.MoreVert, contentDescription = "Меню")
+                                }
+                                DropdownMenu(
+                                    expanded = menuExpanded,
+                                    onDismissRequest = { menuExpanded = false },
+                                ) {
+                                    fun apply(action: () -> Unit) {
+                                        menuExpanded = false
+                                        action()
+                                    }
+
+                                    DropdownMenuItem(
+                                        text = { Text("Все файлы") },
+                                        onClick = { apply { onFilterChanged(MediaFilter.ALL) } },
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Фото") },
+                                        onClick = { apply { onFilterChanged(MediaFilter.PHOTOS) } },
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Видео") },
+                                        onClick = { apply { onFilterChanged(MediaFilter.VIDEOS) } },
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("RAW") },
+                                        onClick = { apply { onFilterChanged(MediaFilter.RAW) } },
+                                    )
+
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                text = if (cleanupMode) {
+                                                    "Выключить режим уборки"
+                                                } else {
+                                                    "Режим уборки"
+                                                },
+                                                color = Color(0xFFFF5A36),
+                                            )
+                                        },
+                                        onClick = {
+                                            apply {
+                                                onCleanupModeChanged(!cleanupMode)
+                                            }
+                                        },
+                                    )
+
+                                    DropdownMenuItem(
+                                        text = { Text("Корзина") },
+                                        onClick = { apply(onOpenRecycleBin) },
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Обновить") },
+                                        onClick = { apply(onRefresh) },
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Настройки") },
+                                        onClick = { apply(onShowSettings) },
+                                    )
+                                }
+                            }
+                        },
+                    )
+                }
+
+                if (limitedMediaAccess && !selectionMode) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                            .padding(horizontal = 8.dp, vertical = 3.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("Ограниченный доступ: видны только выбранные файлы",
+                            style = MaterialTheme.typography.labelSmall,
+                            modifier = Modifier.weight(1f))
+                        TextButton(onClick = onRequestPermission) { Text("Выбрать ещё") }
+                        TextButton(onClick = onRequestPermission) { Text("Разрешить ко всем") }
+                    }
+                }
+                if (state.searchVisible && !selectionMode) {
+                    OutlinedTextField(
+                        value = state.query,
+                        onValueChange = onQueryChanged,
+                        singleLine = true,
+                        placeholder = {
+                            Text(if (inAlbum) "Поиск в альбоме" else "Поиск альбома")
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                    )
+                }
+            }
+        },
+    ) { innerPadding ->
+        when {
+            !state.hasPermission && state.allItems.isEmpty() -> {
+                Column(Modifier.fillMaxSize().padding(innerPadding),
+                    horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("Доступ к медиатеке не предоставлен. FGallery может работать с доступными файлами.")
+                    TextButton(onClick = onRequestPermission) { Text("Настроить доступ к фото и видео") }
+                }
+            }
+            state.isLoading && state.allItems.isEmpty() -> MessageState("Загрузка…", innerPadding)
+            !inAlbum && albums.isEmpty() -> MessageState("Альбомы не найдены", innerPadding)
+            inAlbum && visibleItems.isEmpty() -> MessageState("Медиа не найдено", innerPadding)
+
+            !inAlbum -> AlbumsGrid(
+                albums = albums,
+                state = albumsGridState,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding),
+                onOpenAlbum = onOpenAlbum,
+                cleanupMode = cleanupMode,
+            )
+
+            state.gridMode == GridMode.MOSAIC -> MosaicGrid(
+                rows = visibleMosaicRows,
+                state = mosaicListState,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding),
+                onOpenMedia = onOpenMedia,
+                cleanupMode = cleanupMode,
+                selectedIds = selectedIds,
+                onToggleSelection = onToggleSelection,
+                onLongPressSelection = onLongPressSelection,
+                activeLiveVideoId = effectiveLiveVideoId,
+            )
+
+            else -> UniformGrid(
+                items = visibleItems,
+                state = uniformGridState,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding),
+                onOpenMedia = onOpenMedia,
+                cleanupMode = cleanupMode,
+                selectedIds = selectedIds,
+                onToggleSelection = onToggleSelection,
+                onLongPressSelection = onLongPressSelection,
+                activeLiveVideoId = effectiveLiveVideoId,
+            )
+        }
+    }
+
+    if (confirmCleanupEnable) CleanupEnableDialog(
+        onCancel = { confirmCleanupEnable = false },
+        onEnable = {
+            confirmCleanupEnable = false
+            onCleanupModeChanged(true)
+        },
+    )
+
+    if (renameItems.isNotEmpty()) RenameDialog(
+        items = renameItems,
+        onDismiss = { renameItems = emptyList() },
+        onConfirm = { plan -> renameItems = emptyList(); onRenameSelected(plan) },
+    )
+
+    if (state.settingsVisible) {
+        SettingsSheet(
+            quickExifEnabled = state.quickExifEnabled,
+            onQuickExifChanged = onQuickExifChanged,
+            onCheckForUpdates = { onHideSettings(); onCheckForUpdates() },
+            zoomSecondPower = zoomSecondPower,
+            onZoomSecondPowerChanged = onZoomSecondPowerChanged,
+            confirmMove = state.confirmMove,
+            mediaAccessStatus = if (limitedMediaAccess) "ограничен" else if (state.hasPermission) "выдан" else "не выдан",
+            allFilesGranted = !limitedMediaAccess && state.hasPermission && StorageFolders.hasFileAccess(),
+            onMediaAccess = onRequestPermission,
+            onFilesAccess = onManageFileAccess,
+            confirmRename = state.confirmRename,
+            onConfirmMoveChanged = onConfirmMoveChanged,
+            onConfirmRenameChanged = onConfirmRenameChanged,
+            onDismiss = onHideSettings,
+        )
+    }
+}
+
+@Composable
+private fun SortMenuItem(
+    text: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    DropdownMenuItem(
+        text = {
+            Text(if (selected) "✓  $text" else "   $text")
+        },
+        onClick = onClick,
+    )
+}
+
+@Composable
+private fun PermissionState(
+    innerPadding: PaddingValues,
+    onRequestPermission: () -> Unit,
+) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .padding(innerPadding),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("Нужен доступ к фото и видео")
+            TextButton(onClick = onRequestPermission) {
+                Text("Разрешить доступ")
+            }
+        }
+    }
+}
+
+@Composable
+private fun MessageState(
+    text: String,
+    innerPadding: PaddingValues,
+) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .padding(innerPadding),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(text)
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun AlbumsGrid(
+    albums: List<AlbumSummary>,
+    state: LazyGridState,
+    modifier: Modifier,
+    onOpenAlbum: (String) -> Unit,
+    cleanupMode: Boolean,
+) {
+    LazyVerticalGrid(
+        columns = GridCells.Adaptive(156.dp),
+        state = state,
+        modifier = modifier.background(
+            if (cleanupMode) Color(0xFFFF5A36) else MaterialTheme.colorScheme.background
+        ),
+        contentPadding = PaddingValues(if (cleanupMode) 2.5.dp else 0.dp),
+        horizontalArrangement = Arrangement.spacedBy(if (cleanupMode) 2.5.dp else 0.dp),
+        verticalArrangement = Arrangement.spacedBy(if (cleanupMode) 2.5.dp else 0.dp),
+    ) {
+        gridItems(albums, key = { it.key }) { album ->
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(if (cleanupMode) 6.dp else 0.dp))
+                    .combinedClickable(onClick = { onOpenAlbum(album.key) }),
+            ) {
+                MediaPreview(
+                    item = album.cover,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(156.dp),
+                    livePreview = false,
+                    albumCover = true,
+                )
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .fillMaxWidth()
+                        .background(
+                            MaterialTheme.colorScheme.background.copy(alpha = 0.72f)
+                        )
+                        .padding(horizontal = 10.dp, vertical = 7.dp),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (album.cover.storageId != "external_primary" && album.cover.storageId.isNotBlank()) {
+                            Icon(
+                                if (album.cover.storageName.contains("USB", true)) Icons.Outlined.Usb else Icons.Outlined.SdStorage,
+                                contentDescription = album.cover.storageName,
+                                modifier = Modifier.size(15.dp),
+                            )
+                        }
+                        Text(album.name, maxLines = 1, fontWeight = FontWeight.Medium, overflow = TextOverflow.Ellipsis)
+                    }
+                    Text(
+                        "${album.count}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun buildMosaicRows(items: List<MediaItem>): List<List<MediaItem>> {
+    if (items.isEmpty()) return emptyList()
+
+    val rows = mutableListOf<List<MediaItem>>()
+    var current = mutableListOf<MediaItem>()
+    var ratioSum = 0f
+
+    fun flush() {
+        if (current.isNotEmpty()) {
+            rows += current.toList()
+            current = mutableListOf()
+            ratioSum = 0f
+        }
+    }
+
+    items.forEach { item ->
+        val ratio = item.aspectRatio.coerceIn(0.55f, 2.4f)
+        current += item
+        ratioSum += ratio
+
+        if ((ratioSum >= 2.75f && current.size >= 2) || current.size >= 4) {
+            flush()
+        }
+    }
+
+    flush()
+    return rows
+}
+
+private data class MosaicRowLayout(
+    val items: List<MediaItem>,
+    val ratios: List<Float>,
+    val height: Dp,
+)
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun MosaicGrid(
+    rows: List<List<MediaItem>>,
+    state: LazyListState,
+    modifier: Modifier,
+    onOpenMedia: (MediaItem) -> Unit,
+    cleanupMode: Boolean,
+    selectedIds: Set<Long>,
+    onToggleSelection: (MediaItem) -> Unit,
+    onLongPressSelection: (MediaItem) -> Unit,
+    activeLiveVideoId: Long?,
+) {
+    val gap = if (cleanupMode) 2.5.dp else 0.dp
+    val density = LocalDensity.current
+    var gridWidthPx by remember { mutableIntStateOf(0) }
+
+    val layouts = remember(rows, gridWidthPx, gap, density) {
+        rows.map { row ->
+            val ratios = row.map { it.aspectRatio.coerceIn(0.55f, 2.4f) }
+            val ratioSum = ratios.sum().coerceAtLeast(0.5f)
+
+            val height = if (gridWidthPx > 0) {
+                val gapPx = with(density) { gap.toPx() }
+                val availableWidthPx =
+                    (gridWidthPx - gapPx * (row.size - 1).coerceAtLeast(0))
+                        .coerceAtLeast(1f)
+
+                with(density) {
+                    (availableWidthPx / ratioSum).toDp()
+                }.coerceIn(108.dp, 225.dp)
+            } else {
+                160.dp
+            }
+
+            MosaicRowLayout(
+                items = row,
+                ratios = ratios,
+                height = height,
+            )
+        }
+    }
+
+    LazyColumn(
+        state = state,
+        modifier = modifier
+            .background(
+                if (cleanupMode) Color(0xFFFF5A36) else Color.Transparent
+            )
+            .onSizeChanged { size ->
+                if (gridWidthPx != size.width) {
+                    gridWidthPx = size.width
+                }
+            },
+        contentPadding = PaddingValues(gap),
+        verticalArrangement = Arrangement.spacedBy(gap),
+    ) {
+        lazyItems(
+            items = layouts,
+            key = { layout ->
+                layout.items.joinToString(separator = ":") { it.id.toString() }
+            },
+        ) { layout ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(layout.height),
+            ) {
+                layout.items.forEachIndexed { index, item ->
+                    if (index > 0) {
+                        Spacer(modifier = Modifier.width(gap))
+                    }
+
+                    MediaTile(
+                        item = item,
+                        modifier = Modifier
+                            .weight(layout.ratios[index])
+                            .fillMaxHeight(),
+                        onOpenMedia = onOpenMedia,
+                        selected = item.id in selectedIds,
+                        selectionMode = selectedIds.isNotEmpty(),
+                        onToggleSelection = onToggleSelection,
+                onLongPressSelection = onLongPressSelection,
+                        livePreview = item.id == activeLiveVideoId,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun UniformGrid(
+    items: List<MediaItem>,
+    state: LazyGridState,
+    modifier: Modifier,
+    onOpenMedia: (MediaItem) -> Unit,
+    cleanupMode: Boolean,
+    selectedIds: Set<Long>,
+    onToggleSelection: (MediaItem) -> Unit,
+    onLongPressSelection: (MediaItem) -> Unit,
+    activeLiveVideoId: Long?,
+) {
+    val gap = if (cleanupMode) 2.5.dp else 0.dp
+
+    LazyVerticalGrid(
+        columns = GridCells.Adaptive(112.dp),
+        state = state,
+        modifier = modifier.background(
+            if (cleanupMode) Color(0xFFFF5A36) else Color.Transparent
+        ),
+        contentPadding = PaddingValues(gap),
+        horizontalArrangement = Arrangement.spacedBy(gap),
+        verticalArrangement = Arrangement.spacedBy(gap),
+    ) {
+        gridItems(items, key = { it.id }) { item ->
+            MediaTile(
+                item = item,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(1f),
+                onOpenMedia = onOpenMedia,
+                selected = item.id in selectedIds,
+                selectionMode = selectedIds.isNotEmpty(),
+                onToggleSelection = onToggleSelection,
+                onLongPressSelection = onLongPressSelection,
+                livePreview = item.id == activeLiveVideoId,
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun MediaTile(
+    item: MediaItem,
+    modifier: Modifier,
+    onOpenMedia: (MediaItem) -> Unit,
+    selected: Boolean,
+    selectionMode: Boolean,
+    onToggleSelection: (MediaItem) -> Unit,
+    onLongPressSelection: (MediaItem) -> Unit,
+    livePreview: Boolean,
+) {
+    val shape = RoundedCornerShape(0.dp)
+
+    Box(
+        modifier = modifier
+            .then(
+                if (selected) {
+                    Modifier.border(
+                        width = 3.dp,
+                        color = MaterialTheme.colorScheme.primary,
+                        shape = shape,
+                    )
+                } else {
+                    Modifier
+                }
+            )
+            .clip(shape)
+            .combinedClickable(
+                onClick = {
+                    if (selectionMode) {
+                        onToggleSelection(item)
+                    } else {
+                        onOpenMedia(item)
+                    }
+                },
+                onLongClick = { onLongPressSelection(item) },
+            ),
+    ) {
+        MediaPreview(
+            item = item,
+            modifier = Modifier.fillMaxSize(),
+            livePreview = livePreview,
+        )
+
+        when (item.kind) {
+            MediaKind.VIDEO -> {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(6.dp)
+                        .size(22.dp)
+                        .background(
+                            MaterialTheme.colorScheme.background.copy(alpha = 0.72f),
+                            RoundedCornerShape(11.dp),
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.Filled.PlayArrow,
+                        contentDescription = "Видео",
+                        modifier = Modifier.size(14.dp),
+                    )
+                }
+            }
+
+            MediaKind.RAW -> {
+                Text(
+                    "RAW",
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(6.dp)
+                        .background(
+                            MaterialTheme.colorScheme.background.copy(alpha = 0.72f),
+                            RoundedCornerShape(4.dp),
+                        )
+                        .padding(horizontal = 5.dp, vertical = 2.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                )
+            }
+
+            MediaKind.IMAGE, MediaKind.SVG, MediaKind.PDF -> Unit
+        }
+
+        if (selected) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)),
+            )
+            Icon(
+                Icons.Outlined.CheckCircle,
+                contentDescription = "Выбрано",
+                tint = Color.White,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(7.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun MediaPreview(
+    item: MediaItem,
+    modifier: Modifier,
+    livePreview: Boolean,
+    albumCover: Boolean = false,
+) {
+    val context = LocalContext.current
+    // Coil now owns generation and cancellation; no competing Compose
+    // produceState request decodes this original a second time.
+    val cachedModel = remember(item.uri, item.dateModifiedMillis, item.sizeBytes) {
+        ThumbnailCache.cached(context, item)
+    }
+    var previewFailed by remember(item.uri, item.dateModifiedMillis, item.sizeBytes) { mutableStateOf(false) }
+    var primaryLoaded by remember(item.uri, item.dateModifiedMillis, item.sizeBytes) { mutableStateOf(false) }
+    var fallbackNeeded by remember(item.uri, item.dateModifiedMillis, item.sizeBytes) { mutableStateOf(false) }
+    var fallbackFailed by remember(item.uri, item.dateModifiedMillis, item.sizeBytes) { mutableStateOf(false) }
+    LaunchedEffect(item.uri, item.dateModifiedMillis, albumCover) {
+        // A slow or stuck custom cache fetch must not leave an album cover empty.
+        // Limit direct-URI fallback to album covers, not every scrolling tile.
+        if (albumCover && item.kind in listOf(MediaKind.IMAGE, MediaKind.VIDEO)) {
+            delay(750L)
+            if (!primaryLoaded) fallbackNeeded = true
+        }
+    }
+    // Coil must decode for the actual tile bounds, not an unconditional 960px square.
+    var tileSize by remember(item.uri) { mutableStateOf(IntSize(400, 400)) }
+    var liveFailed by remember(item.uri) { mutableStateOf(false) }
+    val highQuality = maxOf(tileSize.width, tileSize.height) > 480
+    val request = ImageRequest.Builder(context)
+        .data(com.mistermikhail.fgallery.data.GalleryThumb(item, highQuality))
+        .memoryCacheKey("gallery/v4/${ThumbnailCache.key(item)}/${if (highQuality) "hq" else "micro"}")
+        .size(tileSize.width.coerceAtLeast(1), tileSize.height.coerceAtLeast(1)).build()
+    Box(modifier.onSizeChanged { if (it != tileSize) tileSize = it }
+        .background(MaterialTheme.colorScheme.surfaceVariant)) {
+        AsyncImage(request, item.name, contentScale = ContentScale.Crop,
+            onSuccess = { primaryLoaded = true; previewFailed = false },
+            onError = { previewFailed = true; if (albumCover && item.kind in listOf(MediaKind.IMAGE, MediaKind.VIDEO)) fallbackNeeded = true },
+            modifier = Modifier.fillMaxSize())
+        if (albumCover && fallbackNeeded && !primaryLoaded &&
+            item.kind in listOf(MediaKind.IMAGE, MediaKind.VIDEO)) {
+            // The platform/Coil URI route is independent of the disk thumbnail
+            // fetcher; its result can fill a stalled cover while the cache warms.
+            val directRequest = ImageRequest.Builder(context)
+                .data(item.uri)
+                .size(tileSize.width.coerceAtLeast(1), tileSize.height.coerceAtLeast(1))
+                .build()
+            AsyncImage(directRequest, item.name, contentScale = ContentScale.Crop,
+                onError = { fallbackFailed = true },
+                modifier = Modifier.fillMaxSize())
+        }
+        if (item.kind == MediaKind.IMAGE &&
+            (item.name.endsWith(".gif", ignoreCase = true) || item.mimeType == "image/gif")) {
+            AnimatedGifPreview(item, Modifier.fillMaxSize())
+        }
+        if (livePreview && item.kind == MediaKind.VIDEO && !liveFailed) {
+            InlineVideoPreview(item, Modifier.fillMaxSize(), onError = { liveFailed = true })
+        } else if (previewFailed && cachedModel == null && (!fallbackNeeded || fallbackFailed)) {
+            Text(if (item.kind == MediaKind.VIDEO) "Видео · нет превью" else item.name.substringAfterLast('.').uppercase(),
+                style = MaterialTheme.typography.labelSmall, modifier = Modifier.align(Alignment.Center))
+        }
+    }
+}
+
+/** Android's platform decoder handles real animated GIF frames without converting to PNG. */
+@Composable
+private fun AnimatedGifPreview(item: MediaItem, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val drawable by produceState<android.graphics.drawable.Drawable?>(null, item.uri) {
+        value = withContext(Dispatchers.IO) {
+            runCatching {
+                val source = if (item.uri.scheme == "file")
+                    ImageDecoder.createSource(java.io.File(requireNotNull(item.uri.path)))
+                else ImageDecoder.createSource(context.contentResolver, item.uri)
+                ImageDecoder.decodeDrawable(source)
+            }.getOrNull()
+        }
+    }
+    if (drawable != null) {
+        DisposableEffect(drawable) {
+            (drawable as? AnimatedImageDrawable)?.start()
+            onDispose { (drawable as? AnimatedImageDrawable)?.stop() }
+        }
+        AndroidView(
+            factory = { ImageView(it).apply { scaleType = ImageView.ScaleType.CENTER_CROP } },
+            update = { it.setImageDrawable(drawable) },
+            modifier = modifier,
+        )
+    }
+}
+
+@Composable
+private fun InlineVideoPreview(
+    item: MediaItem,
+    modifier: Modifier,
+    onError: () -> Unit,
+) {
+    val context = LocalContext.current
+    var firstFrameReady by remember(item.uri) { mutableStateOf(false) }
+    val latestError by rememberUpdatedState(onError)
+    val player = remember(item.uri) {
+        ExoPlayer.Builder(context).build().apply {
+            setMediaItem(
+                PlayerMediaItem.Builder()
+                    .setUri(item.uri)
+                    .setMimeType(com.mistermikhail.fgallery.data.VideoPlaybackMime.forFile(item.name, item.mimeType))
+                    .build()
+            )
+            volume = 0f
+            repeatMode = Player.REPEAT_MODE_ONE
+            addListener(object : Player.Listener {
+                override fun onPlayerError(error: androidx.media3.common.PlaybackException) { latestError() }
+                override fun onRenderedFirstFrame() { firstFrameReady = true }
+            })
+            prepare()
+            seekTo(0L)
+            playWhenReady = true
+        }
+    }
+
+    DisposableEffect(player) {
+        onDispose {
+            player.release()
+        }
+    }
+
+    AndroidView(
+        factory = { ctx ->
+            (android.view.LayoutInflater.from(ctx).inflate(com.mistermikhail.fgallery.R.layout.player_view_preview, null, false) as PlayerView).apply {
+                this.player = player
+                useController = false
+                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                isClickable = false
+                isFocusable = false
+                setShutterBackgroundColor(android.graphics.Color.TRANSPARENT)
+                setKeepContentOnPlayerReset(true)
+                alpha = 0f
+            }
+        },
+        update = { view -> view.alpha = if (firstFrameReady) 1f else 0f },
+        modifier = modifier,
+    )
+}

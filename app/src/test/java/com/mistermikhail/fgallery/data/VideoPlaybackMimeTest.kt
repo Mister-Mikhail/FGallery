@@ -1,0 +1,38 @@
+package com.mistermikhail.fgallery.data
+
+import org.junit.Assert.assertEquals
+import org.junit.Test
+
+class VideoPlaybackMimeTest {
+    @Test fun m4vUsesMp4ExtractorEvenWhenProviderReportsGenericMime() {
+        assertEquals("video/mp4", VideoPlaybackMime.forFile("clip.M4V", "application/octet-stream"))
+        assertEquals("video/mp4", VideoPlaybackMime.forFile("clip.m4v", null))
+        assertEquals("video/mp4", VideoPlaybackMime.forFile("clip.mp4", "video/quicktime"))
+        assertEquals("video/mp4", VideoPlaybackMime.forFile("clip.MOV", "application/octet-stream"))
+    }
+
+    @Test fun aviKeepsItsContainerIdentityAndDoesNotPretendToBeMp4() {
+        assertEquals("video/avi", VideoPlaybackMime.forFile("clip.AVI", null))
+        assertEquals("video/avi", VideoPlaybackMime.forFile("clip.avi", "image/jpeg"))
+    }
+
+    @Test fun knownContainersOverrideIncorrectSafMime() {
+        val expected = mapOf(
+            "clip.mkv" to "video/x-matroska",
+            "clip.WEBM" to "video/webm",
+            "clip.3gp" to "video/3gpp",
+            "clip.m2ts" to "video/mp2t",
+            "clip.mts" to "video/mp2t",
+        )
+        expected.forEach { (name, mime) ->
+            assertEquals(name, mime, VideoPlaybackMime.forFile(name, "application/octet-stream"))
+            assertEquals(name, mime, VideoPlaybackMime.forFile(name, "image/jpeg"))
+        }
+    }
+
+    @Test fun unknownFormatsDoNotMasqueradeAsVideo() {
+        assertEquals("video/x-msvideo", VideoPlaybackMime.forFile("unknown.bin", "video/x-msvideo"))
+        assertEquals(null, VideoPlaybackMime.forFile("unknown.bin", "application/octet-stream"))
+        assertEquals(null, VideoPlaybackMime.forFile("song.m4a", "audio/mp4"))
+    }
+}
