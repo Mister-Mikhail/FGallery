@@ -1,5 +1,7 @@
 package com.mistermikhail.fgallery
 
+import android.graphics.SurfaceTexture
+import android.view.Surface
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.net.Uri
@@ -95,12 +97,21 @@ class VideoContainerPlaybackTest {
                 file.outputStream().use { destination -> source.copyTo(destination) }
             }
             val finished = CountDownLatch(1)
+            val firstFrame = CountDownLatch(1)
             val error = AtomicReference<String?>(null)
             val playerRef = AtomicReference<ExoPlayer>()
+            val textureRef = AtomicReference<SurfaceTexture>()
+            val surfaceRef = AtomicReference<Surface>()
             instrumentation.runOnMainSync {
                 val player = ExoPlayer.Builder(context).build()
                 playerRef.set(player)
+                val texture = SurfaceTexture(false)
+                val surface = Surface(texture)
+                textureRef.set(texture)
+                surfaceRef.set(surface)
+                player.setVideoSurface(surface)
                 player.addListener(object : Player.Listener {
+                    override fun onRenderedFirstFrame() { firstFrame.countDown() }
                     override fun onPlayerError(exception: PlaybackException) {
                         error.set(exception.errorCodeName + ": " + exception.message)
                         finished.countDown()
@@ -121,8 +132,13 @@ class VideoContainerPlaybackTest {
                 assertTrue("Media3 did not finish decoding the M4V sample within 45s: ${error.get()}",
                     finished.await(45, TimeUnit.SECONDS))
                 assertEquals("Media3 failed to decode M4V", null, error.get())
+                assertTrue("Media3 reached END without rendering a video frame", firstFrame.count == 0L)
             } finally {
-                instrumentation.runOnMainSync { playerRef.get()?.release() }
+                instrumentation.runOnMainSync {
+                    playerRef.get()?.release()
+                    surfaceRef.get()?.release()
+                    textureRef.get()?.release()
+                }
             }
         } finally {
             file.delete()
