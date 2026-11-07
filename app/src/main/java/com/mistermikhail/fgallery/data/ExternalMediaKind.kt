@@ -9,7 +9,7 @@ import java.util.Locale
  */
 internal object ExternalMediaKind {
     private val videos = setOf(
-        "avi", "m4v", "mp4", "mov", "mkv", "webm", "3gp", "3g2",
+        "avi", "m4v", "m4p", "mp4", "mov", "mkv", "mk3d", "webm", "3gp", "3gpp", "3g2",
         "wmv", "mpeg", "mpg", "ts", "m2ts", "mts"
     )
     private val raws = setOf(
