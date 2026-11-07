@@ -485,7 +485,7 @@ private fun VideoPlayer(
             }.getOrNull()
         }
         if (codec != null && playbackFailure != null && playbackFailure?.contains("FOURCC:") != true) {
-            playbackFailure = "AVI: FOURCC $codec (${com.mistermikhail.fgallery.data.AviCodecInfo.codecDescription(codec)}). " +
+            playbackFailure = "AVI: FOURCC: $codec (${com.mistermikhail.fgallery.data.AviCodecInfo.codecDescription(codec)}). " +
                 "Контейнер или кодек не поддерживается текущим проигрывателем."
         }
     }
