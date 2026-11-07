@@ -35,6 +35,10 @@ internal object AviCodecInfo {
         if (count < 12 || ascii(bytes, 0, 4) != "RIFF" || ascii(bytes, 8, 4) != "AVI ") return null
         val riffSize = uint32(bytes, 4)
         if (riffSize < 4L) return null
+        // A small RIFF must be complete: otherwise a truncated AVI could report a
+        // valid codec from its header while its declared container is incomplete.
+        // Large videos are intentionally sampled only up to the 256 KiB cap.
+        if (riffSize + 8L <= bytes.size.toLong() && count.toLong() < riffSize + 8L) return null
         return findVideoHeader(bytes, 12, minOf(count.toLong(), riffSize + 8).toInt(), insideStream = false)
     }
 
