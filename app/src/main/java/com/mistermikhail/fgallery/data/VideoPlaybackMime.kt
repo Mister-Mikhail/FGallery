@@ -4,7 +4,7 @@ import java.util.Locale
 
 /**
  * Container hint for Media3, not a promise that the device can decode its codec.
- * SAF and third-party providers frequently return null, image/* or
+ * SAF and third-party providers frequently return null, an image MIME type or
  * application/octet-stream even for supported video filenames.
  */
 internal object VideoPlaybackMime {
