@@ -33,6 +33,12 @@ class AviCodecInfoTest {
         assertEquals("неизвестный или нестандартный видеокодек", AviCodecInfo.codecDescription("ZZZZ"))
     }
 
+    @Test fun recognizesSpacePaddedUncompressedAviFourCc() {
+        assertEquals("DIB ", AviCodecInfo.fourCc(ByteArrayInputStream(sample("DIB "))))
+        assertEquals("несжатое RGB-видео (AVI)", AviCodecInfo.codecDescription("DIB "))
+        assertEquals("несжатое YUV-видео (AVI)", AviCodecInfo.codecDescription("YUY2"))
+    }
+
     @Test fun detectsMjpegAviCodec() {
         assertEquals("MJPG", AviCodecInfo.fourCc(ByteArrayInputStream(sample("MJPG"))))
     }
