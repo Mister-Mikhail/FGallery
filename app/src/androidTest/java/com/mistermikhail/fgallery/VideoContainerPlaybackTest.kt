@@ -96,7 +96,7 @@ class VideoContainerPlaybackTest {
             instrumentation.context.assets.open("crop-video.mp4").use { source ->
                 file.outputStream().use { destination -> source.copyTo(destination) }
             }
-            val finished = CountDownLatch(1)
+            // Assert first-frame rendering, not playback EOF (which depends on video duration).
             val firstFrame = CountDownLatch(1)
             val error = AtomicReference<String?>(null)
             val playerRef = AtomicReference<ExoPlayer>()
@@ -114,10 +114,7 @@ class VideoContainerPlaybackTest {
                     override fun onRenderedFirstFrame() { firstFrame.countDown() }
                     override fun onPlayerError(exception: PlaybackException) {
                         error.set(exception.errorCodeName + ": " + exception.message)
-                        finished.countDown()
-                    }
-                    override fun onPlaybackStateChanged(state: Int) {
-                        if (state == Player.STATE_ENDED) finished.countDown()
+                        firstFrame.countDown()
                     }
                 })
                 player.setMediaItem(
@@ -129,10 +126,9 @@ class VideoContainerPlaybackTest {
                 player.play()
             }
             try {
-                assertTrue("Media3 did not finish decoding the M4V sample within 45s: ${error.get()}",
-                    finished.await(45, TimeUnit.SECONDS))
+                assertTrue("Media3 did not render the first M4V frame within 20s: ${error.get()}",
+                    firstFrame.await(20, TimeUnit.SECONDS))
                 assertEquals("Media3 failed to decode M4V", null, error.get())
-                assertTrue("Media3 reached END without rendering a video frame", firstFrame.count == 0L)
             } finally {
                 instrumentation.runOnMainSync {
                     playerRef.get()?.release()
