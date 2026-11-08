@@ -37,6 +37,13 @@ class ExternalMediaKindTest {
         assertEquals(MediaKind.IMAGE, ExternalMediaKind.classify("12345", "image/avif"))
     }
 
+    @Test fun extensionlessSafSvgUsesSvgViewerNotGenericImageDecoder() {
+        assertEquals(MediaKind.SVG, ExternalMediaKind.classify("document", "image/svg+xml"))
+        assertEquals(MediaKind.SVG, ExternalMediaKind.classify("document", "IMAGE/SVG+XML"))
+        assertEquals(MediaKind.SVG, ExternalMediaKind.classify("vector.svg", "image/jpeg"))
+        assertEquals(MediaKind.IMAGE, ExternalMediaKind.classify("photo.avif", "image/svg+xml"))
+    }
+
     @Test fun arbitraryBinaryDoesNotBecomeImage() {
         assertNull(ExternalMediaKind.classify("archive.zip", "application/octet-stream"))
     }
