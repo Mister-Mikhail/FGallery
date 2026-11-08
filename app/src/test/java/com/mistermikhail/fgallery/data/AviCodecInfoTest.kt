@@ -58,6 +58,19 @@ class AviCodecInfoTest {
         assertEquals("MJPG", AviCodecInfo.fourCc(ByteArrayInputStream(chunk("RIFF", body))))
     }
 
+    @Test fun recognizesNumericUncompressedRgbBitmapInfoCompression() {
+        for (compression in listOf(0, 3)) {
+            val streamHeader = ByteArray(56)
+            "vids".toByteArray(Charsets.US_ASCII).copyInto(streamHeader)
+            val bitmapInfo = ByteArray(40)
+            bitmapInfo[0] = 40
+            bitmapInfo[16] = compression.toByte()
+            val body = "AVI ".toByteArray(Charsets.US_ASCII) +
+                list("hdrl", list("strl", chunk("strh", streamHeader), chunk("strf", bitmapInfo)))
+            assertEquals("DIB ", AviCodecInfo.fourCc(ByteArrayInputStream(chunk("RIFF", body))))
+        }
+    }
+
     @Test fun ignoresBitmapInfoCompressionForAudioStreams() {
         val streamHeader = ByteArray(56)
         "auds".toByteArray(Charsets.US_ASCII).copyInto(streamHeader, 0)
