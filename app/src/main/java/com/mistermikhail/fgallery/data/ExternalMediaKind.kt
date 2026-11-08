@@ -22,8 +22,11 @@ internal object ExternalMediaKind {
         "heic", "heif", "tif", "tiff", "jxl", "ico"
     )
 
+    private val legacyVideoMimes = setOf("application/x-avi", "application/avi", "application/x-m4v")
+
     fun classify(name: String, reportedMime: String?): MediaKind? {
-        val extension = name.substringAfterLast('.', "").lowercase(Locale.ROOT)
+        val normalizedMime = reportedMime?.substringBefore(';')?.trim()?.lowercase(Locale.ROOT)
+        val extension = name.trim().substringAfterLast('.', "").lowercase(Locale.ROOT)
         return when {
             extension in videos -> MediaKind.VIDEO
             extension in raws -> MediaKind.RAW
@@ -31,10 +34,10 @@ internal object ExternalMediaKind {
             extension == "svg" -> MediaKind.SVG
             extension in images -> MediaKind.IMAGE
             // A nameless SAF document may only expose the SVG MIME; route it to the SVG viewer.
-            reportedMime?.equals("image/svg+xml", ignoreCase = true) == true -> MediaKind.SVG
-            reportedMime?.startsWith("video/", ignoreCase = true) == true -> MediaKind.VIDEO
-            reportedMime?.startsWith("image/", ignoreCase = true) == true -> MediaKind.IMAGE
-            reportedMime == "application/pdf" -> MediaKind.PDF
+            normalizedMime == "image/svg+xml" -> MediaKind.SVG
+            normalizedMime?.startsWith("video/") == true || normalizedMime in legacyVideoMimes -> MediaKind.VIDEO
+            normalizedMime?.startsWith("image/") == true -> MediaKind.IMAGE
+            normalizedMime == "application/pdf" -> MediaKind.PDF
             else -> null
         }
     }
