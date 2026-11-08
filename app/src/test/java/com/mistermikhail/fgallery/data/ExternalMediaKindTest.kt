@@ -44,6 +44,15 @@ class ExternalMediaKindTest {
         assertEquals(MediaKind.IMAGE, ExternalMediaKind.classify("photo.avif", "image/svg+xml"))
     }
 
+    @Test fun extensionlessSafVideoRecognizesLegacyContainerMimeAliases() {
+        for (mime in listOf("application/x-avi", "application/avi", "application/x-m4v",
+                "APPLICATION/X-AVI", "application/x-avi; charset=binary", "video/x-msvideo")) {
+            assertEquals(mime, MediaKind.VIDEO, ExternalMediaKind.classify("document", mime))
+        }
+        assertEquals(MediaKind.VIDEO, ExternalMediaKind.classify("clip.m4v ", "application/octet-stream"))
+        assertNull(ExternalMediaKind.classify("document", "application/octet-stream"))
+    }
+
     @Test fun arbitraryBinaryDoesNotBecomeImage() {
         assertNull(ExternalMediaKind.classify("archive.zip", "application/octet-stream"))
     }
