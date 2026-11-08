@@ -17,6 +17,8 @@ internal object AviCodecInfo {
         "HEVC", "H265", "X265" -> "H.265/HEVC"
         "HFYU" -> "HuffYUV"
         "FFV1" -> "FFV1"
+        "DIB ", "RGB " -> "несжатое RGB-видео (AVI)"
+        "YUY2", "UYVY" -> "несжатое YUV-видео (AVI)"
         else -> "неизвестный или нестандартный видеокодек"
     }
 
@@ -66,7 +68,7 @@ internal object AviCodecInfo {
                     val codec = ascii(bytes, dataStart + 4, 4).uppercase(Locale.ROOT)
                     // Some AVI writers leave fccHandler unset; strf.biCompression
                     // then contains the actual video FOURCC.
-                    if (codec.length == 4 && codec.all { it.code in 33..126 }) return codec
+                    if (codec.length == 4 && codec.all { it.code in 32..126 } && codec.any { it != ' ' }) return codec
                 }
                 "strf" -> if (insideStream && size >= 20L) {
                     // BITMAPINFOHEADER: biSize at 0, biCompression at 16.
@@ -74,7 +76,7 @@ internal object AviCodecInfo {
                     val headerSize = uint32(bytes, dataStart)
                     if (headerSize >= 20L) {
                         val codec = ascii(bytes, dataStart + 16, 4).uppercase(Locale.ROOT)
-                        if (codec.length == 4 && codec.all { it.code in 33..126 }) {
+                        if (codec.length == 4 && codec.all { it.code in 32..126 } && codec.any { it != ' ' }) {
                             formatCompression = codec
                         }
                     }
