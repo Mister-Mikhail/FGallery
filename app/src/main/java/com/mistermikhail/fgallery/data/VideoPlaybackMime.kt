@@ -9,7 +9,7 @@ import java.util.Locale
  */
 internal object VideoPlaybackMime {
     fun forFile(name: String, reportedMime: String?): String? {
-        val extension = name.substringAfterLast('.', "").lowercase(Locale.ROOT)
+        val extension = name.trim().substringAfterLast('.', "").lowercase(Locale.ROOT)
         // Prefer a recognized extension over an unreliable provider MIME.
         return when (extension) {
             "m4v", "mp4", "m4p", "mov" -> "video/mp4"
@@ -20,7 +20,12 @@ internal object VideoPlaybackMime {
             "webm" -> "video/webm"
             "3gp", "3gpp", "3g2" -> "video/3gpp"
             "ts", "m2ts", "mts" -> "video/mp2t"
-            else -> reportedMime?.takeIf { it.startsWith("video/", ignoreCase = true) }
+            else -> when (val mime = reportedMime?.substringBefore(';')?.trim()?.lowercase(Locale.ROOT)) {
+                "application/x-m4v", "video/x-m4v" -> "video/mp4"
+                "application/x-avi", "application/avi", "video/x-msvideo", "video/avi" -> "video/avi"
+                "video/quicktime" -> "video/mp4"
+                else -> mime?.takeIf { it.startsWith("video/") }
+            }
         }
     }
 }
