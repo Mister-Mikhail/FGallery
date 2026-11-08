@@ -39,6 +39,19 @@ class VideoPlaybackMimeTest {
         }
     }
 
+    @Test fun legacyVideoExtensionsUseContainerMimeDespiteIncorrectSafMime() {
+        val expected = mapOf(
+            "clip.WMV" to "video/x-ms-wmv",
+            "clip.mpeg" to "video/mpeg",
+            "clip.MPG" to "video/mpeg",
+        )
+        expected.forEach { (name, mime) ->
+            assertEquals(name, mime, VideoPlaybackMime.forFile(name, "application/octet-stream"))
+            assertEquals(name, mime, VideoPlaybackMime.forFile(name, "image/jpeg"))
+            assertEquals(name, MediaKind.VIDEO, ExternalMediaKind.classify(name, "image/jpeg"))
+        }
+    }
+
     @Test fun unknownFormatsDoNotMasqueradeAsVideo() {
         assertEquals("video/x-msvideo", VideoPlaybackMime.forFile("unknown.bin", "video/x-msvideo"))
         assertEquals(null, VideoPlaybackMime.forFile("unknown.bin", "application/octet-stream"))
