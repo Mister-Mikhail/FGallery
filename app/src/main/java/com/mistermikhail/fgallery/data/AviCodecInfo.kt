@@ -75,9 +75,17 @@ internal object AviCodecInfo {
                     // A non-video strf must never be interpreted as a codec.
                     val headerSize = uint32(bytes, dataStart)
                     if (headerSize >= 20L) {
-                        val codec = ascii(bytes, dataStart + 16, 4).uppercase(Locale.ROOT)
-                        if (codec.length == 4 && codec.all { it.code in 32..126 } && codec.any { it != ' ' }) {
-                            formatCompression = codec
+                        val compression = uint32(bytes, dataStart + 16)
+                        // biCompression can be a numeric Windows BI_* constant,
+                        // not only a printable FOURCC. BI_RGB (0) and
+                        // BI_BITFIELDS (3) describe uncompressed RGB pixels.
+                        if (compression == 0L || compression == 3L) {
+                            formatCompression = "DIB "
+                        } else {
+                            val codec = ascii(bytes, dataStart + 16, 4).uppercase(Locale.ROOT)
+                            if (codec.length == 4 && codec.all { it.code in 32..126 } && codec.any { it != ' ' }) {
+                                formatCompression = codec
+                            }
                         }
                     }
                 }
