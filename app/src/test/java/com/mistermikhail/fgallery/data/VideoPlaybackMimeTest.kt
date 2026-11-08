@@ -57,4 +57,14 @@ class VideoPlaybackMimeTest {
         assertEquals(null, VideoPlaybackMime.forFile("unknown.bin", "application/octet-stream"))
         assertEquals(null, VideoPlaybackMime.forFile("song.m4a", "audio/mp4"))
     }
+    @Test fun extensionlessSafVideoMimeIsNormalizedForPlayback() {
+        assertEquals("video/mp4", VideoPlaybackMime.forFile("content", " Application/X-M4V ; charset=utf-8 "))
+        assertEquals("video/mp4", VideoPlaybackMime.forFile("content", "video/quicktime"))
+        for (mime in listOf("application/x-avi", "application/avi", "VIDEO/X-MSVIDEO; foo=bar")) {
+            assertEquals(mime, "video/avi", VideoPlaybackMime.forFile("content", mime))
+        }
+        assertEquals("video/mp4", VideoPlaybackMime.forFile("movie.M4V  ", "image/jpeg"))
+        assertEquals(null, VideoPlaybackMime.forFile("content", "application/octet-stream"))
+    }
+
 }
