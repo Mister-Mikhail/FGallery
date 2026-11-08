@@ -14,6 +14,8 @@ internal object VideoPlaybackMime {
         return when (extension) {
             "m4v", "mp4", "m4p", "mov" -> "video/mp4"
             "avi" -> "video/avi"
+            "wmv" -> "video/x-ms-wmv"
+            "mpeg", "mpg" -> "video/mpeg"
             "mkv", "mk3d" -> "video/x-matroska"
             "webm" -> "video/webm"
             "3gp", "3gpp", "3g2" -> "video/3gpp"
