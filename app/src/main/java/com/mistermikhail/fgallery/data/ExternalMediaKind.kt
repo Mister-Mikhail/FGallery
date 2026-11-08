@@ -30,10 +30,11 @@ internal object ExternalMediaKind {
             extension == "pdf" -> MediaKind.PDF
             extension == "svg" -> MediaKind.SVG
             extension in images -> MediaKind.IMAGE
+            // A nameless SAF document may only expose the SVG MIME; route it to the SVG viewer.
+            reportedMime?.equals("image/svg+xml", ignoreCase = true) == true -> MediaKind.SVG
             reportedMime?.startsWith("video/", ignoreCase = true) == true -> MediaKind.VIDEO
             reportedMime?.startsWith("image/", ignoreCase = true) == true -> MediaKind.IMAGE
             reportedMime == "application/pdf" -> MediaKind.PDF
-            reportedMime == "image/svg+xml" -> MediaKind.SVG
             else -> null
         }
     }
