@@ -53,14 +53,14 @@ class VideoPlaybackMimeTest {
     }
 
     @Test fun unknownFormatsDoNotMasqueradeAsVideo() {
-        assertEquals("video/x-msvideo", VideoPlaybackMime.forFile("unknown.bin", "video/x-msvideo"))
+        assertEquals("video/avi", VideoPlaybackMime.forFile("unknown.bin", "video/x-msvideo"))
         assertEquals(null, VideoPlaybackMime.forFile("unknown.bin", "application/octet-stream"))
         assertEquals(null, VideoPlaybackMime.forFile("song.m4a", "audio/mp4"))
     }
     @Test fun extensionlessSafVideoMimeIsNormalizedForPlayback() {
         assertEquals("video/mp4", VideoPlaybackMime.forFile("content", " Application/X-M4V ; charset=utf-8 "))
         assertEquals("video/mp4", VideoPlaybackMime.forFile("content", "video/quicktime"))
-        for (mime in listOf("application/x-avi", "application/avi", "VIDEO/X-MSVIDEO; foo=bar")) {
+        for (mime in listOf("application/x-avi", "application/avi", "VIDEO/X-MSVIDEO; foo=bar", " video/msvideo ; charset=binary ")) {
             assertEquals(mime, "video/avi", VideoPlaybackMime.forFile("content", mime))
         }
         assertEquals("video/mp4", VideoPlaybackMime.forFile("movie.M4V  ", "image/jpeg"))
