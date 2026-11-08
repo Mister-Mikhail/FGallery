@@ -104,6 +104,19 @@ class AviCodecInfoTest {
         assertNull(AviCodecInfo.fourCc(ByteArrayInputStream(complete.copyOf(complete.size - 1))))
     }
 
+    @Test fun readsVideoHeaderFromLargeAviWithoutLoadingFullVideo() {
+        val videoHeader = ByteArray(56)
+        "vidsMJPG".toByteArray(Charsets.US_ASCII).copyInto(videoHeader)
+        val header = "AVI ".toByteArray(Charsets.US_ASCII) +
+            list("hdrl", list("strl", chunk("strh", videoHeader)))
+        // Large AVI containers are sampled to 256 KiB. The header must remain
+        // discoverable even when the declared RIFF size exceeds that limit.
+        val riff = chunk("RIFF", header).clone()
+        val declaredSize = 8 * 1024 * 1024
+        for (index in 0..3) riff[4 + index] = (declaredSize ushr (8 * index)).toByte()
+        assertEquals("MJPG", AviCodecInfo.fourCc(ByteArrayInputStream(riff)))
+    }
+
     @Test fun rejectsNonAviAndTruncatedHeaders() {
         assertNull(AviCodecInfo.fourCc(ByteArrayInputStream(byteArrayOf(1, 2, 3))))
         assertNull(AviCodecInfo.fourCc(ByteArrayInputStream(ByteArray(128))))
