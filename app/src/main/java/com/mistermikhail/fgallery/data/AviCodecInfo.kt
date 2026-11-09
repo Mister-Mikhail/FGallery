@@ -74,7 +74,7 @@ internal object AviCodecInfo {
                     // BITMAPINFOHEADER: biSize at 0, biCompression at 16.
                     // A non-video strf must never be interpreted as a codec.
                     val headerSize = uint32(bytes, dataStart)
-                    if (headerSize >= 20L) {
+                    if (headerSize >= 20L && headerSize <= size) {
                         val compression = uint32(bytes, dataStart + 16)
                         // biCompression can be a numeric Windows BI_* constant,
                         // not only a printable FOURCC. BI_RGB (0) and
