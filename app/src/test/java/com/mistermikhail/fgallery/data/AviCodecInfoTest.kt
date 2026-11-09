@@ -71,6 +71,17 @@ class AviCodecInfoTest {
         }
     }
 
+    @Test fun rejectsTruncatedBitmapInfoHeaderEvenWhenCompressionBytesExist() {
+        val streamHeader = ByteArray(56)
+        "vids".toByteArray(Charsets.US_ASCII).copyInto(streamHeader)
+        val bitmapInfo = ByteArray(20)
+        bitmapInfo[0] = 40 // biSize claims 40 bytes, but strf contains only 20
+        "MJPG".toByteArray(Charsets.US_ASCII).copyInto(bitmapInfo, 16)
+        val body = "AVI ".toByteArray(Charsets.US_ASCII) +
+            list("hdrl", list("strl", chunk("strh", streamHeader), chunk("strf", bitmapInfo)))
+        assertNull(AviCodecInfo.fourCc(ByteArrayInputStream(chunk("RIFF", body))))
+    }
+
     @Test fun ignoresBitmapInfoCompressionForAudioStreams() {
         val streamHeader = ByteArray(56)
         "auds".toByteArray(Charsets.US_ASCII).copyInto(streamHeader, 0)
