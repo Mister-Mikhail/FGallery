@@ -170,6 +170,35 @@ class AviCodecInfoTest {
         org.junit.Assert.assertTrue("Should not drain 256 KiB from SAF", stream.bytesRead < 8192)
     }
 
+    @Test fun largeAviFindsCompleteVideoHeaderInsidePartiallyBufferedHdrl() {
+        val videoHeader = ByteArray(56)
+        "vidsMJPG".toByteArray(Charsets.US_ASCII).copyInto(videoHeader)
+        val riff = chunk(
+            "RIFF",
+            "AVI ".toByteArray(Charsets.US_ASCII) +
+                list("hdrl", list("strl", chunk("strh", videoHeader)))
+        )
+        // A real AVI may have a very large hdrl LIST with later chunks that
+        // have not yet arrived from SAF. Both declared boundaries remain valid.
+        val large = riff + ByteArray(256 * 1024)
+        val riffSize = 8 * 1024 * 1024
+        val hdrlSize = 1024 * 1024
+        for (i in 0..3) {
+            large[4 + i] = (riffSize ushr (8 * i)).toByte()
+            large[16 + i] = (hdrlSize ushr (8 * i)).toByte()
+        }
+        val stream = object : ByteArrayInputStream(large) {
+            var bytesRead = 0
+            override fun read(b: ByteArray, off: Int, len: Int): Int {
+                val n = super.read(b, off, minOf(len, 11))
+                if (n > 0) bytesRead += n
+                return n
+            }
+        }
+        assertEquals("MJPG", AviCodecInfo.fourCc(stream))
+        org.junit.Assert.assertTrue(stream.bytesRead < 8192)
+    }
+
     @Test fun rejectsNonAviAndTruncatedHeaders() {
         assertNull(AviCodecInfo.fourCc(ByteArrayInputStream(byteArrayOf(1, 2, 3))))
         assertNull(AviCodecInfo.fourCc(ByteArrayInputStream(ByteArray(128))))
