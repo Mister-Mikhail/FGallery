@@ -147,6 +147,29 @@ class AviCodecInfoTest {
         assertEquals("MJPG", AviCodecInfo.fourCc(ByteArrayInputStream(riff)))
     }
 
+
+    @Test fun largeSafAviStopsReadingAfterCompleteHeader() {
+        val header = sample("MJPG")
+        val declaredSize = 8 * 1024 * 1024
+        for (index in 0..3) header[4 + index] = (declaredSize ushr (8 * index)).toByte()
+        val source = header + ByteArray(256 * 1024)
+        val stream = object : ByteArrayInputStream(source) {
+            var bytesRead = 0
+            override fun read(b: ByteArray, off: Int, len: Int): Int {
+                val n = super.read(b, off, minOf(len, 7))
+                if (n > 0) bytesRead += n
+                return n
+            }
+            override fun read(): Int {
+                val n = super.read()
+                if (n >= 0) bytesRead++
+                return n
+            }
+        }
+        assertEquals("MJPG", AviCodecInfo.fourCc(stream))
+        org.junit.Assert.assertTrue("Should not drain 256 KiB from SAF", stream.bytesRead < 8192)
+    }
+
     @Test fun rejectsNonAviAndTruncatedHeaders() {
         assertNull(AviCodecInfo.fourCc(ByteArrayInputStream(byteArrayOf(1, 2, 3))))
         assertNull(AviCodecInfo.fourCc(ByteArrayInputStream(ByteArray(128))))
