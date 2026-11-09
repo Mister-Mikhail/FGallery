@@ -11,6 +11,8 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.test.platform.app.InstrumentationRegistry
 import com.mistermikhail.fgallery.data.VideoPlaybackMime
+import com.mistermikhail.fgallery.data.ExternalMediaKind
+import com.mistermikhail.fgallery.data.MediaKind
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
@@ -44,6 +46,17 @@ class VideoContentUriPlaybackTest {
             resolver.update(mediaUri, ContentValues().apply {
                 put(MediaStore.Video.Media.IS_PENDING, 0)
             }, null, null)
+
+            // Verify that MediaStore exposes a playable video item after publishing,
+            // rather than merely checking ExoPlayer against a privately held URI.
+            resolver.query(mediaUri, arrayOf(MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.MIME_TYPE), null, null, null)?.use { cursor ->
+                assertTrue("Published M4V missing from MediaStore", cursor.moveToFirst())
+                val name = cursor.getString(0)
+                val mime = cursor.getString(1)
+                assertEquals("fgallery-content-uri-test.m4v", name)
+                assertEquals(MediaKind.VIDEO, ExternalMediaKind.classify(name, mime))
+                assertEquals("video/mp4", VideoPlaybackMime.forFile(name, mime))
+            } ?: error("MediaStore query failed")
 
             val firstFrame = CountDownLatch(1)
             val failure = AtomicReference<String?>(null)
