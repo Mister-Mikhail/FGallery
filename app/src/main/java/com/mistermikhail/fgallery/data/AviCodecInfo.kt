@@ -48,7 +48,7 @@ internal object AviCodecInfo {
         if (declaredEnd <= bytes.size) {
             readUntil(limit)
             if (count < limit) return null
-            return findVideoHeader(bytes, 12, limit, insideStream = false)
+            return findVideoHeader(bytes, 12, limit, insideStream = false, parentEnd = declaredEnd)
         }
 
         // Large SAF-backed AVI: stop reading as soon as a complete video
@@ -56,60 +56,72 @@ internal object AviCodecInfo {
         while (count < limit) {
             val target = minOf(limit, count + 4096)
             readUntil(target)
-            findVideoHeader(bytes, 12, count, insideStream = false)?.let { return it }
+            findVideoHeader(bytes, 12, count, insideStream = false, parentEnd = declaredEnd)?.let { return it }
             if (count < target) break
         }
         return null
     }
 
-    private fun findVideoHeader(bytes: ByteArray, start: Int, end: Int, insideStream: Boolean): String? {
+    /**
+     * [end] is the available prefix, while [parentEnd] is the declared RIFF/LIST
+     * boundary. Large SAF streams may have complete strh/strf chunks inside an
+     * incomplete hdrl LIST. Never inspect an incomplete leaf chunk.
+     */
+    private fun findVideoHeader(
+        bytes: ByteArray,
+        start: Int,
+        end: Int,
+        insideStream: Boolean,
+        parentEnd: Long,
+    ): String? {
         var offset = start
         var videoStream = false
         var formatCompression: String? = null
-        while (offset.toLong() + 8 <= end.toLong()) {
+        while (offset.toLong() + 8L <= end.toLong()) {
             val size = uint32(bytes, offset + 4)
             val dataStart = offset + 8
             val dataEnd = dataStart.toLong() + size
-            if (dataEnd > end || dataEnd < dataStart) return null
+            val next = dataEnd + (size and 1L)
+            if (dataEnd < dataStart || next > parentEnd || next <= offset) return null
             when (ascii(bytes, offset, 4)) {
-                "LIST" -> if (size >= 4L) {
+                "LIST" -> {
+                    if (size < 4L || dataStart.toLong() + 4L > end) return null
                     val listType = ascii(bytes, dataStart, 4)
-                    // Only 'strl' contains a stream header. 'hdrl' contains stream lists.
                     if (listType == "hdrl" || listType == "strl") {
-                        findVideoHeader(bytes, dataStart + 4, dataEnd.toInt(), listType == "strl")
-                            ?.let { return it }
+                        findVideoHeader(
+                            bytes, dataStart + 4, minOf(dataEnd, end.toLong()).toInt(),
+                            listType == "strl", dataEnd,
+                        )?.let { return it }
                     }
                 }
-                "strh" -> if (insideStream && size >= 56L &&
-                    ascii(bytes, dataStart, 4) == "vids") {
-                    videoStream = true
-                    val codec = ascii(bytes, dataStart + 4, 4).uppercase(Locale.ROOT)
-                    // Some AVI writers leave fccHandler unset; strf.biCompression
-                    // then contains the actual video FOURCC.
-                    if (codec.length == 4 && codec.all { it.code in 32..126 } && codec.any { it != ' ' }) return codec
+                "strh" -> {
+                    if (dataEnd > end) return null
+                    if (insideStream && size >= 56L && ascii(bytes, dataStart, 4) == "vids") {
+                        videoStream = true
+                        val codec = ascii(bytes, dataStart + 4, 4).uppercase(Locale.ROOT)
+                        if (codec.length == 4 && codec.all { it.code in 32..126 } && codec.any { it != ' ' }) return codec
+                    }
                 }
-                "strf" -> if (insideStream && size >= 20L) {
-                    // BITMAPINFOHEADER: biSize at 0, biCompression at 16.
-                    // A non-video strf must never be interpreted as a codec.
-                    val headerSize = uint32(bytes, dataStart)
-                    if (headerSize >= 20L && headerSize <= size) {
-                        val compression = uint32(bytes, dataStart + 16)
-                        // biCompression can be a numeric Windows BI_* constant,
-                        // not only a printable FOURCC. BI_RGB (0) and
-                        // BI_BITFIELDS (3) describe uncompressed RGB pixels.
-                        if (compression == 0L || compression == 3L) {
-                            formatCompression = "DIB "
-                        } else {
-                            val codec = ascii(bytes, dataStart + 16, 4).uppercase(Locale.ROOT)
-                            if (codec.length == 4 && codec.all { it.code in 32..126 } && codec.any { it != ' ' }) {
-                                formatCompression = codec
+                "strf" -> {
+                    if (dataEnd > end) return null
+                    if (insideStream && videoStream && size >= 20L) {
+                        val headerSize = uint32(bytes, dataStart)
+                        if (headerSize >= 20L && headerSize <= size) {
+                            val compression = uint32(bytes, dataStart + 16)
+                            if (compression == 0L || compression == 3L) {
+                                formatCompression = "DIB "
+                            } else {
+                                val codec = ascii(bytes, dataStart + 16, 4).uppercase(Locale.ROOT)
+                                if (codec.length == 4 && codec.all { it.code in 32..126 } && codec.any { it != ' ' }) {
+                                    formatCompression = codec
+                                }
                             }
                         }
                     }
                 }
+                else -> if (dataEnd > end) return null
             }
-            val next = dataEnd + (size and 1L)
-            if (next <= offset || next > Int.MAX_VALUE) return null
+            if (next > end) break
             offset = next.toInt()
         }
         return if (insideStream && videoStream) formatCompression else null
