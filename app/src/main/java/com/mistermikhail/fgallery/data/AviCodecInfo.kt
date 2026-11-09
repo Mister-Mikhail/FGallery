@@ -25,23 +25,41 @@ internal object AviCodecInfo {
     fun fourCc(input: InputStream): String? {
         val bytes = ByteArray(256 * 1024)
         var count = 0
-        while (count < bytes.size) {
-            val n = input.read(bytes, count, bytes.size - count)
-            if (n < 0) break
-            if (n == 0) {
-                val one = input.read()
-                if (one < 0) break
-                bytes[count++] = one.toByte()
-            } else count += n
+        fun readUntil(target: Int) {
+            while (count < target) {
+                val n = input.read(bytes, count, target - count)
+                if (n < 0) break
+                if (n == 0) {
+                    val one = input.read()
+                    if (one < 0) break
+                    bytes[count++] = one.toByte()
+                } else count += n
+            }
         }
+
+        readUntil(12)
         if (count < 12 || ascii(bytes, 0, 4) != "RIFF" || ascii(bytes, 8, 4) != "AVI ") return null
         val riffSize = uint32(bytes, 4)
         if (riffSize < 4L) return null
-        // A small RIFF must be complete: otherwise a truncated AVI could report a
-        // valid codec from its header while its declared container is incomplete.
-        // Large videos are intentionally sampled only up to the 256 KiB cap.
-        if (riffSize + 8L <= bytes.size.toLong() && count.toLong() < riffSize + 8L) return null
-        return findVideoHeader(bytes, 12, minOf(count.toLong(), riffSize + 8).toInt(), insideStream = false)
+        val declaredEnd = riffSize + 8L
+        val limit = minOf(bytes.size.toLong(), declaredEnd).toInt()
+
+        // Small RIFF containers must be complete, even if the header looks valid.
+        if (declaredEnd <= bytes.size) {
+            readUntil(limit)
+            if (count < limit) return null
+            return findVideoHeader(bytes, 12, limit, insideStream = false)
+        }
+
+        // Large SAF-backed AVI: stop reading as soon as a complete video
+        // header is available. Never scan more than the original 256 KiB cap.
+        while (count < limit) {
+            val target = minOf(limit, count + 4096)
+            readUntil(target)
+            findVideoHeader(bytes, 12, count, insideStream = false)?.let { return it }
+            if (count < target) break
+        }
+        return null
     }
 
     private fun findVideoHeader(bytes: ByteArray, start: Int, end: Int, insideStream: Boolean): String? {
