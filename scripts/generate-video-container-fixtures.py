@@ -17,6 +17,13 @@ for binary in ("ffmpeg", "ffprobe"):
         sys.exit(f"Missing {binary}; install FFmpeg before generating fixtures")
 OUT.mkdir(parents=True, exist_ok=True)
 
+expected_codecs = {
+    "avi-mjpeg-pcm.avi": {"video": "mjpeg", "audio": "pcm_s16le"},
+    "avi-mpeg4-mp3.avi": {"video": "mpeg4", "audio": "mp3"},
+    "m4v-h264-aac.m4v": {"video": "h264", "audio": "aac"},
+    "m4v-hevc-aac.m4v": {"video": "hevc", "audio": "aac"},
+}
+
 samples = {
     "avi-mjpeg-pcm.avi": ["-c:v", "mjpeg", "-q:v", "5", "-c:a", "pcm_s16le", "-f", "avi"],
     "avi-mpeg4-mp3.avi": ["-c:v", "mpeg4", "-q:v", "5", "-c:a", "libmp3lame", "-b:a", "96k", "-f", "avi"],
@@ -40,10 +47,21 @@ for name, encoding in samples.items():
          "-of", "json", str(path)],
         check=True, capture_output=True, text=True,
     )
+    metadata = json.loads(probe.stdout)
+    actual_codecs = {stream["codec_type"]: stream["codec_name"]
+                     for stream in metadata.get("streams", [])
+                     if stream.get("codec_type") in ("video", "audio")}
+    if actual_codecs != expected_codecs[name]:
+        raise RuntimeError(
+            f"{name}: unexpected encoded streams {actual_codecs}; "
+            f"expected {expected_codecs[name]}"
+        )
+    if not path.stat().st_size:
+        raise RuntimeError(f"{name}: empty fixture")
     manifest[name] = {
         "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
         "bytes": path.stat().st_size,
-        "ffprobe": json.loads(probe.stdout),
+        "ffprobe": metadata,
     }
 (OUT / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
 print(f"Generated {len(manifest)} samples and manifest in {OUT}")
