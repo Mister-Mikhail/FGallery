@@ -58,6 +58,18 @@ for name, encoding in samples.items():
         )
     if not path.stat().st_size:
         raise RuntimeError(f"{name}: empty fixture")
+    # Validate container bytes independently of the extension and codec names.
+    with path.open("rb") as sample:
+        header = sample.read(12)
+    formats = metadata.get("format", {}).get("format_name", "").split(",")
+    if name.endswith(".avi"):
+        if header[:4] != b"RIFF" or header[8:12] != b"AVI " or "avi" not in formats:
+            raise RuntimeError(f"{name}: expected a genuine RIFF AVI container")
+    else:
+        if header[4:8] != b"ftyp" or not ({"mov", "mp4"} & set(formats)):
+            raise RuntimeError(f"{name}: expected an ISO BMFF MP4-family container")
+    if len(metadata.get("streams", [])) != 2:
+        raise RuntimeError(f"{name}: expected exactly one video and one audio stream")
     manifest[name] = {
         "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
         "bytes": path.stat().st_size,
