@@ -162,7 +162,7 @@ class MediaRepository(private val context: Context) {
         )
         val mediaSelection =
             "${MediaStore.Files.FileColumns.MEDIA_TYPE}=? OR ${MediaStore.Files.FileColumns.MEDIA_TYPE}=?" +
-                ((if (StorageFolders.hasFileAccess()) RAW_EXTENSIONS + listOf(".tif", ".tiff") else emptyList()) + listOf(".avi", ".m4v")).joinToString("", prefix = "") { " OR LOWER(${MediaStore.MediaColumns.DISPLAY_NAME}) LIKE ?" } else ""
+                ((if (StorageFolders.hasFileAccess()) RAW_EXTENSIONS + listOf(".tif", ".tiff") else emptyList()) + listOf(".avi", ".m4v")).joinToString(separator = "") { " OR LOWER(${MediaStore.MediaColumns.DISPLAY_NAME}) LIKE ?" }
         val selection = "($mediaSelection)" +
             if (since != null) " AND ${MediaStore.MediaColumns.GENERATION_MODIFIED} > ?" else ""
         val args = arrayOf(
