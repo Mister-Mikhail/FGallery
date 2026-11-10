@@ -89,8 +89,8 @@ class MediaRepository(private val context: Context) {
         // The ID set must use the SAME gallery eligibility filter as
         // queryVolume(). Otherwise a RAW renamed to .txt retains its ID in
         // MediaStore.Files and survives incremental reconciliation as a ghost.
-        val extensions = if (StorageFolders.hasFileAccess())
-            RAW_EXTENSIONS + listOf(".tif", ".tiff", ".avi", ".m4v") else emptyList()
+        val extensions = (if (StorageFolders.hasFileAccess()) RAW_EXTENSIONS + listOf(".tif", ".tiff") else emptyList()) +
+            listOf(".avi", ".m4v")
         val selection = buildString {
             append("${MediaStore.Files.FileColumns.MEDIA_TYPE}=? OR ${MediaStore.Files.FileColumns.MEDIA_TYPE}=?")
             extensions.forEach {
@@ -162,13 +162,13 @@ class MediaRepository(private val context: Context) {
         )
         val mediaSelection =
             "${MediaStore.Files.FileColumns.MEDIA_TYPE}=? OR ${MediaStore.Files.FileColumns.MEDIA_TYPE}=?" +
-                if (StorageFolders.hasFileAccess()) (RAW_EXTENSIONS + listOf(".tif", ".tiff", ".avi", ".m4v")).joinToString("", prefix = "") { " OR LOWER(${MediaStore.MediaColumns.DISPLAY_NAME}) LIKE ?" } else ""
+                ((if (StorageFolders.hasFileAccess()) RAW_EXTENSIONS + listOf(".tif", ".tiff") else emptyList()) + listOf(".avi", ".m4v")).joinToString("", prefix = "") { " OR LOWER(${MediaStore.MediaColumns.DISPLAY_NAME}) LIKE ?" } else ""
         val selection = "($mediaSelection)" +
             if (since != null) " AND ${MediaStore.MediaColumns.GENERATION_MODIFIED} > ?" else ""
         val args = arrayOf(
             MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString(),
             MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString(),
-        ) + (if (StorageFolders.hasFileAccess()) (RAW_EXTENSIONS + listOf(".tif", ".tiff", ".avi", ".m4v")).map { "%$it" }.toTypedArray() else emptyArray()) +
+        ) + (((if (StorageFolders.hasFileAccess()) RAW_EXTENSIONS + listOf(".tif", ".tiff") else emptyList()) + listOf(".avi", ".m4v")).map { "%$it" }.toTypedArray()) +
             (if (since != null) arrayOf(since.toString()) else emptyArray())
         val sort =
             "${MediaStore.MediaColumns.DATE_TAKEN} DESC, ${MediaStore.MediaColumns.DATE_ADDED} DESC"
