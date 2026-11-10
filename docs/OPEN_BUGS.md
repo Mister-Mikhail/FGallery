@@ -54,3 +54,8 @@
 ## CI-проверка 2026-11-07 (коммит `4bbbaddb`)
 - [Integration QA #42323828682](https://github.com/Mister-Mikhail/FGallery/actions/runs/42323828682): **success**, `r8-build` (JVM-регрессии, R8 APK, проверка mapping/подписи) и `r8-device-tests` (Android emulator) — **success**. `publish-qa` — **skipped**. Отдельный `Android CI #42323835486` — `skipped` по условиям workflow, не провал интеграционной проверки.
 - Этот зелёный CI **не подтверждает** реальное декодирование AVI/MJPEG, корректность всех AVI/M4V и воспроизведение на физическом S23. До подтверждения demux/decode и регрессионных образцов не выпускать новый QA APK. Последний опубликованный релиз по GitHub Releases — build48.
+
+## CI-проверка 2026-11-10 (HEAD `1c63e3be`)
+- [Integration QA #42806387814](https://github.com/Mister-Mikhail/FGallery/actions/runs/42806387814) — **success**: `r8-build` (JVM + R8 + подпись) и `r8-device-tests` (эмулятор) успешны; `publish-qa` — **skipped**. Отдельный [Android CI #42806398218](https://github.com/Mister-Mikhail/FGallery/actions/runs/42806398218) — `skipped` по условиям workflow, **не** признак провала интеграционного CI.
+- Проверка генератора AVI/M4V и успешный эмуляторный CI не доказывают декодирование настоящего AVI (MJPEG/DivX/Xvid) или HEVC M4V на S23. В `VideoContainerPlaybackTest` для M4V используется MP4-образец с изменённым расширением; AVI проверяется только по MIME. Требуются настоящие образцы и проверка первого кадра, превью и SAF/MediaStore; не объявлять AVI исправленным.
+- GitHub Releases по состоянию на 2026-11-10: последний QA prerelease — **build48**. Нового ARM64 APK нет. Не публиковать до закрытия проверок; PR остаётся draft.
