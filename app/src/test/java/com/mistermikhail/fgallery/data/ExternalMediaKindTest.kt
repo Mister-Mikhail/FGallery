@@ -47,7 +47,9 @@ class ExternalMediaKindTest {
     @Test fun extensionlessSafVideoRecognizesLegacyContainerMimeAliases() {
         for (mime in listOf("application/x-avi", "application/avi", "application/x-m4v",
                 "APPLICATION/X-AVI", "application/x-avi; charset=binary", "video/x-msvideo",
-                "application/x-msvideo", "APPLICATION/X-MSVIDEO; charset=binary")) {
+                "application/x-msvideo", "APPLICATION/X-MSVIDEO; charset=binary",
+                "video/msvideo", "VIDEO/MSVIDEO; charset=binary",
+                "video/x-m4v", "VIDEO/X-M4V; charset=binary")) {
             assertEquals(mime, MediaKind.VIDEO, ExternalMediaKind.classify("document", mime))
         }
         assertEquals(MediaKind.VIDEO, ExternalMediaKind.classify("clip.m4v ", "application/octet-stream"))
