@@ -67,4 +67,28 @@ class VideoPlaybackMimeTest {
         assertEquals(null, VideoPlaybackMime.forFile("content", "application/octet-stream"))
     }
 
+    @Test fun allExternallyRecognizedVideoExtensionsHavePlaybackContainerHints() {
+        val extensions = listOf(
+            "avi", "m4v", "m4p", "mp4", "mov", "mkv", "mk3d", "webm",
+            "3gp", "3gpp", "3g2", "wmv", "mpeg", "mpg", "ts", "m2ts", "mts"
+        )
+        for (extension in extensions) {
+            val name = "recording.$extension"
+            assertEquals(name, MediaKind.VIDEO, ExternalMediaKind.classify(name, "application/octet-stream"))
+            org.junit.Assert.assertNotNull(name, VideoPlaybackMime.forFile(name, "application/octet-stream"))
+        }
+    }
+
+    @Test fun extensionlessSafLegacyVideoMimesRouteToVideoAndPlaybackTogether() {
+        val mimes = listOf(
+            "application/x-avi", "application/avi", "application/x-msvideo",
+            "video/x-msvideo", "video/msvideo", "application/x-m4v", "video/x-m4v"
+        )
+        for (mime in mimes) {
+            val reported = " ${mime.uppercase(java.util.Locale.ROOT)} ; charset=binary "
+            assertEquals(mime, MediaKind.VIDEO, ExternalMediaKind.classify("content", reported))
+            org.junit.Assert.assertNotNull(mime, VideoPlaybackMime.forFile("content", reported))
+        }
+    }
+
 }
