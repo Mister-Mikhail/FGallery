@@ -24,7 +24,8 @@ internal object ExternalMediaKind {
 
     private val legacyVideoMimes = setOf(
         "application/x-avi", "application/avi", "application/x-msvideo",
-        "video/x-msvideo", "video/msvideo", "application/x-m4v", "video/x-m4v"
+        "video/x-msvideo", "video/msvideo", "application/x-m4v", "video/x-m4v",
+        "application/mp4", "application/x-mp4", "application/m4v"
     )
 
     fun classify(name: String, reportedMime: String?): MediaKind? {
