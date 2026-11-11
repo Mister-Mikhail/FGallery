@@ -161,6 +161,20 @@ class VideoContainerPlaybackTest {
                 assertEquals(8, stream.read(header))
                 assertEquals("ftyp", String(header, 4, 4, Charsets.US_ASCII))
             }
+            // Verify that the generated fixture really exercises the requested codec,
+            // rather than merely relying on its filename or ISO BMFF header.
+            val extractor = MediaExtractor()
+            try {
+                extractor.setDataSource(file.absolutePath)
+                val videoMimes = (0 until extractor.trackCount).mapNotNull { track ->
+                    extractor.getTrackFormat(track).getString(MediaFormat.KEY_MIME)
+                }.filter { it.startsWith("video/") }
+                val expectedVideoMime = if (assetName.contains("hevc")) "video/hevc" else "video/avc"
+                assertTrue("$assetName does not contain $expectedVideoMime: $videoMimes",
+                    expectedVideoMime in videoMimes)
+            } finally {
+                extractor.release()
+            }
             val firstFrame = CountDownLatch(1)
             val error = AtomicReference<String?>(null)
             val playerRef = AtomicReference<ExoPlayer>()
