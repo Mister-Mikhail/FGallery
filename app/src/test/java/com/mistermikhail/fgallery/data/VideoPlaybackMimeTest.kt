@@ -60,7 +60,7 @@ class VideoPlaybackMimeTest {
     @Test fun extensionlessSafVideoMimeIsNormalizedForPlayback() {
         assertEquals("video/mp4", VideoPlaybackMime.forFile("content", " Application/X-M4V ; charset=utf-8 "))
         assertEquals("video/mp4", VideoPlaybackMime.forFile("content", "video/quicktime"))
-        for (mime in listOf("application/x-avi", "application/avi", "VIDEO/X-MSVIDEO; foo=bar", " video/msvideo ; charset=binary ")) {
+        for (mime in listOf("application/x-avi", "application/avi", "application/x-msvideo", " APPLICATION/X-MSVIDEO ; charset=binary ", "VIDEO/X-MSVIDEO; foo=bar", " video/msvideo ; charset=binary ")) {
             assertEquals(mime, "video/avi", VideoPlaybackMime.forFile("content", mime))
         }
         assertEquals("video/mp4", VideoPlaybackMime.forFile("movie.M4V  ", "image/jpeg"))
