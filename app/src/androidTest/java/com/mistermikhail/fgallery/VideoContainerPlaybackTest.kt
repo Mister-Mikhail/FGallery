@@ -204,17 +204,22 @@ class VideoContainerPlaybackTest {
         }
     }
 
-    /** Genuine RIFF AVI sample must never be silently treated as an MP4 file. */
-    @Test fun genuineAviHasRiffHeaderAndCorrectMime() {
+    /** Both generated AVI fixtures must be genuine RIFF/AVI containers, not renamed MP4. */
+    @Test fun genuineMjpegAviHasRiffHeaderAndCorrectMime() = assertGenuineAviContainer("avi-mjpeg-pcm.avi")
+
+    @Test fun genuineMpeg4AviHasRiffHeaderAndCorrectMime() = assertGenuineAviContainer("avi-mpeg4-mp3.avi")
+
+    private fun assertGenuineAviContainer(assetName: String) {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
-        instrumentation.context.assets.open("avi-mjpeg-pcm.avi").use { input ->
+        instrumentation.context.assets.open(assetName).use { input ->
             val header = ByteArray(12)
-            assertEquals(12, input.read(header))
+            assertEquals("AVI header length for $assetName", 12, input.read(header))
             assertEquals("RIFF", String(header, 0, 4, Charsets.US_ASCII))
             assertEquals("AVI ", String(header, 8, 4, Charsets.US_ASCII))
         }
-        assertEquals("video/avi",
-            VideoPlaybackMime.forFile("avi-mjpeg-pcm.avi", "application/octet-stream"))
+        assertEquals("video/avi", VideoPlaybackMime.forFile(assetName, "application/octet-stream"))
+        // Container recognition is deliberately separate from decoder support.
+        // Neither this test nor MIME detection promises Media3 can demux AVI.
     }
 
     @Test fun aviIsNotMislabelledAsMp4() {
