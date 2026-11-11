@@ -82,7 +82,8 @@ class VideoPlaybackMimeTest {
     @Test fun extensionlessSafLegacyVideoMimesRouteToVideoAndPlaybackTogether() {
         val mimes = listOf(
             "application/x-avi", "application/avi", "application/x-msvideo",
-            "video/x-msvideo", "video/msvideo", "application/x-m4v", "video/x-m4v"
+            "video/x-msvideo", "video/msvideo", "application/x-m4v", "video/x-m4v",
+            "application/mp4", "application/x-mp4", "application/m4v"
         )
         for (mime in mimes) {
             val reported = " ${mime.uppercase(java.util.Locale.ROOT)} ; charset=binary "
