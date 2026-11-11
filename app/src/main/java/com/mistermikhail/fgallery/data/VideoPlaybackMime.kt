@@ -22,7 +22,7 @@ internal object VideoPlaybackMime {
             "ts", "m2ts", "mts" -> "video/mp2t"
             else -> when (val mime = reportedMime?.substringBefore(';')?.trim()?.lowercase(Locale.ROOT)) {
                 "application/x-m4v", "video/x-m4v" -> "video/mp4"
-                "application/x-avi", "application/avi", "video/x-msvideo", "video/avi", "video/msvideo" -> "video/avi"
+                "application/x-avi", "application/avi", "application/x-msvideo", "video/x-msvideo", "video/avi", "video/msvideo" -> "video/avi"
                 "video/quicktime" -> "video/mp4"
                 else -> mime?.takeIf { it.startsWith("video/") }
             }
