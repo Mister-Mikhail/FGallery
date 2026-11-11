@@ -22,7 +22,7 @@ internal object ExternalMediaKind {
         "heic", "heif", "tif", "tiff", "jxl", "ico"
     )
 
-    private val legacyVideoMimes = setOf("application/x-avi", "application/avi", "application/x-m4v")
+    private val legacyVideoMimes = setOf("application/x-avi", "application/avi", "application/x-msvideo", "application/x-m4v")
 
     fun classify(name: String, reportedMime: String?): MediaKind? {
         val normalizedMime = reportedMime?.substringBefore(';')?.trim()?.lowercase(Locale.ROOT)
