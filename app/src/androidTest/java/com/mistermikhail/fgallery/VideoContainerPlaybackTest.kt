@@ -172,6 +172,11 @@ class VideoContainerPlaybackTest {
                 val expectedVideoMime = if (assetName.contains("hevc")) "video/hevc" else "video/avc"
                 assertTrue("$assetName does not contain $expectedVideoMime: $videoMimes",
                     expectedVideoMime in videoMimes)
+                val audioMimes = (0 until extractor.trackCount).mapNotNull { track ->
+                    extractor.getTrackFormat(track).getString(MediaFormat.KEY_MIME)
+                }.filter { it.startsWith("audio/") }
+                assertTrue("$assetName must include an AAC track: $audioMimes",
+                    "audio/mp4a-latm" in audioMimes)
             } finally {
                 extractor.release()
             }
