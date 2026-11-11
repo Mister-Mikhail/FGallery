@@ -13,6 +13,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 import androidx.test.platform.app.InstrumentationRegistry
+import com.mistermikhail.fgallery.data.AviCodecInfo
 import com.mistermikhail.fgallery.data.VideoPlaybackMime
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -218,6 +219,11 @@ class VideoContainerPlaybackTest {
             assertEquals("AVI ", String(header, 8, 4, Charsets.US_ASCII))
         }
         assertEquals("video/avi", VideoPlaybackMime.forFile(assetName, "application/octet-stream"))
+        // Exercise the bounded RIFF parser on genuine AVI bytes, as used for
+        // unsupported-codec diagnostics on files opened through SAF.
+        val fourCc = instrumentation.context.assets.open(assetName).use { AviCodecInfo.fourCc(it) }
+        assertTrue("Missing AVI video FOURCC: $assetName", !fourCc.isNullOrBlank())
+        if (assetName == "avi-mjpeg-pcm.avi") assertEquals("MJPG", fourCc)
         // Container recognition is deliberately separate from decoder support.
         // Neither this test nor MIME detection promises Media3 can demux AVI.
     }
