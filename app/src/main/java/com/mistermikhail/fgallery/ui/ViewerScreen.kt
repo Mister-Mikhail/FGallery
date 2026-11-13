@@ -650,7 +650,27 @@ private fun VideoPlayer(
 
         playbackFailure?.let { message ->
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(text = message, color = Color.White, modifier = Modifier.background(Color.Black.copy(alpha = 0.82f)).padding(20.dp))
+                androidx.compose.foundation.layout.Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.background(Color.Black.copy(alpha = 0.82f)).padding(20.dp),
+                ) {
+                    Text(text = if (item.name.endsWith(".avi", ignoreCase = true)) "Кодек не поддерживается" else "Ошибка воспроизведения",
+                        color = Color.White)
+                    Text(text = message, color = Color.White)
+                    if (item.name.endsWith(".avi", ignoreCase = true)) {
+                        androidx.compose.material3.TextButton(
+                            onClick = {
+                                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                                    setDataAndType(item.uri, com.mistermikhail.fgallery.data.VideoPlaybackMime.forFile(item.name, item.mimeType) ?: "video/*")
+                                    addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }
+                                runCatching { context.startActivity(android.content.Intent.createChooser(intent, "Открыть в другом приложении")) }
+                                    .onFailure { playbackFailure = "Не найдено приложение для открытия AVI. $message" }
+                            },
+                            modifier = Modifier.testTag("avi-open-externally"),
+                        ) { Text("Открыть в другом приложении", color = Color.White) }
+                    }
+                }
             }
         }
 
