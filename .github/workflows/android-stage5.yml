@@ -102,7 +102,7 @@ jobs:
           path: app/build/reports/androidTests/connected/
 
   publish-qa:
-    # Ordinary pushes only test/build. Explicit [publish-qa] commit publishes once.
+    # Publish only after both required QA jobs pass on main; explicit [publish-qa] commit triggers this run.
     # An immutable
     # QA tag is created ONCE, explicitly, after the consolidated test pack is
     # ready; otherwise every fix after build28 fails against the old QA tag.
