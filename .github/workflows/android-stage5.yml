@@ -3,9 +3,11 @@ name: FGallery 0.4.0 integration QA
 on:
   push:
     branches:
+      - main
       - feature/fgallery-0.4.0-integration
   pull_request:
     branches:
+      - main
       - feature/fgallery-0.4.0-integration
   workflow_dispatch:
     inputs:
