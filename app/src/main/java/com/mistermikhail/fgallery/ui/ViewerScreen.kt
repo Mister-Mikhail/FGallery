@@ -665,7 +665,16 @@ private fun VideoPlayer(
                                     setDataAndType(item.uri, com.mistermikhail.fgallery.data.VideoPlaybackMime.forFile(item.name, item.mimeType) ?: "video/*")
                                     addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                 }
-                                runCatching { context.startActivity(android.content.Intent.createChooser(intent, "Открыть в другом приложении")) }
+                                runCatching {
+                                    val chooser = android.content.Intent.createChooser(intent, "Открыть в другом приложении").apply {
+                                        // Do not offer FGallery again for an AVI it cannot decode.
+                                        putExtra(
+                                            android.content.Intent.EXTRA_EXCLUDE_COMPONENTS,
+                                            arrayOf(android.content.ComponentName(context, com.mistermikhail.fgallery.MainActivity::class.java)),
+                                        )
+                                    }
+                                    context.startActivity(chooser)
+                                }
                                     .onFailure { playbackFailure = "Не найдено приложение для открытия AVI. $message" }
                             },
                             modifier = Modifier.testTag("avi-open-externally"),
