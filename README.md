@@ -23,4 +23,4 @@ Read these documents before implementation. User-reported failures remain open u
 
 ## Active implementation
 
-The current Android app implementation and open PR are on `feature/quickpic-masonry-mvp`. The default `main` branch is currently only the initial project scaffold. Check the current branch and CI status before building or distributing an APK.
+`main` is the canonical source of truth and contains the current Android implementation. Begin every new development session by reading `AGENTS.md` and this README from `main`, then consult the linked specifications and open bugs. Use a short-lived branch per task; merge it into `main` only after the required CI checks pass. Do not treat an unverified APK as a tested release.
