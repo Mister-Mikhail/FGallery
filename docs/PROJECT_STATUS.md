@@ -1,4 +1,11 @@
 # FGallery — текущее состояние
+
+## Актуализация 2026-11-13 — после build49
+- Опубликован QA prerelease [build49](https://github.com/Mister-Mikhail/FGallery/releases/tag/qa-v0.4.0-b49), commit `68e2b036f37df97604563a66ae4767f56a977e9e`, ARM64 SHA-256 `4142a5f8f40862ef072f48891b8fd5829adc8b41d8b76ba8e8e824ac25ce4b3a`; R8/JVM/Android16 CI прошёл. Физическая приёмка S23 не подтверждена.
+- После build49 внесены `46d39c1` (немедленное сообщение для неподдерживаемого AVI вместо ожидания Media3), `ccea3f1` (MIME группового шаринга), `61dcc4a` (исключить FGallery из внешнего chooser для AVI). Эти изменения **не входят** в build49. Последний известный интеграционный CI `43425294444`: JVM/R8 и Android16 успешны, publish-qa skipped.
+- Следующий QA требует нового versionCode (не менее 50), полного зелёного CI и явного запуска publish-qa; не считать прошедший CI эквивалентом опубликованного APK. AVI из Blender не декодируем, VLC не добавляем; M4V проверяем на S23. FG-VIDEO-MKV после текущего пакета.
+- Stage5 SAF delta/mutations и Stage6 безопасный UI дубликатов остаются открытыми. Принятые функции не изменять. PR #15 оставлять Draft, stable не выпускать.
+
 Обновлено: **2026-11-04**. Полная история до build45: [архив](history/PROJECT_STATUS-through-2026-11-02-build45.md). Приоритеты: [инструкции](CHATGPT_PROJECT_INSTRUCTIONS.md), [утверждённое ТЗ](FGallery_TZ_v1.md), [открытые проблемы](OPEN_BUGS.md).
 
 ## Приёмка на Samsung S23 / Android 16
