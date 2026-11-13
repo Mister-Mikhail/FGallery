@@ -432,7 +432,8 @@ private fun VideoPlayer(
     }
     var format360 by remember(item.uriKey) { mutableStateOf(false) }
     var firstFrameRendered by remember(item.uriKey) { mutableStateOf(false) }
-    var playbackFailure by remember(item.uriKey) { mutableStateOf<String?>(null) }
+    val unsupportedAvi = item.name.endsWith(".avi", ignoreCase = true)
+    var playbackFailure by remember(item.uriKey) { mutableStateOf<String?>(if (unsupportedAvi) "Контейнер AVI не поддерживается встроенным проигрывателем." else null) }
     val spherical = detected360 == true || format360
     val latestDetection by rememberUpdatedState(detected360)
 
@@ -468,7 +469,7 @@ private fun VideoPlayer(
         }
         player.addListener(listener)
         // Attach error reporting before asynchronous extractor/decoder initialization.
-        player.prepare()
+        if (!unsupportedAvi) player.prepare()
         onDispose { player.removeListener(listener) }
     }
 
