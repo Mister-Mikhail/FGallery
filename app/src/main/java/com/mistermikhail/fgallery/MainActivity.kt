@@ -280,7 +280,12 @@ class MainActivity : ComponentActivity() {
                     item.mimeType?.takeIf { it.isNotBlank() }
                         ?: if (item.kind == MediaKind.VIDEO) "video/*" else "image/*"
                 }
-                val commonType = mimeTypes.distinct().singleOrNull() ?: "*/*"
+                val commonType = mimeTypes.distinct().singleOrNull()
+                    ?: when {
+                        mimeTypes.all { it.startsWith("image/") } -> "image/*"
+                        mimeTypes.all { it.startsWith("video/") } -> "video/*"
+                        else -> "*/*"
+                    }
                 val intent = Intent(if (items.size == 1) Intent.ACTION_SEND else Intent.ACTION_SEND_MULTIPLE).apply {
                     type = commonType
                     if (items.size == 1) putExtra(Intent.EXTRA_STREAM, uris.first())
