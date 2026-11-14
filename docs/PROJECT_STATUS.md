@@ -1,5 +1,13 @@
 # FGallery — текущее состояние
 
+## Актуальное состояние — 2026-11-14, после публикации build51
+- PR #15 уже объединён; работа без merge/stable продолжается в Draft PR #16 (`fix/fgallery-m4v-saf-mime-regression`). Старая `feature/fgallery-0.4.0-integration` отстаёт на 15 коммитов по сравнению с веткой исправления; не вести новые изменения от старого HEAD.
+- QA prerelease **build51** опубликован: https://github.com/Mister-Mikhail/FGallery/releases/tag/qa-v0.4.0-b51 ; исходный commit `0edb0ed570cb3357ce6740b8ac0a07a07966266c`, ARM64 SHA256 `d78927329cfab1fcea01a7dfc187af70b2275f900d516d70036f2e4122d34350`. Публикация: https://github.com/Mister-Mikhail/FGallery/actions/runs/43557115345 (success).
+- Последний проверенный CI для HEAD `e721544301c4c19704b3bcfec6dbf04ac46f7927`: Integration QA https://github.com/Mister-Mikhail/FGallery/actions/runs/43563544932 и Android CI https://github.com/Mister-Mikhail/FGallery/actions/runs/43563544928 — success. Это **более поздний HEAD**, чем исходники build51; успешный CI не означает опубликованный APK этого HEAD.
+- Физическая приёмка M4V/SAF на Samsung S23 **не подтверждена**. AVI Blender не поддерживаем: понятная ошибка и открытие внешним приложением, без VLC. FG-VIDEO-MKV — только после текущего пакета. Stage5 Room/SAF и Stage6 безопасных дубликатов остаются открыты.
+- Исторические записи ниже оставлены для контекста; их сведения «последний APK build48/build50» и «текущий PR #15» больше не актуальны.
+
+
 ## QA build51 publication trigger — 2026-11-14
 - QA-only release requested from scoped M4V fix branch after exact-head JVM/R8/Android16 checks; versionCode=51. Publication must succeed before any APK link or physical acceptance claim. No merge/stable.
 
