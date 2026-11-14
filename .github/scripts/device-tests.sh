@@ -5,5 +5,5 @@ capture_device_log() {
     adb pull /sdcard/Pictures/FGalleryTests/video-controls-failure.png app/build/reports/androidTests/connected/video-controls-failure.png >/dev/null 2>&1 || true
 }
 trap capture_device_log EXIT
-gradle :app:connectedDebugAndroidTest
+gradle :app:connectedMinifiedTestAndroidTest
 exit "$?"

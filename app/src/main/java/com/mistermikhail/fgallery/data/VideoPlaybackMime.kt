@@ -21,7 +21,8 @@ internal object VideoPlaybackMime {
             "3gp", "3gpp", "3g2" -> "video/3gpp"
             "ts", "m2ts", "mts" -> "video/mp2t"
             else -> when (val mime = reportedMime?.substringBefore(';')?.trim()?.lowercase(Locale.ROOT)) {
-                "application/x-m4v", "video/x-m4v", "application/mp4", "application/x-mp4", "application/m4v" -> "video/mp4"
+                "application/x-m4v", "video/x-m4v", "video/m4v", "video/x-mp4",
+                "application/mp4", "application/x-mp4", "application/m4v" -> "video/mp4"
                 "application/x-avi", "application/avi", "application/x-msvideo", "video/x-msvideo", "video/avi", "video/msvideo" -> "video/avi"
                 "video/quicktime" -> "video/mp4"
                 else -> mime?.takeIf { it.startsWith("video/") }

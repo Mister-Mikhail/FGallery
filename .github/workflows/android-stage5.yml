@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - feature/fgallery-0.4.0-integration
+      - fix/fgallery-m4v-saf-mime-regression
   pull_request:
     branches:
       - main
@@ -102,11 +103,12 @@ jobs:
           path: app/build/reports/androidTests/connected/
 
   publish-qa:
-    # Publish only after both required QA jobs pass on main; explicit [publish-qa] commit triggers this run.
+    # Explicit QA-only publication from the scoped M4V fix branch, after both QA jobs pass.
+    # Never publish stable or merge; the [publish-qa] marker is required.
     # An immutable
     # QA tag is created ONCE, explicitly, after the consolidated test pack is
     # ready; otherwise every fix after build28 fails against the old QA tag.
-    if: (github.event_name == 'workflow_dispatch' && inputs.publish_qa == true || github.event_name == 'push' && contains(github.event.head_commit.message, '[publish-qa]')) && github.ref == 'refs/heads/main'
+    if: (github.event_name == 'workflow_dispatch' && inputs.publish_qa == true && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/fix/fgallery-m4v-saf-mime-regression')) || (github.event_name == 'push' && github.ref == 'refs/heads/fix/fgallery-m4v-saf-mime-regression' && contains(github.event.head_commit.message, '[publish-qa]'))
     needs: [r8-build, r8-device-tests]
     runs-on: ubuntu-latest
     permissions:

@@ -52,6 +52,14 @@ class VideoPlaybackMimeTest {
         }
     }
 
+    @Test fun extensionlessSafAppleMp4AliasesNormalizeToMedia3Mp4() {
+        for (mime in listOf("video/m4v", "video/x-mp4", "application/x-m4v")) {
+            val reported = " ${mime.uppercase(java.util.Locale.ROOT)} ; charset=binary "
+            assertEquals(mime, MediaKind.VIDEO, ExternalMediaKind.classify("content", reported))
+            assertEquals(mime, "video/mp4", VideoPlaybackMime.forFile("content", reported))
+        }
+    }
+
     @Test fun unknownFormatsDoNotMasqueradeAsVideo() {
         assertEquals("video/avi", VideoPlaybackMime.forFile("unknown.bin", "video/x-msvideo"))
         assertEquals(null, VideoPlaybackMime.forFile("unknown.bin", "application/octet-stream"))
