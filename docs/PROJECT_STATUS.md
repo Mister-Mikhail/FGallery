@@ -1,5 +1,9 @@
 # FGallery — текущее состояние
 
+## QA build51 publication trigger — 2026-11-14
+- QA-only release requested from scoped M4V fix branch after exact-head JVM/R8/Android16 checks; versionCode=51. Publication must succeed before any APK link or physical acceptance claim. No merge/stable.
+
+
 ## Актуализация 2026-11-14 — PR #16 (только CI, без физической приёмки)
 - PR #15 ранее merged; текущая работа ведётся в отдельном Draft PR #16, ветка `fix/fgallery-m4v-saf-mime-regression`. Старые указания ниже о единственном открытом PR #15 и build48/build49 устарели.
 - HEAD исправлений: `02ec57c44f464c7c41892d3204264666c25947d9`. Добавлены нормализация SAF MIME `video/m4v`/`video/x-mp4`, JVM-регрессия для документа без расширения и подготовка AVI/M4V assets в Android CI. Не утверждать, что это исправляет любые кодеки или гарантирует воспроизведение на S23.
