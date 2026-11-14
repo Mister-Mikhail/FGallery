@@ -1,5 +1,13 @@
 # FGallery — текущее состояние
 
+## Актуализация 2026-11-14 — PR #16 (только CI, без физической приёмки)
+- PR #15 ранее merged; текущая работа ведётся в отдельном Draft PR #16, ветка `fix/fgallery-m4v-saf-mime-regression`. Старые указания ниже о единственном открытом PR #15 и build48/build49 устарели.
+- HEAD исправлений: `02ec57c44f464c7c41892d3204264666c25947d9`. Добавлены нормализация SAF MIME `video/m4v`/`video/x-mp4`, JVM-регрессия для документа без расширения и подготовка AVI/M4V assets в Android CI. Не утверждать, что это исправляет любые кодеки или гарантирует воспроизведение на S23.
+- Для HEAD: [Integration QA #43531873683](https://github.com/Mister-Mikhail/FGallery/actions/runs/43531873683) и [Android CI #43531873422](https://github.com/Mister-Mikhail/FGallery/actions/runs/43531873422) — success (JVM/R8/Android16). Ошибка отсутствующих assets в инструментальных тестах устранена.
+- Последний ранее подтверждённый QA prerelease: build50 (`69eef0b882ab3427efb0232c0da0c158809b465a`), SHA256 ARM64 `01b472caa1c13d30aa4fff17cd173edef46de4198a1ad67f49df1e7de7928c1c`; он НЕ содержит исправления PR #16. Нового подтверждённого QA APK для HEAD нет.
+- Следующее: versionCode >50, полный зелёный CI, публикация только QA prerelease, проверка ссылки/commit/SHA256; затем физическая приёмка на S23. AVI Blender: ошибка + внешнее приложение, без VLC. FG-VIDEO-MKV после текущего пакета. Stage5 SAF/Room и Stage6 безопасных дубликатов остаются открыты. Не merge/stable.
+
+
 ## Актуализация 2026-11-13 — после build49
 - Опубликован QA prerelease [build49](https://github.com/Mister-Mikhail/FGallery/releases/tag/qa-v0.4.0-b49), commit `68e2b036f37df97604563a66ae4767f56a977e9e`, ARM64 SHA-256 `4142a5f8f40862ef072f48891b8fd5829adc8b41d8b76ba8e8e824ac25ce4b3a`; R8/JVM/Android16 CI прошёл. Физическая приёмка S23 не подтверждена.
 - После build49 внесены `46d39c1` (немедленное сообщение для неподдерживаемого AVI вместо ожидания Media3), `ccea3f1` (MIME группового шаринга), `61dcc4a` (исключить FGallery из внешнего chooser для AVI). Эти изменения **не входят** в build49. Последний известный интеграционный CI `43425294444`: JVM/R8 и Android16 успешны, publish-qa skipped.
