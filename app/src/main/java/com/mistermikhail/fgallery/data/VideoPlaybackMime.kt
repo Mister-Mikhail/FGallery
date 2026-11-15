@@ -8,8 +8,14 @@ import java.util.Locale
  * application/octet-stream even for supported video filenames.
  */
 internal object VideoPlaybackMime {
+    private val nonVideoDocuments = setOf(
+        "cdr", "dwg", "dxf", "stl", "step", "stp", "blend", "obj", "glb", "gltf", "3mf", "ply", "pdf", "svg"
+    )
+
     fun forFile(name: String, reportedMime: String?): String? {
         val extension = name.trim().substringAfterLast('.', "").lowercase(Locale.ROOT)
+        // Never forward a known document to Media3 even if a SAF provider lies about its MIME.
+        if (extension in nonVideoDocuments) return null
         // Prefer a recognized extension over an unreliable provider MIME.
         return when (extension) {
             "m4v", "mp4", "m4p", "mov" -> "video/mp4"
