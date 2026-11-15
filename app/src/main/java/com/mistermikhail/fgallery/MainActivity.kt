@@ -1155,9 +1155,16 @@ class MainActivity : ComponentActivity() {
 
         BackHandler(
             enabled = current == null && pendingMoveItems.isEmpty() &&
+                selectedIds.isEmpty() && !state.recycleBinVisible && state.searchVisible,
+        ) {
+            viewModel.closeSearch()
+        }
+
+        BackHandler(
+            enabled = current == null && pendingMoveItems.isEmpty() &&
                 selectedIds.isEmpty() &&
                 !state.recycleBinVisible &&
-                state.selectedAlbum != null,
+                state.selectedAlbum != null && !state.searchVisible,
         ) {
             viewModel.closeAlbum()
         }
