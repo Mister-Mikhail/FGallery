@@ -145,7 +145,8 @@ class MainActivity : ComponentActivity() {
         val incomingUri by externalViewUri
         LaunchedEffect(incomingUri) {
             val uri = incomingUri ?: return@LaunchedEffect
-            externalViewUri.value = null
+            // Keep the intent key stable while resolving the document. Clearing it here
+            // cancels this LaunchedEffect on recomposition before PDF/SVG can open.
             runCatching {
                 val metadata = withContext(Dispatchers.IO) {
                     var displayName = uri.lastPathSegment?.substringAfterLast('/') ?: "Файл"
@@ -179,6 +180,9 @@ class MainActivity : ComponentActivity() {
                 Toast.makeText(this@MainActivity,
                     "Не удалось открыть файл: ${it.localizedMessage ?: "нет доступа"}", Toast.LENGTH_LONG).show()
             }
+            // Consume only the URI processed by this effect; a newer ACTION_VIEW
+            // delivered through onNewIntent must remain pending.
+            if (externalViewUri.value == uri) externalViewUri.value = null
         }
         // Save only the stable URI key: MediaItem itself is not Bundle-saveable.
         // Keep the existing object while scanning, so a refresh cannot close the viewer.
