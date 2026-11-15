@@ -151,7 +151,8 @@ fun GalleryScreen(
     val uniformGridState = rememberLazyGridState()
     var activeLiveVideoId by remember { mutableStateOf<Long?>(null) }
 
-    val inAlbum = state.selectedAlbum != null
+    val searchingFiles = state.searchVisible && state.query.isNotBlank()
+    val inAlbum = state.selectedAlbum != null || searchingFiles
     val visibleItems = state.visibleItems
     val albums = state.albums
     val visibleMosaicRows = remember(visibleItems) {
@@ -449,7 +450,7 @@ fun GalleryScreen(
                         onValueChange = onQueryChanged,
                         singleLine = true,
                         placeholder = {
-                            Text(if (inAlbum) "Поиск в альбоме" else "Поиск альбома")
+                            Text(if (state.selectedAlbum != null) "Поиск в альбоме" else "Поиск файлов и альбомов")
                         },
                         modifier = Modifier
                             .fillMaxWidth()
