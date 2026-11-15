@@ -24,7 +24,8 @@ internal object VideoPlaybackMime {
             "mpeg", "mpg" -> "video/mpeg"
             "mkv", "mk3d" -> "video/x-matroska"
             "webm" -> "video/webm"
-            "3gp", "3gpp", "3g2" -> "video/3gpp"
+            "3gp", "3gpp" -> "video/3gpp"
+            "3g2" -> "video/3gpp2"
             "ts", "m2ts", "mts" -> "video/mp2t"
             else -> when (val mime = reportedMime?.substringBefore(';')?.trim()?.lowercase(Locale.ROOT)) {
                 "application/x-m4v", "video/x-m4v", "video/m4v", "video/x-mp4",
