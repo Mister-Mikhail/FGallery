@@ -174,9 +174,7 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
                     state.selectedAlbum == null || albumKey(it) == state.selectedAlbum
                 }
                 .filter {
-                    state.query.isBlank() ||
-                        it.name.contains(state.query, ignoreCase = true) ||
-                        it.album.contains(state.query, ignoreCase = true)
+                    state.query.isBlank() || it.name.contains(state.query, ignoreCase = true)
                 }
                 .toList(),
             state.sortMode,
