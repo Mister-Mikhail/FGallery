@@ -60,7 +60,15 @@ class VideoPlaybackMimeTest {
         }
     }
 
-    @Test fun cadAndThreeDDocumentsDoNotMasqueradeAsImagesOrRaw() {\n        for (ext in listOf("CDR", "dwg", "DXF", "STL", "step", "stp", "blend", "obj", "glb", "gltf", "3mf", "ply")) {\n            assertEquals(ext, null, ExternalMediaKind.classify("drawing.$ext", "image/jpeg"))\n            assertEquals(ext, null, ExternalMediaKind.classify("drawing.$ext", "image/x-raw"))\n            assertEquals(ext, null, ExternalMediaKind.classify("drawing.$ext", "application/octet-stream"))\n        }\n    }\n\n    @Test fun unknownFormatsDoNotMasqueradeAsVideo() {
+    @Test fun cadAndThreeDDocumentsDoNotMasqueradeAsImagesOrRaw() {
+        for (ext in listOf("CDR", "dwg", "DXF", "STL", "step", "stp", "blend", "obj", "glb", "gltf", "3mf", "ply")) {
+            assertEquals(ext, null, ExternalMediaKind.classify("drawing.$ext", "image/jpeg"))
+            assertEquals(ext, null, ExternalMediaKind.classify("drawing.$ext", "image/x-raw"))
+            assertEquals(ext, null, ExternalMediaKind.classify("drawing.$ext", "application/octet-stream"))
+        }
+    }
+
+    @Test fun unknownFormatsDoNotMasqueradeAsVideo() {
         assertEquals("video/avi", VideoPlaybackMime.forFile("unknown.bin", "video/x-msvideo"))
         assertEquals(null, VideoPlaybackMime.forFile("unknown.bin", "application/octet-stream"))
         assertEquals(null, VideoPlaybackMime.forFile("song.m4a", "audio/mp4"))
