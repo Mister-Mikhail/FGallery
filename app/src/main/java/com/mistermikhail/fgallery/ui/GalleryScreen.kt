@@ -6,6 +6,9 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -483,7 +486,11 @@ fun GalleryScreen(
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                         style = MaterialTheme.typography.titleSmall,
                     )
-                    albums.forEach { album ->
+                    Column(
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp)
+                            .verticalScroll(rememberScrollState()),
+                    ) {
+                        albums.forEach { album ->
                         Row(
                             modifier = Modifier.fillMaxWidth()
                                 .clickable { onOpenAlbum(album.key) }
@@ -494,6 +501,7 @@ fun GalleryScreen(
                             Spacer(Modifier.width(12.dp))
                             Text(album.name, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                             Text("${album.count}", style = MaterialTheme.typography.labelSmall)
+                        }
                         }
                     }
                 }
