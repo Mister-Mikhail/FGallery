@@ -30,6 +30,7 @@ class VideoPlaybackMimeTest {
             "clip.mkv" to "video/x-matroska",
             "clip.WEBM" to "video/webm",
             "clip.3gp" to "video/3gpp",
+            "clip.3g2" to "video/3gpp2",
             "clip.m2ts" to "video/mp2t",
             "clip.mts" to "video/mp2t",
         )
