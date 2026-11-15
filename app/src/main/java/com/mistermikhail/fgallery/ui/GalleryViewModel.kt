@@ -171,9 +171,7 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
         val visible = sortItems(
             available.asSequence()
                 .filter {
-                    state.selectedAlbum == null ||
-                        (state.searchVisible && state.query.isNotBlank()) ||
-                        albumKey(it) == state.selectedAlbum
+                    state.selectedAlbum == null || albumKey(it) == state.selectedAlbum
                 }
                 .filter {
                     state.query.isBlank() ||
@@ -195,8 +193,7 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
                 val name = items.first().album
                 if (
                     state.query.isNotBlank() &&
-                    !name.contains(state.query, ignoreCase = true) &&
-                    items.none { it.name.contains(state.query, ignoreCase = true) }
+                    !name.contains(state.query, ignoreCase = true)
                 ) {
                     return@mapNotNull null
                 }
