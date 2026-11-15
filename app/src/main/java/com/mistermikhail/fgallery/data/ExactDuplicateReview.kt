@@ -90,3 +90,45 @@ internal fun confirmedExactDuplicateUris(
     if (identity(reviewed.groups) != identity(current.groups)) return emptySet()
     return current.selectedUris.takeIf { it == reviewed.selectedUris } ?: emptySet()
 }
+
+/**
+ * Final Stage 6 pre-trash gate. The caller MUST obtain fresh SHA-256 digests
+ * from the current file bytes, not from Room or a cached fingerprint. Verify
+ * the protected original as well as every selected copy; an inaccessible,
+ * replaced or changed file invalidates the entire batch.
+ *
+ * This returns URIs for a *separate* explicit trash operation; it never moves
+ * or deletes a file. The mutation layer must still enforce its own permission
+ * and file-generation checks immediately before each move.
+ */
+internal fun verifiedExactDuplicateUris(
+    reviewed: ExactDuplicateReview,
+    currentRows: List<CatalogMediaRow>,
+    includedStorageIds: Set<String> = reviewed.includedStorageIds,
+    includedFolderTargets: Set<String> = reviewed.includedFolderTargets,
+    explicitlyConfirmed: Boolean,
+    readCurrentSha256: (CatalogMediaRow) -> String?,
+): Set<String> {
+    val authorized = confirmedExactDuplicateUris(
+        reviewed, currentRows, includedStorageIds, includedFolderTargets, explicitlyConfirmed
+    )
+    if (authorized.isEmpty()) return emptySet()
+    val relevantGroups = reviewed.groups.filter { group ->
+        group.any { it.uri in authorized }
+    }
+    // Never authorize a batch if the original is not still readable and
+    // byte-identical to the copies. A provider error fails the whole batch.
+    for (group in relevantGroups) {
+        for (row in group) {
+            val observed = try {
+                readCurrentSha256(row)
+            } catch (_: Exception) {
+                null
+            }
+            if (observed == null || !observed.equals(row.fullHash, ignoreCase = true)) {
+                return emptySet()
+            }
+        }
+    }
+    return authorized
+}
