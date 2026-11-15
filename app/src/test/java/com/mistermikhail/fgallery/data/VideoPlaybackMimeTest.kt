@@ -68,6 +68,14 @@ class VideoPlaybackMimeTest {
         }
     }
 
+    @Test fun documentsNeverReachVideoPlayerWhenSafReportsVideoMime() {
+        for (ext in listOf("cdr", "DWG", "dxf", "STL", "step", "stp", "blend", "obj", "glb", "gltf", "3mf", "ply", "pdf", "svg")) {
+            assertEquals(ext, null, VideoPlaybackMime.forFile("document.$ext", "video/mp4"))
+            assertEquals(ext, null, VideoPlaybackMime.forFile("document.$ext", "video/x-msvideo"))
+        }
+        assertEquals("video/mp4", VideoPlaybackMime.forFile("clip.m4v", "video/mp4"))
+    }
+
     @Test fun unknownFormatsDoNotMasqueradeAsVideo() {
         assertEquals("video/avi", VideoPlaybackMime.forFile("unknown.bin", "video/x-msvideo"))
         assertEquals(null, VideoPlaybackMime.forFile("unknown.bin", "application/octet-stream"))
