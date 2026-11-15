@@ -168,4 +168,51 @@ class ExactDuplicateReviewTest {
         }
     }
 
+    @Test fun freshByteGateChecksOriginalAndSelectedCopies() {
+        val rows = listOf(item("original"), item("copy"))
+        val review = planExactDuplicateReview(rows, requestedUris = setOf("copy"))
+        val checked = mutableListOf<String>()
+        val approved = verifiedExactDuplicateUris(review, rows, explicitlyConfirmed = true) {
+            checked += it.uri
+            it.fullHash
+        }
+        assertEquals(setOf("copy"), approved)
+        assertEquals(setOf("original", "copy"), checked.toSet())
+        assertTrue(verifiedExactDuplicateUris(review, rows, explicitlyConfirmed = false) {
+            it.fullHash
+        }.isEmpty())
+    }
+
+    @Test fun freshByteGateFailsClosedWhenOriginalOrCopyChangesOrIsUnreadable() {
+        val rows = listOf(item("original"), item("copy"))
+        val review = planExactDuplicateReview(rows, requestedUris = setOf("copy"))
+        for (badUri in listOf("original", "copy")) {
+            assertTrue(verifiedExactDuplicateUris(review, rows, explicitlyConfirmed = true) {
+                if (it.uri == badUri) "changed" else it.fullHash
+            }.isEmpty())
+            assertTrue(verifiedExactDuplicateUris(review, rows, explicitlyConfirmed = true) {
+                if (it.uri == badUri) null else it.fullHash
+            }.isEmpty())
+            assertTrue(verifiedExactDuplicateUris(review, rows, explicitlyConfirmed = true) {
+                if (it.uri == badUri) throw java.io.IOException("SAF disconnected")
+                it.fullHash
+            }.isEmpty())
+        }
+    }
+
+    @Test fun freshByteGateRejectsStaleCatalogueBeforeReadingAnyFile() {
+        val rows = listOf(item("original"), item("copy"))
+        val review = planExactDuplicateReview(rows, requestedUris = setOf("copy"))
+        var reads = 0
+        val authorized = verifiedExactDuplicateUris(
+            review, listOf(rows[0], rows[1].copy(dateModifiedMillis = 200L)),
+            explicitlyConfirmed = true,
+        ) {
+            reads++
+            it.fullHash
+        }
+        assertTrue(authorized.isEmpty())
+        assertEquals(0, reads)
+    }
+
 }
