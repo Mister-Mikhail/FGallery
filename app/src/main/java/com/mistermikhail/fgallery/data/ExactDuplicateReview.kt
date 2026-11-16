@@ -121,10 +121,15 @@ internal fun verifiedExactDuplicateUris(
     val relevantGroups = reviewed.groups.filter { group ->
         group.any { it.uri in authorized }
     }
+    // Read through the current catalogue, not through rows retained by the
+    // earlier UI snapshot. Identity was checked above, but providers may need
+    // the current row instance to resolve the file at verification time.
+    val currentByUri = currentRows.associateBy { it.uri }
     // Never authorize a batch if the original is not still readable and
     // byte-identical to the copies. A provider error fails the whole batch.
     for (group in relevantGroups) {
-        for (row in group) {
+        for (reviewedRow in group) {
+            val row = currentByUri[reviewedRow.uri] ?: return emptySet()
             val observed = try {
                 readCurrentSha256(row)
             } catch (_: Exception) {
