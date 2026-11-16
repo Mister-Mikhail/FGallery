@@ -215,4 +215,29 @@ class ExactDuplicateReviewTest {
         assertEquals(0, reads)
     }
 
+    @Test fun groupSummaryIsReadOnlyAndCountsOnlyManuallySelectedCopies() {
+        val rows = listOf(item("original"), item("copy1"), item("copy2"))
+        val review = planExactDuplicateReview(rows, requestedUris = setOf("copy2"))
+        val summary = exactDuplicateGroupSummaries(review).single()
+        assertEquals("original", summary.originalUri)
+        assertEquals(listOf("copy1", "copy2"), summary.copyUris)
+        assertEquals(200L, summary.sizeBytes)
+        assertEquals(200L, summary.reclaimableBytes)
+        assertEquals("same", summary.sha256)
+        assertEquals(setOf("copy2"), review.selectedUris)
+        assertEquals(0L, exactDuplicateGroupSummaries(
+            planExactDuplicateReview(rows)
+        ).single().reclaimableBytes)
+    }
+
+    @Test fun groupSummaryRespectsFolderAndStorageScopeAndRejectsAmbiguity() {
+        val rows = listOf(item("original"), item("copy"), item("usb", storage = "usb"))
+        val scoped = planExactDuplicateReview(rows,
+            includedStorageIds = setOf("phone"), requestedUris = setOf("copy", "usb"))
+        assertEquals(listOf("copy"), exactDuplicateGroupSummaries(scoped).single().copyUris)
+        assertTrue(exactDuplicateGroupSummaries(
+            planExactDuplicateReview(rows + rows[1].copy(dateModifiedMillis = 999L))
+        ).isEmpty())
+    }
+
 }
