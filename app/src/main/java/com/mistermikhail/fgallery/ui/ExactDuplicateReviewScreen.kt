@@ -25,6 +25,7 @@ import com.mistermikhail.fgallery.data.ExactDuplicateReview
 import com.mistermikhail.fgallery.data.exactDuplicateReviewCards
 import com.mistermikhail.fgallery.data.exactDuplicateTrashPrompt
 import com.mistermikhail.fgallery.data.toggleDuplicateScope
+import com.mistermikhail.fgallery.data.isDuplicateScopeChecked
 
 /**
  * Stage 6 review surface. Intentionally not connected to the gallery menu or
@@ -50,18 +51,18 @@ internal fun ExactDuplicateReviewScreen(
     ) {
         Text("Точные дубликаты", style = MaterialTheme.typography.titleLarge)
         Text("Сравниваются полные SHA-256. Похожие фотографии и RAW+JPEG не считаются точными копиями.")
-        Text("Носители (ничего не выбрано — все)", style = MaterialTheme.typography.titleSmall)
+        Text("Носители (все отмечены — поиск по всем)", style = MaterialTheme.typography.titleSmall)
         availableStorages.distinct().sorted().forEach { storage ->
-            ScopeCheckbox(storage, storage in review.includedStorageIds) { checked ->
+            ScopeCheckbox(storage, isDuplicateScopeChecked(review.includedStorageIds, storage)) { checked ->
                 onScopeChanged(
                     toggleDuplicateScope(availableStorages, review.includedStorageIds, storage, checked),
                     review.includedFolderTargets,
                 )
             }
         }
-        Text("Папки (ничего не выбрано — все)", style = MaterialTheme.typography.titleSmall)
+        Text("Папки (все отмечены — поиск по всем)", style = MaterialTheme.typography.titleSmall)
         availableFolders.distinct().sorted().forEach { folder ->
-            ScopeCheckbox(folder, folder in review.includedFolderTargets) { checked ->
+            ScopeCheckbox(folder, isDuplicateScopeChecked(review.includedFolderTargets, folder)) { checked ->
                 onScopeChanged(
                     review.includedStorageIds,
                     toggleDuplicateScope(availableFolders, review.includedFolderTargets, folder, checked),
