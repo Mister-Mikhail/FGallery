@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import com.mistermikhail.fgallery.data.ExactDuplicateReview
 import com.mistermikhail.fgallery.data.exactDuplicateReviewCards
 import com.mistermikhail.fgallery.data.exactDuplicateTrashPrompt
+import com.mistermikhail.fgallery.data.toggleDuplicateScope
 
 /**
  * Stage 6 review surface. Intentionally not connected to the gallery menu or
@@ -53,7 +54,7 @@ internal fun ExactDuplicateReviewScreen(
         availableStorages.distinct().sorted().forEach { storage ->
             ScopeCheckbox(storage, storage in review.includedStorageIds) { checked ->
                 onScopeChanged(
-                    if (checked) review.includedStorageIds + storage else review.includedStorageIds - storage,
+                    toggleDuplicateScope(availableStorages, review.includedStorageIds, storage, checked),
                     review.includedFolderTargets,
                 )
             }
@@ -63,7 +64,7 @@ internal fun ExactDuplicateReviewScreen(
             ScopeCheckbox(folder, folder in review.includedFolderTargets) { checked ->
                 onScopeChanged(
                     review.includedStorageIds,
-                    if (checked) review.includedFolderTargets + folder else review.includedFolderTargets - folder,
+                    toggleDuplicateScope(availableFolders, review.includedFolderTargets, folder, checked),
                 )
             }
         }
