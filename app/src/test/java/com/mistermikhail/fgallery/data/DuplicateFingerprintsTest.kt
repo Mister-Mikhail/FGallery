@@ -257,4 +257,18 @@ class DuplicateFingerprintsTest {
     }
 
 
+
+    @Test fun fullFingerprintCancellationAtEofIsNotPublished() {
+        val input = ByteArrayInputStream(byteArrayOf(1, 2, 3, 4))
+        var checks = 0
+        try {
+            DuplicateFingerprints.full(input, checkActive = {
+                checks++
+                if (checks == 3) throw java.util.concurrent.CancellationException("superseded")
+            }, expectedBytes = 4)
+            org.junit.Assert.fail("A scan cancelled after EOF must not publish its hash")
+        } catch (_: java.util.concurrent.CancellationException) {
+            assertEquals(3, checks)
+        }
+    }
 }
