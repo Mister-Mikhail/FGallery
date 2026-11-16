@@ -211,7 +211,10 @@ internal fun toggleDuplicateScope(
     if (item !in options) return included
     // If a mounted SAF/USB volume vanished, preserve the explicit scope.
     // Treating a now-unknown scope as ALL would unexpectedly expose other media.
-    if (included.isNotEmpty() && included.intersect(options).isEmpty()) return included
+    // A partially disconnected scope is unsafe too: changing another checkbox
+    // must not silently discard missing SAF/USB targets and widen the search.
+    // Require a refreshed catalogue and an explicit new scope instead.
+    if (included.isNotEmpty() && !options.containsAll(included)) return included
     val current = if (included.isEmpty()) options else included.intersect(options)
     val next = if (checked) current + item else current - item
     // No empty-scope sentinel for "none": keep the last selected option.
