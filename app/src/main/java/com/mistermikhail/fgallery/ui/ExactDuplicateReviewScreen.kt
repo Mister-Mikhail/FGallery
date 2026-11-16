@@ -26,6 +26,7 @@ import com.mistermikhail.fgallery.data.exactDuplicateReviewCards
 import com.mistermikhail.fgallery.data.exactDuplicateTrashPrompt
 import com.mistermikhail.fgallery.data.toggleDuplicateScope
 import com.mistermikhail.fgallery.data.isDuplicateScopeChecked
+import com.mistermikhail.fgallery.data.duplicateReviewScopeAvailable
 
 /**
  * Stage 6 review surface. Intentionally not connected to the gallery menu or
@@ -44,7 +45,8 @@ internal fun ExactDuplicateReviewScreen(
 ) {
     var confirmOpen by remember(review) { mutableStateOf(false) }
     val cards = exactDuplicateReviewCards(review)
-    val prompt = exactDuplicateTrashPrompt(review)
+    val scopeAvailable = duplicateReviewScopeAvailable(review, availableStorages, availableFolders)
+    val prompt = if (scopeAvailable) exactDuplicateTrashPrompt(review) else null
     Column(
         modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -69,6 +71,7 @@ internal fun ExactDuplicateReviewScreen(
                 )
             }
         }
+        if (!scopeAvailable) Text("Выбранный носитель или папка недоступны. Повторно подключите источник и обновите каталог перед подтверждением.")
         if (cards.isEmpty()) Text("Точных совпадений в выбранной области не найдено")
         cards.forEachIndexed { index, card ->
             HorizontalDivider()
