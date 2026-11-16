@@ -15,6 +15,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -47,6 +48,11 @@ internal fun ExactDuplicateReviewScreen(
     val cards = exactDuplicateReviewCards(review)
     val scopeAvailable = duplicateReviewScopeAvailable(review, availableStorages, availableFolders)
     val prompt = if (scopeAvailable) exactDuplicateTrashPrompt(review) else null
+    // A disconnected SAF source invalidates an already-open confirmation.
+    // Reconnection must require a fresh tap, not resurrect an old dialog.
+    LaunchedEffect(scopeAvailable, prompt) {
+        if (!scopeAvailable || prompt == null) confirmOpen = false
+    }
     Column(
         modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
