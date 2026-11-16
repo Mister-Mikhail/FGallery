@@ -57,4 +57,26 @@ class ExactDuplicateReviewScreenContractTest {
         assertFalse(duplicateReviewScopeAvailable(review, listOf("phone"), listOf("Camera")))
         assertFalse(duplicateReviewScopeAvailable(review, listOf("usb"), emptyList()))
     }
+    @Test fun distinctUrisAliasingOnePhysicalFileCannotBeTrashed() {
+        val original = row("original", "phone", "Camera")
+        val alias = row("copy", "phone", "Camera").copy(sourcePath = original.sourcePath)
+        val review = planExactDuplicateReview(listOf(original, alias),
+            requestedUris = setOf("copy"))
+        assertTrue(review.groups.isEmpty())
+        assertTrue(review.selectedUris.isEmpty())
+        assertNull(exactDuplicateTrashPrompt(review))
+        assertTrue(verifiedExactDuplicateUris(review, listOf(original, alias),
+            explicitlyConfirmed = true, readCurrentSha256 = { "full-digest" }).isEmpty())
+    }
+
+    @Test fun offScopePhysicalAliasAlsoBlocksTrash() {
+        val original = row("original", "phone", "Camera")
+        val copy = row("copy", "phone", "Camera")
+        val alias = row("alias", "usb", "Other").copy(sourcePath = original.sourcePath)
+        val review = planExactDuplicateReview(listOf(original, copy, alias),
+            includedStorageIds = setOf("phone"), requestedUris = setOf("copy"))
+        assertTrue(review.groups.isEmpty())
+        assertTrue(review.selectedUris.isEmpty())
+    }
+
 }
