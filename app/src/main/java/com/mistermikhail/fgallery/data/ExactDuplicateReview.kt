@@ -233,4 +233,5 @@ internal fun duplicateReviewScopeAvailable(
     availableFolders: List<String>,
 ): Boolean =
     review.includedStorageIds.all { it in availableStorages } &&
-        review.includedFolderTargets.all { it in availableFolders }
+        review.includedFolderTargets.all { it in availableFolders } &&
+        review.groups.flatten().all { it.storageId in availableStorages && it.folderTarget in availableFolders }
