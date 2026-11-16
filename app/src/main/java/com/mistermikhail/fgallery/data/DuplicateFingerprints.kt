@@ -142,11 +142,7 @@ internal fun exactDuplicateGroups(rows: List<CatalogMediaRow>): List<List<Catalo
         // Repeated catalogue rows are one physical item, never two copies.
         .distinctBy { it.uri }
         .filterNot { it.recycled }
-        .filter { row ->
-            row.sizeBytes > 0L &&
-                row.quickHash?.matches(Regex("[0-9a-fA-F]{64}")) == true &&
-                row.fullHash?.matches(Regex("[0-9a-fA-F]{64}")) == true
-        }
+        .filter { it.sizeBytes > 0L && !it.quickHash.isNullOrBlank() && !it.fullHash.isNullOrBlank() }
         .groupBy { Triple(it.sizeBytes, it.quickHash, it.fullHash) }
         .values.filter { it.size > 1 }
         .map { it.sortedWith(exactCopyKeepPriority) }
