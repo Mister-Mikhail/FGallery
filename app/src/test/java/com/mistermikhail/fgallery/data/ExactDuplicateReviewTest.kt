@@ -220,6 +220,21 @@ class ExactDuplicateReviewTest {
         }
     }
 
+    @Test fun freshByteGatePropagatesCancellationInsteadOfContinuingVerification() {
+        val rows = listOf(item("original"), item("copy"))
+        val review = planExactDuplicateReview(rows, requestedUris = setOf("copy"))
+        var reads = 0
+        try {
+            verifiedExactDuplicateUris(review, rows, explicitlyConfirmed = true) {
+                reads++
+                throw java.util.concurrent.CancellationException("scan superseded")
+            }
+            org.junit.Assert.fail("Cancellation must propagate to the caller")
+        } catch (_: java.util.concurrent.CancellationException) {
+            assertEquals(1, reads)
+        }
+    }
+
     @Test fun freshByteGateRejectsStaleCatalogueBeforeReadingAnyFile() {
         val rows = listOf(item("original"), item("copy"))
         val review = planExactDuplicateReview(rows, requestedUris = setOf("copy"))
