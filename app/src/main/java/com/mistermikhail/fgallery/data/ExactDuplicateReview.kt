@@ -252,3 +252,11 @@ internal fun duplicateReviewScopeAvailable(
     review.includedStorageIds.all { it in availableStorages } &&
         review.includedFolderTargets.all { it in availableFolders } &&
         review.groups.flatten().all { it.storageId in availableStorages && it.folderTarget in availableFolders }
+
+/** A missing source or invalidated selection revokes an open trash dialog. */
+internal fun duplicateConfirmationInvalidated(
+    review: ExactDuplicateReview,
+    availableStorages: List<String>,
+    availableFolders: List<String>,
+): Boolean = !duplicateReviewScopeAvailable(review, availableStorages, availableFolders) ||
+    exactDuplicateTrashPrompt(review) == null
