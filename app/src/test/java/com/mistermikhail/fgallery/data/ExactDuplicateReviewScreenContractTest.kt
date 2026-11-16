@@ -13,7 +13,7 @@ class ExactDuplicateReviewScreenContractTest {
         kind = "IMAGE", dateTakenMillis = 1, width = 200, height = 200,
         durationMillis = 0, album = folder, relativePath = folder,
         sizeBytes = 100, dateModifiedMillis = 1, storageId = storage,
-        storageName = storage, folderTarget = folder, sourcePath = null,
+        storageName = storage, folderTarget = folder, sourcePath = "/test/$uri.jpg",
         quickHash = "edge", fullHash = "full-digest", recycled = false,
     )
 
