@@ -132,3 +132,38 @@ internal fun verifiedExactDuplicateUris(
     }
     return authorized
 }
+
+
+/**
+ * Read-only facts for a Stage 6 review card. No removal recommendation is
+ * implied: the user must select copies manually and confirm separately.
+ * Storage and folder scope have already been applied by the review planner.
+ */
+internal data class ExactDuplicateGroupSummary(
+    val originalUri: String,
+    val copyUris: List<String>,
+    val sizeBytes: Long,
+    val reclaimableBytes: Long,
+    val sha256: String,
+)
+
+internal fun exactDuplicateGroupSummaries(
+    review: ExactDuplicateReview,
+): List<ExactDuplicateGroupSummary> = review.groups.mapNotNull { group ->
+    val original = group.firstOrNull() ?: return@mapNotNull null
+    if (group.size < 2 || original.uri !in review.protectedUris) return@mapNotNull null
+    val copies = group.drop(1)
+    if (copies.any { it.uri in review.protectedUris }) return@mapNotNull null
+    val digest = original.fullHash ?: return@mapNotNull null
+    if (digest.isBlank() || copies.any { it.fullHash != digest || it.sizeBytes != original.sizeBytes }) {
+        return@mapNotNull null
+    }
+    val selected = copies.filter { it.uri in review.selectedUris }
+    ExactDuplicateGroupSummary(
+        originalUri = original.uri,
+        copyUris = copies.map { it.uri },
+        sizeBytes = original.sizeBytes,
+        reclaimableBytes = selected.sumOf { it.sizeBytes },
+        sha256 = digest,
+    )
+}
