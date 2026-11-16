@@ -222,3 +222,12 @@ internal fun toggleDuplicateScope(
 /** An empty stored filter means ALL, so every visible checkbox is checked. */
 internal fun isDuplicateScopeChecked(included: Set<String>, item: String): Boolean =
     included.isEmpty() || item in included
+
+/** A disconnected SAF volume or removed folder invalidates pending consent. */
+internal fun duplicateReviewScopeAvailable(
+    review: ExactDuplicateReview,
+    availableStorages: List<String>,
+    availableFolders: List<String>,
+): Boolean =
+    review.includedStorageIds.all { it in availableStorages } &&
+        review.includedFolderTargets.all { it in availableFolders }
