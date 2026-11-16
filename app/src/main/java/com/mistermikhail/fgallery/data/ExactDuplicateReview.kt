@@ -218,3 +218,7 @@ internal fun toggleDuplicateScope(
     if (next.isEmpty()) return current
     return if (next == options) emptySet() else next
 }
+
+/** An empty stored filter means ALL, so every visible checkbox is checked. */
+internal fun isDuplicateScopeChecked(included: Set<String>, item: String): Boolean =
+    included.isEmpty() || item in included
