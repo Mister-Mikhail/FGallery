@@ -209,6 +209,9 @@ internal fun toggleDuplicateScope(
 ): Set<String> {
     val options = available.toSet()
     if (item !in options) return included
+    // If a mounted SAF/USB volume vanished, preserve the explicit scope.
+    // Treating a now-unknown scope as ALL would unexpectedly expose other media.
+    if (included.isNotEmpty() && included.intersect(options).isEmpty()) return included
     val current = if (included.isEmpty()) options else included.intersect(options)
     val next = if (checked) current + item else current - item
     // No empty-scope sentinel for "none": keep the last selected option.
