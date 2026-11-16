@@ -87,7 +87,7 @@ internal object DuplicateFingerprints {
             }
             digest.update(buffer, 0, read)
         }
-        if (expectedBytes != null && total != expectedBytes) {
+        // Cancellation can arrive after the final read returned EOF. Never\n        // publish a completed fingerprint from a superseded scan.\n        checkActive()\n        if (expectedBytes != null && total != expectedBytes) {
             throw EOFException("Provider file changed during fingerprinting")
         }
         return digest.digest().toHexString()
