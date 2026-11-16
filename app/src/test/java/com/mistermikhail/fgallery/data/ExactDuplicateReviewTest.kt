@@ -267,4 +267,27 @@ class ExactDuplicateReviewTest {
             explicitlyConfirmed = true).isEmpty())
     }
 
+    @Test fun offScopeDuplicateUriInvalidatesScopedReviewAndConfirmation() {
+        val rows = listOf(item("original"), item("copy"))
+        val scoped = planExactDuplicateReview(rows,
+            includedStorageIds = setOf("phone"), requestedUris = setOf("copy"))
+        assertEquals(setOf("copy"), scoped.selectedUris)
+        // SAF reconciliation can retain a stale generation on a disconnected USB
+        // volume. Filtering before URI uniqueness would conceal this collision.
+        val conflicting = rows + item("copy", storage = "usb", modified = 999L)
+        val blocked = planExactDuplicateReview(conflicting,
+            includedStorageIds = setOf("phone"), requestedUris = setOf("copy"))
+        assertTrue(blocked.groups.isEmpty())
+        assertTrue(blocked.selectedUris.isEmpty())
+        assertTrue(confirmedExactDuplicateUris(scoped, conflicting,
+            includedStorageIds = setOf("phone"), explicitlyConfirmed = true).isEmpty())
+        var reads = 0
+        assertTrue(verifiedExactDuplicateUris(scoped, conflicting,
+            includedStorageIds = setOf("phone"), explicitlyConfirmed = true) {
+            reads++
+            it.fullHash
+        }.isEmpty())
+        assertEquals(0, reads)
+    }
+
 }
