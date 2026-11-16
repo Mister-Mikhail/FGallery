@@ -26,7 +26,9 @@ internal fun exactDuplicateReviewCards(
     review: ExactDuplicateReview,
 ): List<ExactDuplicateReviewCard> {
     val summaries = exactDuplicateGroupSummaries(review)
-    return review.groups.zip(summaries).map { (group, summary) ->
+    return review.groups.mapNotNull { group ->
+        val summary = summaries.firstOrNull { it.originalUri == group.firstOrNull()?.uri }
+            ?: return@mapNotNull null
         ExactDuplicateReviewCard(
             sha256 = summary.sha256,
             sizeBytes = summary.sizeBytes,
