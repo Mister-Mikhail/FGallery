@@ -290,4 +290,16 @@ class ExactDuplicateReviewTest {
         assertEquals(0, reads)
     }
 
+
+    @Test fun allScopeReviewRejectsDisconnectedStorageOrFolder() {
+        val rows = listOf(item("a"), item("b", storage = "usb", folder = "USB/Pictures/"))
+        val review = planExactDuplicateReview(rows)
+        assertTrue(review.groups.isNotEmpty())
+        assertEquals(false, duplicateReviewScopeAvailable(
+            review, listOf("phone"), listOf("DCIM/", "USB/Pictures/")))
+        assertEquals(false, duplicateReviewScopeAvailable(
+            review, listOf("phone", "usb"), listOf("DCIM/")))
+        assertEquals(true, duplicateReviewScopeAvailable(
+            review, listOf("phone", "usb"), listOf("DCIM/", "USB/Pictures/")))
+    }
 }
