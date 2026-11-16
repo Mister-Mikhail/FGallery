@@ -198,3 +198,23 @@ internal fun selectExactDuplicateCopy(
         indexedRows, fresh.includedStorageIds, fresh.includedFolderTargets, requested
     )
 }
+
+/**
+ * Scope checkbox transition. Empty selection represents ALL, so unchecking
+ * one item from ALL must narrow the scope rather than silently retain ALL.
+ * Never turn the final unchecked item into an implicit ALL selection.
+ */
+internal fun toggleDuplicateScope(
+    available: List<String>,
+    included: Set<String>,
+    item: String,
+    checked: Boolean,
+): Set<String> {
+    val options = available.toSet()
+    if (item !in options) return included
+    val current = if (included.isEmpty()) options else included.intersect(options)
+    val next = if (checked) current + item else current - item
+    // No empty-scope sentinel for "none": keep the last selected option.
+    if (next.isEmpty()) return current
+    return if (next == options) emptySet() else next
+}
