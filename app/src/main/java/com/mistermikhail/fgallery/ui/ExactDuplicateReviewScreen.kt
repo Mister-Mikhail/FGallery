@@ -55,7 +55,7 @@ internal fun ExactDuplicateReviewScreen(
         Text("Сравниваются полные SHA-256. Похожие фотографии и RAW+JPEG не считаются точными копиями.")
         Text("Носители (все отмечены — поиск по всем)", style = MaterialTheme.typography.titleSmall)
         availableStorages.distinct().sorted().forEach { storage ->
-            ScopeCheckbox(storage, isDuplicateScopeChecked(review.includedStorageIds, storage)) { checked ->
+            ScopeCheckbox(storage, isDuplicateScopeChecked(review.includedStorageIds, storage), enabled = scopeAvailable) { checked ->
                 onScopeChanged(
                     toggleDuplicateScope(availableStorages, review.includedStorageIds, storage, checked),
                     review.includedFolderTargets,
@@ -64,7 +64,7 @@ internal fun ExactDuplicateReviewScreen(
         }
         Text("Папки (все отмечены — поиск по всем)", style = MaterialTheme.typography.titleSmall)
         availableFolders.distinct().sorted().forEach { folder ->
-            ScopeCheckbox(folder, isDuplicateScopeChecked(review.includedFolderTargets, folder)) { checked ->
+            ScopeCheckbox(folder, isDuplicateScopeChecked(review.includedFolderTargets, folder), enabled = scopeAvailable) { checked ->
                 onScopeChanged(
                     review.includedStorageIds,
                     toggleDuplicateScope(availableFolders, review.includedFolderTargets, folder, checked),
@@ -82,7 +82,7 @@ internal fun ExactDuplicateReviewScreen(
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Checkbox(
                         checked = item.manuallySelected,
-                        enabled = !item.protectedOriginal,
+                        enabled = scopeAvailable && !item.protectedOriginal,
                         onCheckedChange = { onCopySelectionChanged(item.uri, it) },
                     )
                     Column {
@@ -122,9 +122,9 @@ internal fun ExactDuplicateReviewScreen(
 }
 
 @Composable
-private fun ScopeCheckbox(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+private fun ScopeCheckbox(label: String, checked: Boolean, enabled: Boolean, onCheckedChange: (Boolean) -> Unit) {
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Checkbox(checked = checked, onCheckedChange = onCheckedChange)
+        Checkbox(checked = checked, enabled = enabled, onCheckedChange = onCheckedChange)
         Text(label, modifier = Modifier.padding(top = 12.dp))
     }
 }
