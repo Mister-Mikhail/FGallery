@@ -38,4 +38,10 @@ class DuplicateScopeTransitionTest {
         assertEquals(emptySet<String>(),
             toggleDuplicateScope(emptyList(), emptySet(), "phone", true))
     }
+    @Test fun disconnectedSafVolumeDoesNotWidenScopeWhenAnotherVolumeAppears() {
+        assertEquals(setOf("usb-disconnected"),
+            toggleDuplicateScope(listOf("phone", "sd"), setOf("usb-disconnected"), "phone", true))
+        assertEquals(setOf("usb-disconnected"),
+            toggleDuplicateScope(listOf("phone", "sd"), setOf("usb-disconnected"), "sd", false))
+    }
 }
