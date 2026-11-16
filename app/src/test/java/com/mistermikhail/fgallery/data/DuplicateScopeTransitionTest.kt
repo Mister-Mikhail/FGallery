@@ -4,6 +4,16 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class DuplicateScopeTransitionTest {
+    @Test fun implicitAllIsRenderedAsChecked() {
+        assertEquals(true, isDuplicateScopeChecked(emptySet(), "phone"))
+        assertEquals(true, isDuplicateScopeChecked(emptySet(), "usb"))
+    }
+
+    @Test fun explicitScopeOnlyChecksItsMembers() {
+        assertEquals(true, isDuplicateScopeChecked(setOf("phone"), "phone"))
+        assertEquals(false, isDuplicateScopeChecked(setOf("phone"), "usb"))
+    }
+
     @Test fun uncheckingOneFromAllNarrowsScopeInsteadOfWidening() {
         assertEquals(setOf("phone", "usb"),
             toggleDuplicateScope(listOf("phone", "usb", "sd"), emptySet(), "sd", false))
