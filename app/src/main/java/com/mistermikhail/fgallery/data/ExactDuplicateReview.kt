@@ -38,6 +38,14 @@ internal fun planExactDuplicateReview(
         return ExactDuplicateReview(emptyList(), emptySet(), emptySet(),
             includedStorageIds.toSet(), includedFolderTargets.toSet())
     }
+    // Different provider URIs can refer to the same physical file. Never offer
+    // an alias of the protected original as a disposable duplicate. A known
+    // non-empty source path must be unique across the entire catalogue.
+    val knownPaths = indexedRows.mapNotNull { it.sourcePath?.takeIf(String::isNotBlank) }
+    if (knownPaths.toSet().size != knownPaths.size) {
+        return ExactDuplicateReview(emptyList(), emptySet(), emptySet(),
+            includedStorageIds.toSet(), includedFolderTargets.toSet())
+    }
     val groups = exactDuplicateGroups(scoped)
     val protected = groups.map { it.first().uri }.toSet()
     val eligible = groups.flatMap { it.drop(1) }.map { it.uri }.toSet()
