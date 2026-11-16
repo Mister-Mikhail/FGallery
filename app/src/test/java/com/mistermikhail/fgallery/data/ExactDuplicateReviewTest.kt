@@ -10,7 +10,7 @@ class ExactDuplicateReviewTest {
         folder: String = "DCIM/", modified: Long = 100L,
     ) = CatalogMediaRow(
         uri = uri, mediaId = 1, name = "photo.jpg", mimeType = "image/jpeg",
-        kind = "IMAGE", dateTakenMillis = 123, width = 100, height = 100,
+        kind = "IMAGE", dateTakenMillis = if (uri == "original") 1 else 123, width = 100, height = 100,
         durationMillis = 0, album = "Camera", relativePath = folder,
         sizeBytes = 200, dateModifiedMillis = modified,
         storageId = storage, storageName = storage, folderTarget = folder,
