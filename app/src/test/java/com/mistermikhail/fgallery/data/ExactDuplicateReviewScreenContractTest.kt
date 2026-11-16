@@ -79,4 +79,18 @@ class ExactDuplicateReviewScreenContractTest {
         assertTrue(review.selectedUris.isEmpty())
     }
 
+    @Test fun partiallyDisconnectedScopeCannotBeEditedIntoAnImplicitAllScope() {
+        val rows = listOf(row("original", "usb", "Camera"), row("copy", "usb", "Camera"))
+        val review = planExactDuplicateReview(rows, includedStorageIds = setOf("usb"),
+            includedFolderTargets = setOf("Camera"), requestedUris = setOf("copy"))
+        assertFalse(duplicateReviewScopeAvailable(review, listOf("phone"), listOf("Camera")))
+        // The remaining phone checkbox must not erase the missing USB scope.
+        val unchanged = toggleDuplicateScope(listOf("phone"), review.includedStorageIds,
+            "phone", checked = true)
+        assertEquals(setOf("usb"), unchanged)
+        assertFalse(duplicateReviewScopeAvailable(review, listOf("phone"), listOf("Camera")))
+        assertTrue(duplicateReviewScopeAvailable(review,
+            listOf("phone", "usb"), listOf("Camera")))
+    }
+
 }
