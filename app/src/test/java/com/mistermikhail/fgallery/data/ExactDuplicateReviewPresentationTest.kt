@@ -9,7 +9,7 @@ import org.junit.Test
 class ExactDuplicateReviewPresentationTest {
     private fun row(uri: String, hash: String = "digest") = CatalogMediaRow(
         uri = uri, mediaId = 1, name = "$uri.jpg", mimeType = "image/jpeg",
-        kind = "IMAGE", dateTakenMillis = 123, width = 100, height = 100,
+        kind = "IMAGE", dateTakenMillis = if (uri == "original") 1 else 123, width = 100, height = 100,
         durationMillis = 0, album = "Camera", relativePath = "DCIM/",
         sizeBytes = 250, dateModifiedMillis = 100,
         storageId = "phone", storageName = "phone", folderTarget = "DCIM/",
