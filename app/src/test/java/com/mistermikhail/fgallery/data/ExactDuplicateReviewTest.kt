@@ -14,7 +14,7 @@ class ExactDuplicateReviewTest {
         durationMillis = 0, album = "Camera", relativePath = folder,
         sizeBytes = 200, dateModifiedMillis = modified,
         storageId = storage, storageName = storage, folderTarget = folder,
-        sourcePath = "/DCIM/photo.jpg", quickHash = "edge", fullHash = full,
+        sourcePath = "/DCIM/$uri.jpg", quickHash = "edge", fullHash = full,
         recycled = false,
     )
 
@@ -165,6 +165,26 @@ class ExactDuplicateReviewTest {
         changes.forEach { changed ->
             assertTrue(confirmedExactDuplicateUris(review, listOf(rows[0], changed),
                 explicitlyConfirmed = true).isEmpty())
+        }
+    }
+
+    @Test fun freshByteGateReadsCurrentCatalogueRowsNotReviewSnapshot() {
+        val snapshot = listOf(item("original"), item("copy"))
+        val review = planExactDuplicateReview(snapshot, requestedUris = setOf("copy"))
+        // Structurally equal rows from a new scan must be used for the final
+        // read, rather than the stale object instances held by the UI.
+        val rescanned = snapshot.map { it.copy() }
+        val visited = mutableListOf<CatalogMediaRow>()
+        val authorized = verifiedExactDuplicateUris(review, rescanned,
+            explicitlyConfirmed = true) { row ->
+            visited += row
+            row.fullHash
+        }
+        assertEquals(setOf("copy"), authorized)
+        assertEquals(2, visited.size)
+        visited.forEach { row ->
+            assertTrue(rescanned.any { it === row })
+            assertTrue(snapshot.none { it === row })
         }
     }
 
