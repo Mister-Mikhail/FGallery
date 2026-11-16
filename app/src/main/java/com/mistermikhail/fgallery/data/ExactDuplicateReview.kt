@@ -31,9 +31,10 @@ internal fun planExactDuplicateReview(
             (includedFolderTargets.isEmpty() || row.folderTarget in includedFolderTargets)
     }
     // A transient SAF/MediaStore reconciliation may expose multiple generations
-    // of the same URI. Do not present an actionable review from ambiguous rows.
+    // of the same URI, including one outside the chosen scope. Fail closed globally:
+    // a stale off-scope row must not make an in-scope URI actionable.
     // The caller can retry after catalogue reconciliation completes.
-    if (scoped.map { it.uri }.toSet().size != scoped.size) {
+    if (indexedRows.map { it.uri }.toSet().size != indexedRows.size) {
         return ExactDuplicateReview(emptyList(), emptySet(), emptySet(),
             includedStorageIds.toSet(), includedFolderTargets.toSet())
     }
@@ -65,11 +66,7 @@ internal fun confirmedExactDuplicateUris(
     // Reconciliation can briefly expose two rows for one URI. distinctBy in
     // exactDuplicateGroups would hide a conflicting second generation; do not
     // authorize trash until the catalogue has converged to one row per URI.
-    val scopedRows = currentRows.filter { row ->
-        (includedStorageIds.isEmpty() || row.storageId in includedStorageIds) &&
-            (includedFolderTargets.isEmpty() || row.folderTarget in includedFolderTargets)
-    }
-    if (scopedRows.map { it.uri }.distinct().size != scopedRows.size) return emptySet()
+    if (currentRows.map { it.uri }.distinct().size != currentRows.size) return emptySet()
     val current = planExactDuplicateReview(
         currentRows, includedStorageIds, includedFolderTargets, reviewed.selectedUris
     )
