@@ -167,3 +167,34 @@ internal fun exactDuplicateGroupSummaries(
         sha256 = digest,
     )
 }
+
+/**
+ * Pure selection transition for the Stage 6 review UI. The UI must never
+ * mutate selectedUris directly or treat a suggested original as disposable.
+ * Rebuild the proposal from the same scoped catalogue snapshot on every tap.
+ * A later scan must replace the entire review and clear consent.
+ */
+internal fun selectExactDuplicateCopy(
+    review: ExactDuplicateReview,
+    indexedRows: List<CatalogMediaRow>,
+    uri: String,
+    selected: Boolean,
+): ExactDuplicateReview {
+    // A stale review is not actionable, even for a harmless-looking tap.
+    val fresh = planExactDuplicateReview(
+        indexedRows, review.includedStorageIds, review.includedFolderTargets,
+        review.selectedUris
+    )
+    if (fresh.groups != review.groups || fresh.protectedUris != review.protectedUris ||
+        fresh.selectedUris != review.selectedUris) {
+        return planExactDuplicateReview(
+            indexedRows, review.includedStorageIds, review.includedFolderTargets
+        )
+    }
+    val eligible = fresh.groups.flatMap { it.drop(1) }.map { it.uri }.toSet()
+    if (uri !in eligible || uri in fresh.protectedUris) return fresh
+    val requested = if (selected) fresh.selectedUris + uri else fresh.selectedUris - uri
+    return planExactDuplicateReview(
+        indexedRows, fresh.includedStorageIds, fresh.includedFolderTargets, requested
+    )
+}
