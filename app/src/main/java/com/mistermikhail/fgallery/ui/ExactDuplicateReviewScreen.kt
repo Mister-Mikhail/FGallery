@@ -28,6 +28,7 @@ import com.mistermikhail.fgallery.data.exactDuplicateTrashPrompt
 import com.mistermikhail.fgallery.data.toggleDuplicateScope
 import com.mistermikhail.fgallery.data.isDuplicateScopeChecked
 import com.mistermikhail.fgallery.data.duplicateReviewScopeAvailable
+import com.mistermikhail.fgallery.data.duplicateConfirmationInvalidated
 
 /**
  * Stage 6 review surface. Intentionally not connected to the gallery menu or
@@ -51,7 +52,7 @@ internal fun ExactDuplicateReviewScreen(
     // A disconnected SAF source invalidates an already-open confirmation.
     // Reconnection must require a fresh tap, not resurrect an old dialog.
     LaunchedEffect(scopeAvailable, prompt) {
-        if (!scopeAvailable || prompt == null) confirmOpen = false
+        if (duplicateConfirmationInvalidated(review, availableStorages, availableFolders)) confirmOpen = false
     }
     Column(
         modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp),
