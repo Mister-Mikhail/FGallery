@@ -93,4 +93,14 @@ class ExactDuplicateReviewScreenContractTest {
             listOf("phone", "usb"), listOf("Camera")))
     }
 
+    @Test fun disconnectedSourceRevokesConfirmationAndSelectionResetRequiresNewConsent() {
+        val rows = listOf(row("original", "usb", "Camera"), row("copy", "usb", "Camera"))
+        val review = planExactDuplicateReview(rows, includedStorageIds = setOf("usb"),
+            requestedUris = setOf("copy"))
+        assertFalse(duplicateConfirmationInvalidated(review, listOf("usb"), listOf("Camera")))
+        assertTrue(duplicateConfirmationInvalidated(review, listOf("phone"), listOf("Camera")))
+        val cleared = planExactDuplicateReview(rows, includedStorageIds = setOf("usb"))
+        assertTrue(duplicateConfirmationInvalidated(cleared, listOf("usb"), listOf("Camera")))
+    }
+
 }
