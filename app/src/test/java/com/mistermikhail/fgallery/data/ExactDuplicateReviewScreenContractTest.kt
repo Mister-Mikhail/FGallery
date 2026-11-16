@@ -47,4 +47,14 @@ class ExactDuplicateReviewScreenContractTest {
         assertEquals(setOf("copy"), chosen.selectedUris)
         assertTrue(exactDuplicateTrashPrompt(chosen)!!.message.contains("SHA-256"))
     }
+
+    @Test fun disconnectedSafScopeBlocksTrashUntilSourceReturns() {
+        val rows = listOf(row("original", "usb", "Camera"), row("copy", "usb", "Camera"))
+        val review = planExactDuplicateReview(rows, includedStorageIds = setOf("usb"),
+            includedFolderTargets = setOf("Camera"), requestedUris = setOf("copy"))
+        assertEquals(1, review.selectedCount)
+        assertTrue(duplicateReviewScopeAvailable(review, listOf("usb"), listOf("Camera")))
+        assertFalse(duplicateReviewScopeAvailable(review, listOf("phone"), listOf("Camera")))
+        assertFalse(duplicateReviewScopeAvailable(review, listOf("usb"), emptyList()))
+    }
 }
