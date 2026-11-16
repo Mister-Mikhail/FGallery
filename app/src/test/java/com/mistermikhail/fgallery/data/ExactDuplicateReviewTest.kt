@@ -240,4 +240,31 @@ class ExactDuplicateReviewTest {
         ).isEmpty())
     }
 
+
+    @Test fun manualSelectionCannotSelectProtectedOriginalOrOutOfScopeFile() {
+        val rows = listOf(item("original"), item("copy"), item("usb", storage = "usb"))
+        val initial = planExactDuplicateReview(rows, includedStorageIds = setOf("phone"))
+        assertTrue(initial.selectedUris.isEmpty())
+        val protected = selectExactDuplicateCopy(initial, rows, "original", true)
+        assertTrue(protected.selectedUris.isEmpty())
+        val outOfScope = selectExactDuplicateCopy(protected, rows, "usb", true)
+        assertTrue(outOfScope.selectedUris.isEmpty())
+        val chosen = selectExactDuplicateCopy(outOfScope, rows, "copy", true)
+        assertEquals(setOf("copy"), chosen.selectedUris)
+        assertEquals(setOf("original"), chosen.protectedUris)
+        assertTrue(selectExactDuplicateCopy(chosen, rows, "copy", false).selectedUris.isEmpty())
+    }
+
+    @Test fun manualSelectionInvalidatesOnStaleCatalogueAndRequiresNewConsent() {
+        val rows = listOf(item("original"), item("copy"))
+        val selected = selectExactDuplicateCopy(planExactDuplicateReview(rows), rows, "copy", true)
+        val changed = listOf(rows[0], rows[1].copy(dateModifiedMillis = 201L))
+        val reset = selectExactDuplicateCopy(selected, changed, "copy", true)
+        assertTrue(reset.selectedUris.isEmpty())
+        assertTrue(confirmedExactDuplicateUris(selected, changed,
+            explicitlyConfirmed = true).isEmpty())
+        assertTrue(confirmedExactDuplicateUris(reset, changed,
+            explicitlyConfirmed = true).isEmpty())
+    }
+
 }
