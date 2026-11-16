@@ -132,6 +132,10 @@ internal fun verifiedExactDuplicateUris(
             val row = currentByUri[reviewedRow.uri] ?: return emptySet()
             val observed = try {
                 readCurrentSha256(row)
+            } catch (cancelled: java.util.concurrent.CancellationException) {
+                // Cancellation must stop the operation, not be mistaken for an
+                // unreadable file while a superseded scan keeps running.
+                throw cancelled
             } catch (_: Exception) {
                 null
             }
