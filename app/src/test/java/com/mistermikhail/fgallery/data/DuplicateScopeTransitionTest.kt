@@ -44,4 +44,15 @@ class DuplicateScopeTransitionTest {
         assertEquals(setOf("usb-disconnected"),
             toggleDuplicateScope(listOf("phone", "sd"), setOf("usb-disconnected"), "sd", false))
     }
+    @Test fun partiallyDisconnectedScopeCannotSilentlyDropMissingVolume() {
+        val chosen = setOf("phone", "usb-disconnected")
+        val available = listOf("phone", "sd")
+        assertEquals(chosen, toggleDuplicateScope(available, chosen, "sd", true))
+        assertEquals(chosen, toggleDuplicateScope(available, chosen, "phone", false))
+    }
+
+    @Test fun partiallyDisconnectedFolderScopeCannotBecomeImplicitAll() {
+        val chosen = setOf("DCIM/", "USB/Pictures/")
+        assertEquals(chosen, toggleDuplicateScope(listOf("DCIM/", "Downloads/"), chosen, "Downloads/", true))
+    }
 }
