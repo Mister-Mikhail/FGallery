@@ -337,4 +337,23 @@ class ExactDuplicateReviewTest {
         assertEquals(true, duplicateReviewScopeAvailable(
             review, listOf("phone", "usb"), listOf("DCIM/", "USB/Pictures/")))
     }
+    @Test fun freshByteGatePropagatesWorkerInterruptionAndPreservesInterruptFlag() {
+        val rows = listOf(item("original"), item("copy"))
+        val review = planExactDuplicateReview(rows, requestedUris = setOf("copy"))
+        var reads = 0
+        try {
+            verifiedExactDuplicateUris(review, rows, explicitlyConfirmed = true) {
+                reads++
+                throw InterruptedException("SAF worker interrupted")
+            }
+            org.junit.Assert.fail("Interrupted verification must not authorize trash")
+        } catch (_: InterruptedException) {
+            assertEquals(1, reads)
+            assertTrue(Thread.currentThread().isInterrupted)
+        } finally {
+            // Do not leak the interrupt flag into the rest of the JVM suite.
+            Thread.interrupted()
+        }
+    }
+
 }
