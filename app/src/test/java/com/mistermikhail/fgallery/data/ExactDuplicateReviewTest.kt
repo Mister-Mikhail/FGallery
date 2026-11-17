@@ -401,4 +401,21 @@ class ExactDuplicateReviewTest {
         }
     }
 
+
+    @Test fun verificationIgnoresUnselectedUnreadableCopiesButStillChecksOriginal() {
+        val rows = listOf(item("original"), item("selected"), item("offline"))
+        val review = planExactDuplicateReview(rows, requestedUris = setOf("selected"))
+        val visited = mutableListOf<String>()
+        val approved = verifiedExactDuplicateUris(review, rows, explicitlyConfirmed = true) { row ->
+            visited += row.uri
+            if (row.uri == "offline") throw java.io.IOException("Disconnected SAF document")
+            row.fullHash
+        }
+        assertEquals(setOf("selected"), approved)
+        assertEquals(listOf("original", "selected"), visited)
+        // The protected original remains mandatory even if the selected copy is readable.
+        assertTrue(verifiedExactDuplicateUris(review, rows, explicitlyConfirmed = true) { row ->
+            if (row.uri == "original") null else row.fullHash
+        }.isEmpty())
+    }
 }
