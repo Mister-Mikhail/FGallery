@@ -337,6 +337,27 @@ class ExactDuplicateReviewTest {
         assertEquals(true, duplicateReviewScopeAvailable(
             review, listOf("phone", "usb"), listOf("DCIM/", "USB/Pictures/")))
     }
+    @Test fun freshByteGateRejectsInterruptRaisedAfterDigestIsReturned() {
+        val rows = listOf(item("original"), item("copy"))
+        val review = planExactDuplicateReview(rows, requestedUris = setOf("copy"))
+        var reads = 0
+        try {
+            verifiedExactDuplicateUris(review, rows, explicitlyConfirmed = true) { row ->
+                reads++
+                // A provider may finish a read while the worker has already
+                // been interrupted; returning a valid hash cannot grant consent.
+                Thread.currentThread().interrupt()
+                row.fullHash
+            }
+            org.junit.Assert.fail("Interrupted digest must not authorize trash")
+        } catch (_: InterruptedException) {
+            assertEquals(1, reads)
+            assertTrue(Thread.currentThread().isInterrupted)
+        } finally {
+            Thread.interrupted()
+        }
+    }
+
     @Test fun freshByteGatePropagatesWorkerInterruptionAndPreservesInterruptFlag() {
         val rows = listOf(item("original"), item("copy"))
         val review = planExactDuplicateReview(rows, requestedUris = setOf("copy"))
