@@ -32,7 +32,23 @@ internal suspend fun <T> preflightDuplicateTrash(
     if (knownPaths.toSet().size != knownPaths.size) return false
     for (item in items) {
         currentCoroutineContext().ensureActive()
-        if (!verify(item)) return false
+        val valid = try {
+            verify(item)
+        } catch (cancelled: java.util.concurrent.CancellationException) {
+            throw cancelled
+        } catch (interrupted: InterruptedException) {
+            Thread.currentThread().interrupt()
+            throw interrupted
+        } catch (_: Exception) {
+            // A SAF provider may revoke access during verification.
+            // Ordinary I/O failure must never authorize a partial batch.
+            return false
+        }
+        currentCoroutineContext().ensureActive()
+        if (Thread.currentThread().isInterrupted) {
+            throw InterruptedException("Duplicate preflight interrupted")
+        }
+        if (!valid) return false
         // A verifier may be synchronous or catch an I/O cancellation internally.
         // Never return an authorized batch from a cancelled worker.
         currentCoroutineContext().ensureActive()
