@@ -146,7 +146,9 @@ internal fun exactDuplicateGroups(rows: List<CatalogMediaRow>): List<List<Catalo
         .distinctBy { it.uri }
         .filterNot { it.recycled }
         .filter { it.sizeBytes > 0L && !it.quickHash.isNullOrBlank() && !it.fullHash.isNullOrBlank() }
-        .groupBy { Triple(it.sizeBytes, it.quickHash, it.fullHash) }
+        // Edge hashes are only a scheduling optimization. A persisted full
+        // SHA-256 is the exact-copy identity even if edge-hash versions differ.
+        .groupBy { it.sizeBytes to it.fullHash }
         .values.filter { it.size > 1 }
         .map { it.sortedWith(exactCopyKeepPriority) }
         .sortedByDescending { it.size }
