@@ -28,9 +28,9 @@ class ExactDuplicateReviewTest {
         assertTrue(review.protectedUris.isEmpty())
     }
 
-    @Test fun reviewDoesNotConflateUnknownSafPaths() {
-        val original = item("original").copy(sourcePath = null)
-        val copy = item("copy").copy(sourcePath = null)
+    @Test fun reviewDoesNotConflateDistinctSafSourcePaths() {
+        val original = item("original").copy(sourcePath = "/saf/provider/one")
+        val copy = item("copy").copy(sourcePath = "/saf/provider/two")
         val review = planExactDuplicateReview(listOf(original, copy),
             requestedUris = setOf("copy"))
         assertEquals(setOf("copy"), review.selectedUris)
