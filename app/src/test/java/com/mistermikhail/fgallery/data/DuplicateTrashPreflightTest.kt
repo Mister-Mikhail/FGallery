@@ -9,10 +9,10 @@ import org.junit.Test
 class DuplicateTrashPreflightTest {
     @Test fun refusesEntireBatchIfLaterItemFails() = runBlocking {
         val checked = mutableListOf<String>()
-        val allowed = preflightDuplicateTrash(listOf("copyA", "copyB", "copyC")) { item ->
+        val allowed = preflightDuplicateTrash(listOf("copyA", "copyB", "copyC"), { item ->
             checked += item
             item != "copyB"
-        } { it }
+        }) { it }
         assertFalse(allowed)
         assertEquals(listOf("copyA", "copyB"), checked)
     }
