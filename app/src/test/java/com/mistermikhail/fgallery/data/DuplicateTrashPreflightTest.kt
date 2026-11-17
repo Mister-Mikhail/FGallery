@@ -101,7 +101,7 @@ class DuplicateTrashPreflightTest {
     }
 
     @Test fun cancellationAfterVerifierCannotAuthorizeBatch() = runBlocking {
-        val worker = kotlinx.coroutines.async {
+        val worker = async {
             preflightDuplicateTrash(listOf("copyA", "copyB"), { item ->
                 if (item == "copyA") {
                     // Simulate a provider returning after the scan was cancelled.
