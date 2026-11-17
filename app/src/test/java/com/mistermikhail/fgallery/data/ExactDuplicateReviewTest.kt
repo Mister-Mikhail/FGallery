@@ -462,4 +462,28 @@ class ExactDuplicateReviewTest {
         }.isEmpty())
     }
 
+    @Test fun liveShaGateRejectsChangedBytesEvenWhenCatalogueSnapshotIsUnchanged() {
+        val rows = listOf(item("original"), item("copy"))
+        val review = planExactDuplicateReview(rows, requestedUris = setOf("copy"))
+        val visited = mutableListOf<String>()
+        val approved = verifiedExactDuplicateUris(review, rows, explicitlyConfirmed = true) { row ->
+            visited += row.uri
+            if (row.uri == "copy") "b".repeat(64) else row.fullHash
+        }
+        assertTrue(approved.isEmpty())
+        assertEquals(listOf("original", "copy"), visited)
+    }
+
+    @Test fun liveShaGateNeverReadsBytesWithoutSeparateExplicitConfirmation() {
+        val rows = listOf(item("original"), item("copy"))
+        val review = planExactDuplicateReview(rows, requestedUris = setOf("copy"))
+        var reads = 0
+        val approved = verifiedExactDuplicateUris(review, rows, explicitlyConfirmed = false) {
+            reads++
+            it.fullHash
+        }
+        assertTrue(approved.isEmpty())
+        assertEquals(0, reads)
+    }
+
 }
