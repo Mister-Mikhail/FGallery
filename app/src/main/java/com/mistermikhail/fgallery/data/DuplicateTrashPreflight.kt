@@ -1,5 +1,8 @@
 package com.mistermikhail.fgallery.data
 
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+
 /**
  * All-or-nothing validation before a Stage 6 batch starts.
  * Does not move any file. The mutation layer must repeat validation immediately
@@ -11,6 +14,7 @@ internal suspend fun <T> preflightDuplicateTrash(
     sourceIdentity: (T) -> String,
     physicalIdentity: (T) -> String? = { null },
 ): Boolean {
+    currentCoroutineContext().ensureActive()
     if (items.isEmpty()) return false
     // A duplicated source would be moved twice, possibly after its original
     // URI has disappeared. Reject it before performing any byte reads or moves.
@@ -27,7 +31,12 @@ internal suspend fun <T> preflightDuplicateTrash(
     val knownPaths = rawPaths.map { java.io.File(it).normalize().path }
     if (knownPaths.toSet().size != knownPaths.size) return false
     for (item in items) {
+        currentCoroutineContext().ensureActive()
         if (!verify(item)) return false
+        // A verifier may be synchronous or catch an I/O cancellation internally.
+        // Never return an authorized batch from a cancelled worker.
+        currentCoroutineContext().ensureActive()
     }
+    currentCoroutineContext().ensureActive()
     return true
 }
