@@ -6,7 +6,7 @@ import org.junit.Test
 
 class ExactDuplicateReviewTest {
     private fun item(
-        uri: String, full: String = "same", storage: String = "phone",
+        uri: String, full: String = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", storage: String = "phone",
         folder: String = "DCIM/", modified: Long = 100L,
     ) = CatalogMediaRow(
         uri = uri, mediaId = 1, name = "photo.jpg", mimeType = "image/jpeg",
@@ -258,7 +258,7 @@ class ExactDuplicateReviewTest {
         assertEquals(listOf("copy1", "copy2"), summary.copyUris)
         assertEquals(200L, summary.sizeBytes)
         assertEquals(200L, summary.reclaimableBytes)
-        assertEquals("same", summary.sha256)
+        assertEquals("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", summary.sha256)
         assertEquals(setOf("copy2"), review.selectedUris)
         assertEquals(0L, exactDuplicateGroupSummaries(
             planExactDuplicateReview(rows)
@@ -375,6 +375,18 @@ class ExactDuplicateReviewTest {
             // Do not leak the interrupt flag into the rest of the JVM suite.
             Thread.interrupted()
         }
+    }
+
+    @Test fun finalGateRejectsMalformedDigestEvenWhenProviderEchoesIt() {
+        val rows = listOf(item("original", full = "short"), item("copy", full = "short"))
+        val review = planExactDuplicateReview(rows, requestedUris = setOf("copy"))
+        var reads = 0
+        val approved = verifiedExactDuplicateUris(review, rows, explicitlyConfirmed = true) {
+            reads++
+            it.fullHash
+        }
+        assertTrue(approved.isEmpty())
+        assertEquals(1, reads)
     }
 
 }
