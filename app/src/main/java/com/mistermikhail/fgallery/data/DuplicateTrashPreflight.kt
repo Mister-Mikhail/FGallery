@@ -19,7 +19,12 @@ internal suspend fun <T> preflightDuplicateTrash(
     // Different content URIs may alias one physical file. Where the caller can
     // resolve a trustworthy local path, reject repeated paths before any I/O.
     // Unknown SAF paths remain null and are never conflated with one another.
-    val knownPaths = items.mapNotNull { physicalIdentity(it)?.takeIf(String::isNotBlank) }
+    // A path containing "." or ".." is the same source as its normalized
+    // counterpart. Compare lexical identities before reading any bytes; this
+    // does not follow symlinks or infer identities for opaque SAF documents.
+    val rawPaths = items.mapNotNull(physicalIdentity)
+    if (rawPaths.any(String::isBlank)) return false
+    val knownPaths = rawPaths.map { java.io.File(it).normalize().path }
     if (knownPaths.toSet().size != knownPaths.size) return false
     for (item in items) {
         if (!verify(item)) return false
