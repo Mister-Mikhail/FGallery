@@ -386,7 +386,19 @@ class ExactDuplicateReviewTest {
             it.fullHash
         }
         assertTrue(approved.isEmpty())
-        assertEquals(1, reads)
+        assertEquals(0, reads)
+        assertTrue(review.groups.isEmpty())
+        assertTrue(review.selectedUris.isEmpty())
+    }
+
+    @Test fun reviewRejectsNonHexOrTruncatedSha256BeforeSelection() {
+        for (invalid in listOf("abc", "g".repeat(64), "a".repeat(63))) {
+            val rows = listOf(item("original", full = invalid), item("copy", full = invalid))
+            val review = planExactDuplicateReview(rows, requestedUris = setOf("copy"))
+            assertTrue(review.groups.isEmpty())
+            assertTrue(review.selectedUris.isEmpty())
+            assertTrue(review.protectedUris.isEmpty())
+        }
     }
 
 }
