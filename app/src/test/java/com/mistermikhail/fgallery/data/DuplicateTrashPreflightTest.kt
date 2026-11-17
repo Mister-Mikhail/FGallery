@@ -27,7 +27,7 @@ class DuplicateTrashPreflightTest {
         assertFalse(preflightDuplicateTrash(listOf("same", "same"), {
             checks++
             true
-        }) { it })
+        }, sourceIdentity = { it })
         assertEquals(0, checks)
     }
 
