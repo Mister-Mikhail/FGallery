@@ -105,6 +105,15 @@ class DuplicateFingerprintsTest {
             exactDuplicateGroups(listOf(original, copy, rawPair, unfinished, trashed)))
     }
 
+    @Test fun fullSha256IdentityDoesNotDependOnEdgeHashVersion() {
+        val digest = "a".repeat(64)
+        val original = row("file:///original", quick = "edge-v1", full = digest)
+        val copy = row("file:///copy", quick = "edge-v2", full = digest)
+        val unrelated = row("file:///unrelated", quick = "edge-v1", full = "b".repeat(64))
+        assertEquals(listOf(listOf(copy, original)),
+            exactDuplicateGroups(listOf(original, copy, unrelated)))
+    }
+
     @Test fun metadataOnlyRefreshRetainsHashesButChangedBytesInvalidate() {
         val old = row("file:///a", quick = "edge", full = "complete")
             .copy(perceptualHash = "perceptual", exifCamera = "Canon")
