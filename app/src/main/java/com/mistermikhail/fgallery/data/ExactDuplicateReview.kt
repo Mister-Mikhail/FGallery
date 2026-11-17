@@ -137,7 +137,10 @@ internal fun verifiedExactDuplicateUris(
     // Never authorize a batch if the original is not still readable and
     // byte-identical to the copies. A provider error fails the whole batch.
     for (group in relevantGroups) {
-        for (reviewedRow in group) {
+        // Only the protected original and explicitly selected copies require
+        // fresh byte reads. An unselected, disconnected SAF copy must not
+        // prevent the user from moving a different verified copy.
+        for (reviewedRow in group.filter { it.uri == group.first().uri || it.uri in authorized }) {
             val row = currentByUri[reviewedRow.uri] ?: return emptySet()
             val observed = try {
                 readCurrentSha256(row)
