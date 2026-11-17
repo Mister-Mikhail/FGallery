@@ -18,6 +18,24 @@ class ExactDuplicateReviewTest {
         recycled = false,
     )
 
+    @Test fun reviewRejectsPhysicalAliasesBeforeOfferingTrashSelection() {
+        val original = item("original").copy(sourcePath = "/storage/emulated/0/DCIM/photo.jpg")
+        val alias = item("copy").copy(sourcePath = "/storage/emulated/0/Pictures/../DCIM/./photo.jpg")
+        val review = planExactDuplicateReview(listOf(original, alias),
+            requestedUris = setOf("copy"))
+        assertTrue(review.groups.isEmpty())
+        assertTrue(review.selectedUris.isEmpty())
+        assertTrue(review.protectedUris.isEmpty())
+    }
+
+    @Test fun reviewDoesNotConflateUnknownSafPaths() {
+        val original = item("original").copy(sourcePath = null)
+        val copy = item("copy").copy(sourcePath = null)
+        val review = planExactDuplicateReview(listOf(original, copy),
+            requestedUris = setOf("copy"))
+        assertEquals(setOf("copy"), review.selectedUris)
+    }
+
     @Test fun noImplicitSelectionAndOriginalIsProtected() {
         val a = item("a")
         val b = item("b")
