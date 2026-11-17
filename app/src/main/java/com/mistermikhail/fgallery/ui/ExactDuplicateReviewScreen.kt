@@ -63,6 +63,7 @@ internal fun ExactDuplicateReviewScreen(
         Text("Носители (все отмечены — поиск по всем)", style = MaterialTheme.typography.titleSmall)
         availableStorages.distinct().sorted().forEach { storage ->
             ScopeCheckbox(storage, isDuplicateScopeChecked(review.includedStorageIds, storage), enabled = scopeAvailable) { checked ->
+                confirmOpen = false
                 onScopeChanged(
                     toggleDuplicateScope(availableStorages, review.includedStorageIds, storage, checked),
                     review.includedFolderTargets,
@@ -72,6 +73,7 @@ internal fun ExactDuplicateReviewScreen(
         Text("Папки (все отмечены — поиск по всем)", style = MaterialTheme.typography.titleSmall)
         availableFolders.distinct().sorted().forEach { folder ->
             ScopeCheckbox(folder, isDuplicateScopeChecked(review.includedFolderTargets, folder), enabled = scopeAvailable) { checked ->
+                confirmOpen = false
                 onScopeChanged(
                     review.includedStorageIds,
                     toggleDuplicateScope(availableFolders, review.includedFolderTargets, folder, checked),
@@ -90,7 +92,10 @@ internal fun ExactDuplicateReviewScreen(
                     Checkbox(
                         checked = item.manuallySelected,
                         enabled = scopeAvailable && !item.protectedOriginal,
-                        onCheckedChange = { onCopySelectionChanged(item.uri, it) },
+                        onCheckedChange = {
+                            confirmOpen = false
+                            onCopySelectionChanged(item.uri, it)
+                        },
                     )
                     Column {
                         Text(item.displayName)
