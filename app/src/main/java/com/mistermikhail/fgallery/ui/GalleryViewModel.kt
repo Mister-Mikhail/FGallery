@@ -484,9 +484,21 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
         }
     }
 
-    suspend fun moveToRecycleBin(items: List<MediaItem>) {
+    suspend fun moveToRecycleBin(items: List<MediaItem>) =
+        moveToRecycleBinWithPreMoveCheck(items) { true }
+
+    /**
+     * Stage 6-only entry point. The caller must supply fresh byte verification
+     * for the protected original and the current selected copy on every move.
+     * A failed check leaves that source untouched and stops further moves.
+     * Never invoke this with an unverified duplicate-review selection.
+     */
+    suspend fun moveToRecycleBinWithPreMoveCheck(
+        items: List<MediaItem>,
+        verifyBeforeMove: suspend (MediaItem) -> Boolean,
+    ) {
         try {
-            driveBin.trash(items)
+            driveBin.trashWithPreMoveCheck(items, verifyBeforeMove)
             // The move completed; drop the original identities from Room now.
             // A catalogue write failure must never undo or misreport a physical move.
             runCatching { CatalogStore.removeUris(getApplication(), items.mapTo(hashSetOf()) { it.uriKey }) }
