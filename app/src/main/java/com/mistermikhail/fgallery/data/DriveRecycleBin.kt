@@ -85,7 +85,9 @@ class DriveRecycleBin(private val context: Context, private val mounted: () -> L
             // selected file is already missing, changed or inaccessible.
             // The per-item check below is still required because SAF/MediaStore
             // content may change between this preflight and the actual move.
-            check(preflightDuplicateTrash(items, verifyBeforeMove) { it.uriKey }) {
+            check(preflightDuplicateTrash(items, verifyBeforeMove, { it.uriKey }, { item ->
+                item.sourcePath.takeIf { it.isNotBlank() }
+            })) {
                 "Повторная проверка выбранных файлов не пройдена"
             }
             items.map { item ->
