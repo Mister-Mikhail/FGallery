@@ -147,7 +147,14 @@ internal fun verifiedExactDuplicateUris(
             // An interrupt arriving after the provider returned its digest must
             // still revoke the entire batch before any trash intent escapes.
             if (Thread.currentThread().isInterrupted) throw InterruptedException("Duplicate verification interrupted")
-            if (observed == null || !observed.equals(row.fullHash, ignoreCase = true)) {
+            // Never accept a malformed catalogue fingerprint as proof of byte identity.
+            // A SHA-256 digest is exactly 64 hexadecimal characters; a provider
+            // returning a cached label or truncated digest must fail closed.
+            val expected = row.fullHash
+            if (expected == null || expected.length != 64 ||
+                !expected.all { it in '0'..'9' || it in 'a'..'f' || it in 'A'..'F' } ||
+                observed == null || observed.length != 64 ||
+                !observed.equals(expected, ignoreCase = true)) {
                 return emptySet()
             }
         }
