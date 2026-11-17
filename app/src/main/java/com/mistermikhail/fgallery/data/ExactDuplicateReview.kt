@@ -136,6 +136,11 @@ internal fun verifiedExactDuplicateUris(
                 // Cancellation must stop the operation, not be mistaken for an
                 // unreadable file while a superseded scan keeps running.
                 throw cancelled
+            } catch (interrupted: InterruptedException) {
+                // A worker interrupted during SAF I/O must not continue toward
+                // a trash operation as though the source were merely unreadable.
+                Thread.currentThread().interrupt()
+                throw interrupted
             } catch (_: Exception) {
                 null
             }
