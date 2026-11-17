@@ -418,4 +418,30 @@ class ExactDuplicateReviewTest {
             if (row.uri == "original") null else row.fullHash
         }.isEmpty())
     }
+    @Test fun finalGateVerifiesProtectedOriginalInEverySelectedGroup() {
+        val rows = listOf(
+            item("original1", full = "a".repeat(64)),
+            item("copy1", full = "a".repeat(64)),
+            item("original2", full = "b".repeat(64)),
+            item("copy2", full = "b".repeat(64)),
+        )
+        val review = planExactDuplicateReview(rows,
+            requestedUris = setOf("copy1", "copy2"))
+        assertEquals(setOf("copy1", "copy2"), review.selectedUris)
+        val visited = mutableListOf<String>()
+        val rejected = verifiedExactDuplicateUris(review, rows,
+            explicitlyConfirmed = true) { row ->
+            visited += row.uri
+            if (row.uri == "original2") null else row.fullHash
+        }
+        assertTrue(rejected.isEmpty())
+        assertTrue("original2" in visited)
+        // An inaccessible original in one selected group must reject the
+        // entire batch, not silently authorize only the other group.
+        assertTrue(verifiedExactDuplicateUris(review, rows,
+            explicitlyConfirmed = true) { row ->
+            if (row.uri == "original1") null else row.fullHash
+        }.isEmpty())
+    }
+
 }
