@@ -103,4 +103,20 @@ class ExactDuplicateReviewScreenContractTest {
         assertTrue(duplicateConfirmationInvalidated(cleared, listOf("usb"), listOf("Camera")))
     }
 
+    @Test fun editingScopeOrCopySelectionRequiresFreshTrashConsent() {
+        val rows = listOf(row("original", "phone", "Camera"), row("copy", "phone", "Camera"))
+        val reviewed = planExactDuplicateReview(rows, requestedUris = setOf("copy"))
+        assertEquals(setOf("copy"), confirmedExactDuplicateUris(reviewed, rows,
+            explicitlyConfirmed = true))
+        // A scope edit cannot reuse the previous dialog's approval.
+        assertTrue(confirmedExactDuplicateUris(reviewed, rows,
+            includedStorageIds = setOf("phone"), explicitlyConfirmed = true).isEmpty())
+        // Unchecking a copy clears the proposal, even if a dialog was open.
+        val deselected = selectExactDuplicateCopy(reviewed, rows, "copy", false)
+        assertTrue(deselected.selectedUris.isEmpty())
+        assertNull(exactDuplicateTrashPrompt(deselected))
+        assertTrue(confirmedExactDuplicateUris(deselected, rows,
+            explicitlyConfirmed = true).isEmpty())
+    }
+
 }
