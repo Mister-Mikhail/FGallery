@@ -72,6 +72,32 @@ class DuplicateTrashPreflightTest {
         assertTrue(allowed)
     }
 
+    @Test fun lexicalPhysicalAliasesAreRejectedBeforeAnyRead() = runBlocking {
+        var reads = 0
+        val allowed = preflightDuplicateTrash(
+            listOf("content://provider/one", "content://provider/two"),
+            { reads++; true },
+            { it },
+            { uri ->
+                if (uri.endsWith("one")) "/storage/emulated/0/DCIM/./photo.jpg"
+                else "/storage/emulated/0/Pictures/../DCIM/photo.jpg"
+            },
+        )
+        assertFalse(allowed)
+        assertEquals(0, reads)
+    }
+
+    @Test fun blankKnownPhysicalPathFailsClosed() = runBlocking {
+        var reads = 0
+        assertFalse(preflightDuplicateTrash(
+            listOf("content://provider/one"),
+            { reads++; true },
+            { it },
+            { "" },
+        ))
+        assertEquals(0, reads)
+    }
+
     @Test fun verifierExceptionNeverAuthorizesBatch() = runBlocking {
         var reached = false
         try {
