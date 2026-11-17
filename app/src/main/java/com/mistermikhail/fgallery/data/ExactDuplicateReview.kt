@@ -34,7 +34,10 @@ internal fun planExactDuplicateReview(
     // of the same URI, including one outside the chosen scope. Fail closed globally:
     // a stale off-scope row must not make an in-scope URI actionable.
     // The caller can retry after catalogue reconciliation completes.
-    if (indexedRows.map { it.uri }.toSet().size != indexedRows.size) {
+    // A blank URI cannot be resolved safely by the mutation layer. Reject the
+    // entire review rather than offering an item that preflight must refuse.
+    if (indexedRows.any { it.uri.isBlank() } ||
+        indexedRows.map { it.uri }.toSet().size != indexedRows.size) {
         return ExactDuplicateReview(emptyList(), emptySet(), emptySet(),
             includedStorageIds.toSet(), includedFolderTargets.toSet())
     }
