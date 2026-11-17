@@ -144,6 +144,9 @@ internal fun verifiedExactDuplicateUris(
             } catch (_: Exception) {
                 null
             }
+            // An interrupt arriving after the provider returned its digest must
+            // still revoke the entire batch before any trash intent escapes.
+            if (Thread.currentThread().isInterrupted) throw InterruptedException("Duplicate verification interrupted")
             if (observed == null || !observed.equals(row.fullHash, ignoreCase = true)) {
                 return emptySet()
             }
