@@ -41,7 +41,15 @@ internal fun planExactDuplicateReview(
     // Different provider URIs can refer to the same physical file. Never offer
     // an alias of the protected original as a disposable duplicate. A known
     // non-empty source path must be unique across the entire catalogue.
-    val knownPaths = indexedRows.mapNotNull { it.sourcePath?.takeIf(String::isNotBlank) }
+    // Match the mutation preflight's lexical path identity: distinct provider
+    // URIs may spell the same physical file with "." or ".." segments.
+    // Never normalize opaque SAF URIs or infer paths when the catalogue has none.
+    val rawPaths = indexedRows.mapNotNull { it.sourcePath }
+    if (rawPaths.any(String::isBlank)) {
+        return ExactDuplicateReview(emptyList(), emptySet(), emptySet(),
+            includedStorageIds.toSet(), includedFolderTargets.toSet())
+    }
+    val knownPaths = rawPaths.map { java.io.File(it).normalize().path }
     if (knownPaths.toSet().size != knownPaths.size) {
         return ExactDuplicateReview(emptyList(), emptySet(), emptySet(),
             includedStorageIds.toSet(), includedFolderTargets.toSet())
