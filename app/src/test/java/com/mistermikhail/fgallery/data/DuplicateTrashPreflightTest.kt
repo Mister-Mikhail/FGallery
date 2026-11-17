@@ -12,14 +12,14 @@ class DuplicateTrashPreflightTest {
         val allowed = preflightDuplicateTrash(listOf("copyA", "copyB", "copyC"), { item ->
             checked += item
             item != "copyB"
-        }) { it }
+        }, sourceIdentity = { it })
         assertFalse(allowed)
         assertEquals(listOf("copyA", "copyB"), checked)
     }
 
     @Test fun rejectsEmptyBatchAndAllowsFullyVerifiedBatch() = runBlocking {
-        assertFalse(preflightDuplicateTrash(emptyList<String>(), { true }) { it })
-        assertTrue(preflightDuplicateTrash(listOf("a", "b"), { true }) { it })
+        assertFalse(preflightDuplicateTrash(emptyList<String>(), { true }, sourceIdentity = { it }))
+        assertTrue(preflightDuplicateTrash(listOf("a", "b"), { true }, sourceIdentity = { it }))
     }
 
     @Test fun duplicateSourceRejectedBeforeVerifierRuns() = runBlocking {
@@ -32,11 +32,11 @@ class DuplicateTrashPreflightTest {
     }
 
     @Test fun blankSourceIdentityRejected() = runBlocking {
-        assertFalse(preflightDuplicateTrash(listOf("a"), { true }) { "" })
+        assertFalse(preflightDuplicateTrash(listOf("a"), { true }, sourceIdentity = { "" }))
     }
 
     @Test fun distinctSourceIdentitiesAllowVerification() = runBlocking {
-        assertTrue(preflightDuplicateTrash(listOf("uri-a", "uri-b"), { true }) { it })
+        assertTrue(preflightDuplicateTrash(listOf("uri-a", "uri-b"), { true }, sourceIdentity = { it }))
     }
 
 
@@ -104,7 +104,7 @@ class DuplicateTrashPreflightTest {
             preflightDuplicateTrash(listOf("a", "b"), {
                 if (it == "b") error("SAF access revoked")
                 true
-            }) { it }
+            }, sourceIdentity = { it })
         } catch (_: IllegalStateException) {
             reached = true
         }
