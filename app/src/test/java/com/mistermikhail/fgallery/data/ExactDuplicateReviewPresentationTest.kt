@@ -7,7 +7,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ExactDuplicateReviewPresentationTest {
-    private fun row(uri: String, hash: String = "digest") = CatalogMediaRow(
+    private fun row(uri: String, hash: String = "a".repeat(64)) = CatalogMediaRow(
         uri = uri, mediaId = 1, name = "$uri.jpg", mimeType = "image/jpeg",
         kind = "IMAGE", dateTakenMillis = if (uri == "original") 1 else 123, width = 100, height = 100,
         durationMillis = 0, album = "Camera", relativePath = "DCIM/",
