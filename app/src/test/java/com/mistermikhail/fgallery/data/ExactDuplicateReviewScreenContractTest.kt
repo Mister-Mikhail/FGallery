@@ -14,7 +14,7 @@ class ExactDuplicateReviewScreenContractTest {
         durationMillis = 0, album = folder, relativePath = folder,
         sizeBytes = 100, dateModifiedMillis = 1, storageId = storage,
         storageName = storage, folderTarget = folder, sourcePath = "/test/$uri.jpg",
-        quickHash = "edge", fullHash = "full-digest", recycled = false,
+        quickHash = "edge", fullHash = "a".repeat(64), recycled = false,
     )
 
     @Test fun changingStorageScopeCannotCarrySelectionOrConfirmation() {
@@ -66,7 +66,7 @@ class ExactDuplicateReviewScreenContractTest {
         assertTrue(review.selectedUris.isEmpty())
         assertNull(exactDuplicateTrashPrompt(review))
         assertTrue(verifiedExactDuplicateUris(review, listOf(original, alias),
-            explicitlyConfirmed = true, readCurrentSha256 = { "full-digest" }).isEmpty())
+            explicitlyConfirmed = true, readCurrentSha256 = { "a".repeat(64) }).isEmpty())
     }
 
     @Test fun offScopePhysicalAliasAlsoBlocksTrash() {
