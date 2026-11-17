@@ -81,6 +81,13 @@ class DriveRecycleBin(private val context: Context, private val mounted: () -> L
         verifyBeforeMove: suspend (MediaItem) -> Boolean,
     ): List<String> = withContext(Dispatchers.IO) {
         lock.withLock {
+            // Fail the entire proposed batch before the first mutation if any
+            // selected file is already missing, changed or inaccessible.
+            // The per-item check below is still required because SAF/MediaStore
+            // content may change between this preflight and the actual move.
+            check(preflightDuplicateTrash(items, verifyBeforeMove)) {
+                "Повторная проверка выбранных файлов не пройдена"
+            }
             items.map { item ->
                 val source = StorageAccess.file(context, item)
                 val root = mounted().firstOrNull { source != null && source.path.startsWith(it.directory!!.path + "/") }
