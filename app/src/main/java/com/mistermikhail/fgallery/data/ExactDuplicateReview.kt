@@ -213,7 +213,7 @@ internal fun exactDuplicateGroupSummaries(
     val copies = group.drop(1)
     if (copies.any { it.uri in review.protectedUris }) return@mapNotNull null
     val digest = original.fullHash ?: return@mapNotNull null
-    if (digest.isBlank() || copies.any { it.fullHash != digest || it.sizeBytes != original.sizeBytes }) {
+    if (digest.isBlank() || copies.any { !it.fullHash.equals(digest, ignoreCase = true) || it.sizeBytes != original.sizeBytes }) {
         return@mapNotNull null
     }
     val selected = copies.filter { it.uri in review.selectedUris }
