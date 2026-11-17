@@ -46,7 +46,16 @@ internal fun planExactDuplicateReview(
         return ExactDuplicateReview(emptyList(), emptySet(), emptySet(),
             includedStorageIds.toSet(), includedFolderTargets.toSet())
     }
-    val groups = exactDuplicateGroups(scoped)
+    // Reject malformed or legacy fingerprints before presenting actionable copies.
+    // A full SHA-256 is exactly 64 hexadecimal characters; a short label must
+    // never be treated as evidence of byte identity in the review UI.
+    val groups = exactDuplicateGroups(scoped).filter { group ->
+        group.all { row ->
+            val hash = row.fullHash
+            hash != null && hash.length == 64 &&
+                hash.all { it in '0'..'9' || it in 'a'..'f' || it in 'A'..'F' }
+        }
+    }
     val protected = groups.map { it.first().uri }.toSet()
     val eligible = groups.flatMap { it.drop(1) }.map { it.uri }.toSet()
     // Explicit opt-in only; never preselect anything for the trash.
