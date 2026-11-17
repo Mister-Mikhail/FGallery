@@ -280,4 +280,14 @@ class DuplicateFingerprintsTest {
             assertEquals(3, checks)
         }
     }
+
+    @Test fun fullSha256HexCaseDoesNotSplitExactByteGroup() {
+        val lowercase = "abcdef0123456789".repeat(4)
+        val upper = row("content://upper", quick = "edge-v2", full = lowercase.uppercase())
+        val lower = row("content://lower", quick = "edge-v1", full = lowercase)
+        val different = row("content://different", quick = "edge-v1", full = "f".repeat(64))
+        val groups = exactDuplicateGroups(listOf(upper, lower, different))
+        assertEquals(1, groups.size)
+        assertEquals(setOf(upper.uri, lower.uri), groups.single().map { it.uri }.toSet())
+    }
 }
