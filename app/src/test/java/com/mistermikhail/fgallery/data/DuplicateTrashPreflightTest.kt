@@ -120,15 +120,42 @@ class DuplicateTrashPreflightTest {
     }
 
     @Test fun verifierExceptionNeverAuthorizesBatch() = runBlocking {
-        var reached = false
+        val checked = mutableListOf<String>()
+        val allowed = preflightDuplicateTrash(listOf("a", "b", "c"), {
+            checked += it
+            if (it == "b") throw java.io.IOException("SAF access revoked")
+            true
+        }, sourceIdentity = { it })
+        assertFalse(allowed)
+        assertEquals(listOf("a", "b"), checked)
+    }
+
+    @Test fun verifierCancellationPropagatesWithoutCheckingNextSource() = runBlocking {
+        val checked = mutableListOf<String>()
+        var cancelled = false
         try {
             preflightDuplicateTrash(listOf("a", "b"), {
-                if (it == "b") error("SAF access revoked")
-                true
+                checked += it
+                throw java.util.concurrent.CancellationException("cancelled")
             }, sourceIdentity = { it })
-        } catch (_: IllegalStateException) {
-            reached = true
+        } catch (_: java.util.concurrent.CancellationException) {
+            cancelled = true
         }
-        assertTrue(reached)
+        assertTrue(cancelled)
+        assertEquals(listOf("a"), checked)
+    }
+
+    @Test fun verifierInterruptionPropagatesAndPreservesFlag() = runBlocking {
+        var interrupted = false
+        try {
+            preflightDuplicateTrash(listOf("a"), {
+                throw InterruptedException("provider interrupted")
+            }, sourceIdentity = { it })
+        } catch (_: InterruptedException) {
+            interrupted = Thread.currentThread().isInterrupted
+        } finally {
+            Thread.interrupted()
+        }
+        assertTrue(interrupted)
     }
 }
