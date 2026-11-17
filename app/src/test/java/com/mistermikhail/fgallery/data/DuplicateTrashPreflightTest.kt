@@ -39,6 +39,39 @@ class DuplicateTrashPreflightTest {
         assertTrue(preflightDuplicateTrash(listOf("uri-a", "uri-b"), { true }) { it })
     }
 
+
+    @Test fun differentUrisAliasingSamePhysicalFileAreRejectedBeforeReads() = runBlocking {
+        var reads = 0
+        val allowed = preflightDuplicateTrash(
+            listOf("content://a/1", "content://b/2"),
+            { reads++; true },
+            { it },
+            { "/storage/emulated/0/DCIM/original.jpg" },
+        )
+        assertFalse(allowed)
+        assertEquals(0, reads)
+    }
+
+    @Test fun missingPhysicalPathsAreNotMistakenForAliases() = runBlocking {
+        val allowed = preflightDuplicateTrash(
+            listOf("content://saf/a", "content://saf/b"),
+            { true },
+            { it },
+            { null },
+        )
+        assertTrue(allowed)
+    }
+
+    @Test fun distinctKnownPhysicalPathsAllowVerification() = runBlocking {
+        val allowed = preflightDuplicateTrash(
+            listOf("a", "b"),
+            { true },
+            { it },
+            { "/storage/a/${it}" },
+        )
+        assertTrue(allowed)
+    }
+
     @Test fun verifierExceptionNeverAuthorizesBatch() = runBlocking {
         var reached = false
         try {
