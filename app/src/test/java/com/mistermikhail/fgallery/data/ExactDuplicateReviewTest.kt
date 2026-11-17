@@ -18,6 +18,20 @@ class ExactDuplicateReviewTest {
         recycled = false,
     )
 
+    @Test fun blankCatalogueUriInvalidatesEntireDuplicateReview() {
+        val rows = listOf(item("original"), item("copy"), item(" "))
+        val review = planExactDuplicateReview(rows, requestedUris = setOf("copy"))
+        assertTrue(review.groups.isEmpty())
+        assertTrue(review.selectedUris.isEmpty())
+        assertTrue(review.protectedUris.isEmpty())
+        var reads = 0
+        assertTrue(verifiedExactDuplicateUris(review, rows, explicitlyConfirmed = true) {
+            reads++
+            it.fullHash
+        }.isEmpty())
+        assertEquals(0, reads)
+    }
+
     @Test fun reviewRejectsPhysicalAliasesBeforeOfferingTrashSelection() {
         val original = item("original").copy(sourcePath = "/storage/emulated/0/DCIM/photo.jpg")
         val alias = item("copy").copy(sourcePath = "/storage/emulated/0/Pictures/../DCIM/./photo.jpg")
