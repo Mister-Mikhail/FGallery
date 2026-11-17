@@ -148,7 +148,7 @@ internal fun exactDuplicateGroups(rows: List<CatalogMediaRow>): List<List<Catalo
         .filter { it.sizeBytes > 0L && !it.quickHash.isNullOrBlank() && !it.fullHash.isNullOrBlank() }
         // Edge hashes are only a scheduling optimization. A persisted full
         // SHA-256 is the exact-copy identity even if edge-hash versions differ.
-        .groupBy { it.sizeBytes to it.fullHash }
+        .groupBy { it.sizeBytes to it.fullHash!!.lowercase(java.util.Locale.ROOT) }
         .values.filter { it.size > 1 }
         .map { it.sortedWith(exactCopyKeepPriority) }
         .sortedByDescending { it.size }
