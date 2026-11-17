@@ -376,6 +376,25 @@ class ExactDuplicateReviewTest {
         }
     }
 
+    @Test fun interruptedWorkerNeverStartsSafRead() {
+        val rows = listOf(item("original"), item("copy"))
+        val review = planExactDuplicateReview(rows, requestedUris = setOf("copy"))
+        var reads = 0
+        try {
+            Thread.currentThread().interrupt()
+            verifiedExactDuplicateUris(review, rows, explicitlyConfirmed = true) {
+                reads++
+                it.fullHash
+            }
+            org.junit.Assert.fail("Interrupted worker must not read any SAF bytes")
+        } catch (_: InterruptedException) {
+            assertEquals(0, reads)
+            assertTrue(Thread.currentThread().isInterrupted)
+        } finally {
+            Thread.interrupted()
+        }
+    }
+
     @Test fun freshByteGatePropagatesWorkerInterruptionAndPreservesInterruptFlag() {
         val rows = listOf(item("original"), item("copy"))
         val review = planExactDuplicateReview(rows, requestedUris = setOf("copy"))
