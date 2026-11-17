@@ -1,6 +1,8 @@
 package com.mistermikhail.fgallery.data
 
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.async
+import kotlinx.coroutines.cancel
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -96,6 +98,25 @@ class DuplicateTrashPreflightTest {
             { "" },
         ))
         assertEquals(0, reads)
+    }
+
+    @Test fun cancellationAfterVerifierCannotAuthorizeBatch() = runBlocking {
+        val worker = kotlinx.coroutines.async {
+            preflightDuplicateTrash(listOf("copyA", "copyB"), { item ->
+                if (item == "copyA") {
+                    // Simulate a provider returning after the scan was cancelled.
+                    kotlinx.coroutines.currentCoroutineContext().cancel()
+                }
+                true
+            }, sourceIdentity = { it })
+        }
+        var cancelled = false
+        try {
+            worker.await()
+        } catch (_: java.util.concurrent.CancellationException) {
+            cancelled = true
+        }
+        assertTrue(cancelled)
     }
 
     @Test fun verifierExceptionNeverAuthorizesBatch() = runBlocking {
