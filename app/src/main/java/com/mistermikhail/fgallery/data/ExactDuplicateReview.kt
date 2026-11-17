@@ -149,6 +149,12 @@ internal fun verifiedExactDuplicateUris(
         // fresh byte reads. An unselected, disconnected SAF copy must not
         // prevent the user from moving a different verified copy.
         for (reviewedRow in group.filter { it.uri == group.first().uri || it.uri in authorized }) {
+            // An interrupted verifier must not begin another SAF read.
+            // Checking only after a provider returns can block on a disconnected
+            // source despite the caller already having cancelled the batch.
+            if (Thread.currentThread().isInterrupted) {
+                throw InterruptedException("Duplicate verification interrupted before read")
+            }
             val row = currentByUri[reviewedRow.uri] ?: return emptySet()
             val observed = try {
                 readCurrentSha256(row)
