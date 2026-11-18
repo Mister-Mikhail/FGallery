@@ -159,4 +159,20 @@ class ExactDuplicateReviewScreenContractTest {
             explicitlyConfirmed = true).isEmpty())
     }
 
+
+    @Test fun explicitCatalogueRefreshMustRevokeOldConsentWhenFileGenerationChanges() {
+        val original = row("original", "phone", "Camera")
+        val copy = row("copy", "phone", "Camera")
+        val oldRows = listOf(original, copy)
+        val confirmed = planExactDuplicateReview(oldRows, requestedUris = setOf("copy"))
+        assertEquals(setOf("copy"), confirmedExactDuplicateUris(
+            confirmed, oldRows, explicitlyConfirmed = true))
+        val refreshed = listOf(original, copy.copy(dateModifiedMillis = 2))
+        // A refresh is a new catalogue generation. The old dialog cannot authorize it.
+        assertTrue(confirmedExactDuplicateUris(
+            confirmed, refreshed, explicitlyConfirmed = true).isEmpty())
+        val freshReview = planExactDuplicateReview(refreshed)
+        assertTrue(freshReview.selectedUris.isEmpty())
+        assertNull(exactDuplicateTrashPrompt(freshReview))
+    }
 }
