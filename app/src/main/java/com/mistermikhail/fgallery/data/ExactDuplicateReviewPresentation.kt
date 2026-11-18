@@ -48,7 +48,7 @@ internal fun exactDuplicateReviewCards(
                     },
                 )
             },
-            selectedCopyCount = group.count { it.uri in review.selectedUris },
+            selectedCopyCount = group.drop(1).count { it.uri in review.selectedUris },
             selectedBytes = summary.reclaimableBytes,
         )
     }
@@ -68,7 +68,7 @@ internal data class ExactDuplicateTrashPrompt(
 internal fun exactDuplicateTrashPrompt(
     review: ExactDuplicateReview,
 ): ExactDuplicateTrashPrompt? {
-    if (review.selectedUris.isEmpty()) return null
+    if (review.selectedUris.isEmpty() || review.selectedUris.any { it in review.protectedUris }) return null
     val cards = exactDuplicateReviewCards(review)
     val selected = cards.sumOf { it.selectedCopyCount }
     if (selected == 0 || selected != review.selectedUris.size) return null
