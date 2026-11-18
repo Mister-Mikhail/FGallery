@@ -13,6 +13,8 @@ internal suspend fun <T> preflightDuplicateTrash(
     verify: suspend (T) -> Boolean,
     sourceIdentity: (T) -> String,
     physicalIdentity: (T) -> String? = { null },
+    protectedSourceIdentities: Set<String> = emptySet(),
+    protectedPhysicalIdentities: Set<String> = emptySet(),
 ): Boolean {
     currentCoroutineContext().ensureActive()
     if (items.isEmpty()) return false
@@ -20,6 +22,9 @@ internal suspend fun <T> preflightDuplicateTrash(
     // URI has disappeared. Reject it before performing any byte reads or moves.
     val identities = items.map(sourceIdentity)
     if (identities.any(String::isBlank) || identities.toSet().size != items.size) return false
+    // Never authorize a protected original, even when the caller accidentally
+    // includes it in a manually selected batch.
+    if (identities.any { it in protectedSourceIdentities }) return false
     // Different content URIs may alias one physical file. Where the caller can
     // resolve a trustworthy local path, reject repeated paths before any I/O.
     // Unknown SAF paths remain null and are never conflated with one another.
@@ -30,6 +35,13 @@ internal suspend fun <T> preflightDuplicateTrash(
     if (rawPaths.any(String::isBlank)) return false
     val knownPaths = rawPaths.map { java.io.File(it).normalize().path }
     if (knownPaths.toSet().size != knownPaths.size) return false
+    // Provider aliases may have different URIs but the same underlying path.
+    // Check protected originals as well as duplicate selected copies.
+    val protectedPaths = protectedPhysicalIdentities.map { path ->
+        if (path.isBlank()) return false
+        java.io.File(path).normalize().path
+    }.toSet()
+    if (knownPaths.any { it in protectedPaths }) return false
     for (item in items) {
         currentCoroutineContext().ensureActive()
         val valid = try {
