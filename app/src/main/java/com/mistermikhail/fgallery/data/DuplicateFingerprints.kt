@@ -199,7 +199,9 @@ internal fun quickHashCandidates(rows: List<CatalogMediaRow>): List<CatalogMedia
 
 internal fun fullHashCandidates(rows: List<CatalogMediaRow>): List<CatalogMediaRow> =
     rows.asSequence().distinctBy { it.uri }.filter { !it.recycled && it.sizeBytes > 0L && !it.quickHash.isNullOrBlank() }
-        .groupBy { it.sizeBytes to it.quickHash }.values.asSequence()
+        // Quick hashes are hexadecimal digests: case is not part of their identity.
+        // A legacy uppercase digest must not prevent full SHA-256 verification.
+        .groupBy { it.sizeBytes to it.quickHash!!.lowercase(java.util.Locale.ROOT) }.values.asSequence()
         .filter { it.size > 1 }.flatten()
         .filter { it.fullHash.isNullOrBlank() }
         .sortedWith(compareBy<CatalogMediaRow> { it.sizeBytes }.thenBy { it.uri })
