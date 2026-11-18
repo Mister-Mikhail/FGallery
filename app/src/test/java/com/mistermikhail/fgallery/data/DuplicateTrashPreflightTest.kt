@@ -330,6 +330,32 @@ class DuplicateTrashPreflightTest {
         ))
     }
 
+    @Test fun symlinkRetargetedToProtectedOriginalDuringVerificationRevokesBatch() = runBlocking {
+        val directory = java.nio.file.Files.createTempDirectory("duplicate-retarget")
+        try {
+            val copy = java.nio.file.Files.write(directory.resolve("copy.jpg"), byteArrayOf(1))
+            val keeper = java.nio.file.Files.write(directory.resolve("keeper.jpg"), byteArrayOf(1))
+            val alias = directory.resolve("alias.jpg")
+            java.nio.file.Files.createSymbolicLink(alias, copy)
+            assertFalse(preflightDuplicateTrash(
+                listOf("content://provider/copy"),
+                {
+                    java.nio.file.Files.delete(alias)
+                    java.nio.file.Files.createSymbolicLink(alias, keeper)
+                    true
+                },
+                sourceIdentity = { it },
+                physicalIdentity = { alias.toString() },
+                protectedPhysicalIdentities = setOf(keeper.toString()),
+            ))
+        } finally {
+            java.nio.file.Files.list(directory).use { stream ->
+                stream.forEach { java.nio.file.Files.deleteIfExists(it) }
+            }
+            java.nio.file.Files.deleteIfExists(directory)
+        }
+    }
+
     @Test fun stableIdentitiesRemainEligibleAfterVerification() = runBlocking {
         assertTrue(preflightDuplicateTrash(
             listOf("copy"),
