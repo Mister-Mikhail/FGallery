@@ -198,6 +198,27 @@ internal fun verifiedExactDuplicateUris(
             }
         }
     }
+    // A provider may replace the protected original while selected copies
+    // are being read. Re-read it after the copies, so a changed keeper cannot
+    // authorize a stale batch. This is still only a proposal: the mutation
+    // layer must perform its own immediate per-file preflight.
+    for (group in relevantGroups) {
+        if (Thread.currentThread().isInterrupted) throw InterruptedException("Duplicate verification interrupted")
+        val keeper = currentByUri[group.first().uri] ?: return emptySet()
+        val observed = try {
+            readCurrentSha256(keeper)
+        } catch (cancelled: java.util.concurrent.CancellationException) {
+            throw cancelled
+        } catch (interrupted: InterruptedException) {
+            Thread.currentThread().interrupt()
+            throw interrupted
+        } catch (_: Exception) {
+            null
+        }
+        if (Thread.currentThread().isInterrupted) throw InterruptedException("Duplicate verification interrupted")
+        if (observed == null || observed.length != 64 ||
+            !observed.equals(keeper.fullHash, ignoreCase = true)) return emptySet()
+    }
     return authorized
 }
 
