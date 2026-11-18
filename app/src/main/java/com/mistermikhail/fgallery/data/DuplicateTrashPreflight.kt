@@ -30,16 +30,16 @@ internal suspend fun <T> preflightDuplicateTrash(
     // Unknown SAF paths remain null and are never conflated with one another.
     // A path containing "." or ".." is the same source as its normalized
     // counterpart. Compare lexical identities before reading any bytes; this
-    // does not follow symlinks or infer identities for opaque SAF documents.
+    // follows existing filesystem symlinks but never infers opaque SAF identities.
     val rawPaths = items.mapNotNull(physicalIdentity)
     if (rawPaths.any(String::isBlank)) return false
-    val knownPaths = rawPaths.map { java.io.File(it).normalize().path }
+    val knownPaths = rawPaths.map { java.io.File(it).canonicalPath }
     if (knownPaths.toSet().size != knownPaths.size) return false
     // Provider aliases may have different URIs but the same underlying path.
     // Check protected originals as well as duplicate selected copies.
     val protectedPaths = protectedPhysicalIdentities.map { path ->
         if (path.isBlank()) return false
-        java.io.File(path).normalize().path
+        java.io.File(path).canonicalPath
     }.toSet()
     if (knownPaths.any { it in protectedPaths }) return false
     for (item in items) {
