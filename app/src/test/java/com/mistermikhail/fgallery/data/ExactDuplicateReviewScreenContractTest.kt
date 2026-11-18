@@ -128,4 +128,18 @@ class ExactDuplicateReviewScreenContractTest {
         assertEquals(1, exactDuplicateReviewCards(malformed).single().selectedCopyCount)
     }
 
+    @Test fun confirmationSnapshotCannotAuthorizeChangedCatalogueGeneration() {
+        val rows = listOf(row("original", "phone", "Camera"), row("copy", "phone", "Camera"))
+        val dialogSnapshot = planExactDuplicateReview(rows, requestedUris = setOf("copy"))
+        assertEquals(setOf("copy"), confirmedExactDuplicateUris(dialogSnapshot, rows,
+            explicitlyConfirmed = true))
+        // The UI must hand this immutable snapshot to verification. A later
+        // catalogue generation cannot inherit the earlier dialog's consent.
+        val replaced = rows.map { if (it.uri == "copy") it.copy(dateModifiedMillis = 2) else it }
+        assertTrue(confirmedExactDuplicateUris(dialogSnapshot, replaced,
+            explicitlyConfirmed = true).isEmpty())
+        val rescanned = planExactDuplicateReview(replaced, requestedUris = setOf("copy"))
+        assertFalse(dialogSnapshot.groups == rescanned.groups)
+    }
+
 }
