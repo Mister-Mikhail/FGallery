@@ -72,9 +72,21 @@ internal fun exactDuplicateTrashPrompt(
     val cards = exactDuplicateReviewCards(review)
     val selected = cards.sumOf { it.selectedCopyCount }
     if (selected == 0 || selected != review.selectedUris.size) return null
+    // A corrupted or extreme catalogue size must never wrap the confirmation
+    // estimate into a negative/small value. Refuse consent rather than display
+    // misleading reclaimable bytes for a destructive operation.
+    val selectedSizes = review.groups.flatten()
+        .filter { it.uri in review.selectedUris }
+        .map { it.sizeBytes }
+    if (selectedSizes.size != selected || selectedSizes.any { it <= 0L }) return null
+    val selectedBytes = try {
+        selectedSizes.fold(0L) { total, size -> Math.addExact(total, size) }
+    } catch (_: ArithmeticException) {
+        return null
+    }
     return ExactDuplicateTrashPrompt(
         selectedCopyCount = selected,
-        selectedBytes = cards.sumOf { it.selectedBytes },
+        selectedBytes = selectedBytes,
         message = "Переместить $selected выбранных точных копий в корзину? " +
             "Оригиналы останутся на месте. Перед операцией файлы и SHA-256 " +
             "будут проверены повторно. Отмена не изменяет файлы.",
