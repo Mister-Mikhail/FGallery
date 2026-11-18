@@ -134,6 +134,7 @@ fun GalleryScreen(
     onConfirmMoveChanged: (Boolean) -> Unit,
     onConfirmRenameChanged: (Boolean) -> Unit,
     onOpenRecycleBin: () -> Unit,
+    onOpenExactDuplicates: () -> Unit,
     livePreviewEnabled: Boolean,
     cleanupMode: Boolean,
     onCleanupModeChanged: (Boolean) -> Unit,
@@ -420,6 +421,10 @@ fun GalleryScreen(
                                     DropdownMenuItem(
                                         text = { Text("Корзина") },
                                         onClick = { apply(onOpenRecycleBin) },
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Точные дубликаты") },
+                                        onClick = { apply(onOpenExactDuplicates) },
                                     )
                                     DropdownMenuItem(
                                         text = { Text("Обновить") },
