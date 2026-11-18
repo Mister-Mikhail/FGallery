@@ -311,4 +311,32 @@ class DuplicateTrashPreflightTest {
         assertTrue(cancelled)
     }
 
+    @Test fun sourceRebindingDuringVerificationRevokesBatch() = runBlocking {
+        var identity = "content://provider/copy"
+        assertFalse(preflightDuplicateTrash(
+            listOf("copy"),
+            { identity = "content://provider/rebound"; true },
+            sourceIdentity = { identity },
+        ))
+    }
+
+    @Test fun physicalPathRebindingDuringVerificationRevokesBatch() = runBlocking {
+        var path = "/storage/old-copy.jpg"
+        assertFalse(preflightDuplicateTrash(
+            listOf("copy"),
+            { path = "/storage/new-copy.jpg"; true },
+            sourceIdentity = { it },
+            physicalIdentity = { path },
+        ))
+    }
+
+    @Test fun stableIdentitiesRemainEligibleAfterVerification() = runBlocking {
+        assertTrue(preflightDuplicateTrash(
+            listOf("copy"),
+            { true },
+            sourceIdentity = { "content://provider/copy" },
+            physicalIdentity = { "/storage/copy.jpg" },
+        ))
+    }
+
 }
