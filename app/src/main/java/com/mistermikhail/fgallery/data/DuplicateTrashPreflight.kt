@@ -33,14 +33,16 @@ internal suspend fun <T> preflightDuplicateTrash(
     // follows existing filesystem symlinks but never infers opaque SAF identities.
     val rawPaths = items.mapNotNull(physicalIdentity)
     if (rawPaths.any(String::isBlank)) return false
-    val knownPaths = rawPaths.map { java.io.File(it).canonicalPath }
+    val knownPaths = try { rawPaths.map { java.io.File(it).canonicalPath } } catch (_: java.io.IOException) { return false }
     if (knownPaths.toSet().size != knownPaths.size) return false
     // Provider aliases may have different URIs but the same underlying path.
     // Check protected originals as well as duplicate selected copies.
-    val protectedPaths = protectedPhysicalIdentities.map { path ->
-        if (path.isBlank()) return false
-        java.io.File(path).canonicalPath
-    }.toSet()
+    val protectedPaths = try {
+        protectedPhysicalIdentities.map { path ->
+            if (path.isBlank()) return false
+            java.io.File(path).canonicalPath
+        }.toSet()
+    } catch (_: java.io.IOException) { return false }
     if (knownPaths.any { it in protectedPaths }) return false
     for (item in items) {
         currentCoroutineContext().ensureActive()
