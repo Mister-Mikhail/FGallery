@@ -52,7 +52,15 @@ internal fun planExactDuplicateReview(
         return ExactDuplicateReview(emptyList(), emptySet(), emptySet(),
             includedStorageIds.toSet(), includedFolderTargets.toSet())
     }
-    val knownPaths = rawPaths.map { java.io.File(it).normalize().path }
+    // Keep review identity consistent with the mutation preflight: symlinked
+    // local paths must not present the protected original as a second copy.
+    // If a provider path cannot be resolved, fail closed before any selection.
+    val knownPaths = try {
+        rawPaths.map { java.io.File(it).canonicalPath }
+    } catch (_: java.io.IOException) {
+        return ExactDuplicateReview(emptyList(), emptySet(), emptySet(),
+            includedStorageIds.toSet(), includedFolderTargets.toSet())
+    }
     if (knownPaths.toSet().size != knownPaths.size) {
         return ExactDuplicateReview(emptyList(), emptySet(), emptySet(),
             includedStorageIds.toSet(), includedFolderTargets.toSet())
