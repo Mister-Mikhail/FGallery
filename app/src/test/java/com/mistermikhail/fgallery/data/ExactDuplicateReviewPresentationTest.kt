@@ -45,6 +45,14 @@ class ExactDuplicateReviewPresentationTest {
         assertTrue(prompt.message.contains("проверены повторно"))
     }
 
+    @Test fun overflowedSelectedBytesCannotAuthorizeTrashPrompt() {
+        val rows = listOf(row("original"), row("copy1"), row("copy2"))
+            .map { it.copy(sizeBytes = Long.MAX_VALUE) }
+        val review = planExactDuplicateReview(rows, requestedUris = setOf("copy1", "copy2"))
+        assertEquals(2, review.selectedCount)
+        assertNull(exactDuplicateTrashPrompt(review))
+    }
+
     @Test fun scopedAndAmbiguousReviewsCannotProduceTrashPrompt() {
         val rows = listOf(row("original"), row("copy"))
         val ambiguous = planExactDuplicateReview(rows + rows[1].copy(dateModifiedMillis = 200),
