@@ -142,4 +142,21 @@ class ExactDuplicateReviewScreenContractTest {
         assertFalse(dialogSnapshot.groups == rescanned.groups)
     }
 
+    @Test fun explicitScopeResetAfterSafDisconnectDoesNotInheritTrashConsent() {
+        val rows = listOf(row("original", "usb", "Camera"), row("copy", "usb", "Camera"))
+        val stale = planExactDuplicateReview(rows, includedStorageIds = setOf("usb"),
+            includedFolderTargets = setOf("Camera"), requestedUris = setOf("copy"))
+        assertFalse(duplicateReviewScopeAvailable(stale, listOf("phone"), listOf("Camera")))
+        // UI reset explicitly passes empty scopes. Host must rebuild without
+        // requestedUris, so even a reconnected source cannot inherit selection.
+        val reset = planExactDuplicateReview(rows,
+            includedStorageIds = emptySet(), includedFolderTargets = emptySet())
+        assertTrue(reset.selectedUris.isEmpty())
+        assertNull(exactDuplicateTrashPrompt(reset))
+        assertTrue(confirmedExactDuplicateUris(stale, rows,
+            includedStorageIds = reset.includedStorageIds,
+            includedFolderTargets = reset.includedFolderTargets,
+            explicitlyConfirmed = true).isEmpty())
+    }
+
 }
