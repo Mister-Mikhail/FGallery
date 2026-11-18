@@ -158,4 +158,51 @@ class DuplicateTrashPreflightTest {
         }
         assertTrue(interrupted)
     }
+    @Test fun protectedOriginalUriRejectsBatchBeforeReadingBytes() = runBlocking {
+        var reads = 0
+        val allowed = preflightDuplicateTrash(
+            listOf("content://copy", "content://original"),
+            { reads++; true },
+            sourceIdentity = { it },
+            protectedSourceIdentities = setOf("content://original"),
+        )
+        assertFalse(allowed)
+        assertEquals(0, reads)
+    }
+
+    @Test fun protectedOriginalPhysicalAliasRejectsBatchBeforeReadingBytes() = runBlocking {
+        var reads = 0
+        val allowed = preflightDuplicateTrash(
+            listOf("content://other-provider/copy"),
+            { reads++; true },
+            sourceIdentity = { it },
+            physicalIdentity = { "/storage/emulated/0/DCIM/./photo.jpg" },
+            protectedPhysicalIdentities = setOf("/storage/emulated/0/Pictures/../DCIM/photo.jpg"),
+        )
+        assertFalse(allowed)
+        assertEquals(0, reads)
+    }
+
+    @Test fun unrelatedProtectedOriginalAllowsVerification() = runBlocking {
+        assertTrue(preflightDuplicateTrash(
+            listOf("content://copy"),
+            { true },
+            sourceIdentity = { it },
+            physicalIdentity = { "/storage/emulated/0/DCIM/copy.jpg" },
+            protectedSourceIdentities = setOf("content://original"),
+            protectedPhysicalIdentities = setOf("/storage/emulated/0/DCIM/original.jpg"),
+        ))
+    }
+
+    @Test fun blankProtectedPathFailsClosedBeforeReadingBytes() = runBlocking {
+        var reads = 0
+        assertFalse(preflightDuplicateTrash(
+            listOf("content://copy"),
+            { reads++; true },
+            sourceIdentity = { it },
+            protectedPhysicalIdentities = setOf(" "),
+        ))
+        assertEquals(0, reads)
+    }
+
 }
