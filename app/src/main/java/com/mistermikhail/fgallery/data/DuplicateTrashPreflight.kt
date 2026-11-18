@@ -20,7 +20,14 @@ internal suspend fun <T> preflightDuplicateTrash(
     if (items.isEmpty()) return false
     // A duplicated source would be moved twice, possibly after its original
     // URI has disappeared. Reject it before performing any byte reads or moves.
-    val identities = items.map(sourceIdentity)
+    val identities = try { items.map(sourceIdentity) } catch (cancelled: java.util.concurrent.CancellationException) {
+        throw cancelled
+    } catch (interrupted: InterruptedException) {
+        Thread.currentThread().interrupt()
+        throw interrupted
+    } catch (_: Exception) {
+        return false
+    }
     if (identities.any { it.isBlank() || '\u0000' in it } || identities.toSet().size != items.size) return false
     // Never authorize a protected original, even when the caller accidentally
     // includes it in a manually selected batch.
@@ -31,7 +38,14 @@ internal suspend fun <T> preflightDuplicateTrash(
     // A path containing "." or ".." is the same source as its normalized
     // counterpart. Compare lexical identities before reading any bytes; this
     // follows existing filesystem symlinks but never infers opaque SAF identities.
-    val rawPaths = items.mapNotNull(physicalIdentity)
+    val rawPaths = try { items.mapNotNull(physicalIdentity) } catch (cancelled: java.util.concurrent.CancellationException) {
+        throw cancelled
+    } catch (interrupted: InterruptedException) {
+        Thread.currentThread().interrupt()
+        throw interrupted
+    } catch (_: Exception) {
+        return false
+    }
     if (rawPaths.any { it.isBlank() || '\u0000' in it }) return false
     val knownPaths = try { rawPaths.map { java.io.File(it).canonicalPath } } catch (_: java.io.IOException) { return false }
     if (knownPaths.toSet().size != knownPaths.size) return false
