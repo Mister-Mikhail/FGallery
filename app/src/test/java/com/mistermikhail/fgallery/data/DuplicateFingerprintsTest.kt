@@ -313,4 +313,16 @@ class DuplicateFingerprintsTest {
         assertEquals(1, groups.size)
         assertEquals(setOf(upper.uri, lower.uri), groups.single().map { it.uri }.toSet())
     }
+    @Test fun blankFullHashIsRequeuedButCompletedFingerprintIsNot() {
+        val absent = row("content://absent", size = 500, quick = "edge", full = null)
+        val blank = row("content://blank", size = 500, quick = "edge", full = "")
+        val spaces = row("content://spaces", size = 500, quick = "edge", full = "   ")
+        val complete = row("content://complete", size = 500, quick = "edge",
+            full = "a".repeat(64))
+        val unrelated = row("content://unrelated", size = 500, quick = "different", full = null)
+        val candidates = fullHashCandidates(listOf(absent, blank, spaces, complete, unrelated))
+        assertEquals(setOf(absent.uri, blank.uri, spaces.uri),
+            candidates.map { it.uri }.toSet())
+    }
+
 }
