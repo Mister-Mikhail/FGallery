@@ -114,6 +114,24 @@ class DuplicateFingerprintsTest {
             exactDuplicateGroups(listOf(original, copy, unrelated)))
     }
 
+    @Test fun equalSizedGroupsKeepStableOrderAcrossCatalogueRescans() {
+        val digestA = "a".repeat(64)
+        val digestB = "b".repeat(64)
+        val groupA = listOf(
+            row("content://a-original", quick = "edge-a", full = digestA),
+            row("content://a-copy", quick = "edge-a", full = digestA),
+        )
+        val groupB = listOf(
+            row("content://b-original", quick = "edge-b", full = digestB),
+            row("content://b-copy", quick = "edge-b", full = digestB),
+        )
+        val first = exactDuplicateGroups(groupB + groupA)
+        val rescanned = exactDuplicateGroups((groupA + groupB).reversed())
+        assertEquals(first.map { group -> group.map { it.uri } },
+            rescanned.map { group -> group.map { it.uri } })
+        assertEquals("content://a-copy", first.first().first().uri)
+    }
+
     @Test fun completeSha256StillGroupsWhenQuickFingerprintIsMissing() {
         val digest = "c".repeat(64)
         val original = row("file:///original", quick = null, full = digest)
