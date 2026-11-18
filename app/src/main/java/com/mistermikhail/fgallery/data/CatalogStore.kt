@@ -16,6 +16,14 @@ import java.io.File
  * complete incremental scanner is accepted. Only database rows are changed;
  * files, storage permissions and recycle-bin originals are never modified.
  */
+/** Keep offline and recycled records in Room, but never offer them in a trash review. */
+internal fun eligibleExactDuplicateReviewRows(
+    rows: List<CatalogMediaRow>,
+    disconnectedStorageIds: Set<String>,
+): List<CatalogMediaRow> = rows.filter {
+    !it.recycled && it.storageId !in disconnectedStorageIds
+}
+
 internal object CatalogStore {
     private const val PREFS = "fgallery_catalog_status"
     private const val PERMISSION_KEY = "permission_at_last_scan"
@@ -84,7 +92,7 @@ internal object CatalogStore {
             val disconnected = dao.allVolumes().asSequence()
                 .filterNot { it.connected }
                 .mapTo(hashSetOf()) { it.storageId }
-            dao.allMedia().filter { !it.recycled && it.storageId !in disconnected }
+            eligibleExactDuplicateReviewRows(dao.allMedia(), disconnected)
         }
 
     suspend fun priorFolders(context: Context): List<CatalogFolderRow> = withContext(Dispatchers.IO) {
