@@ -119,4 +119,13 @@ class ExactDuplicateReviewScreenContractTest {
             explicitlyConfirmed = true).isEmpty())
     }
 
+    @Test fun malformedSelectionIncludingProtectedOriginalCannotOpenTrashPrompt() {
+        val rows = listOf(row("original", "phone", "Camera"), row("copy", "phone", "Camera"))
+        val safe = planExactDuplicateReview(rows, requestedUris = setOf("copy"))
+        assertEquals(1, exactDuplicateTrashPrompt(safe)!!.selectedCopyCount)
+        val malformed = safe.copy(selectedUris = setOf("original", "copy"))
+        assertNull(exactDuplicateTrashPrompt(malformed))
+        assertEquals(1, exactDuplicateReviewCards(malformed).single().selectedCopyCount)
+    }
+
 }
