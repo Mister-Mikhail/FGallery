@@ -152,7 +152,8 @@ internal fun exactDuplicateGroups(rows: List<CatalogMediaRow>): List<List<Catalo
         .groupBy { it.sizeBytes to it.fullHash!!.lowercase(java.util.Locale.ROOT) }
         .values.filter { it.size > 1 }
         .map { it.sortedWith(exactCopyKeepPriority) }
-        .sortedByDescending { it.size }
+        .sortedWith(compareByDescending<List<CatalogMediaRow>> { it.size }
+            .thenBy { it.first().uri })
 
 /**
  * Preferred file to KEEP within a verified exact-byte group. This only orders
