@@ -42,6 +42,26 @@ class ExactDuplicateReviewTest {
         assertTrue(review.protectedUris.isEmpty())
     }
 
+    @Test fun reviewRejectsSymlinkAliasOfProtectedOriginal() {
+        val root = java.nio.file.Files.createTempDirectory("fgallery-exact-alias")
+        try {
+            val originalPath = root.resolve("original.jpg")
+            java.nio.file.Files.write(originalPath, byteArrayOf(1, 2, 3))
+            val aliasPath = root.resolve("alias.jpg")
+            java.nio.file.Files.createSymbolicLink(aliasPath, originalPath)
+            val original = item("original").copy(sourcePath = originalPath.toString())
+            val alias = item("copy").copy(sourcePath = aliasPath.toString())
+            val review = planExactDuplicateReview(listOf(original, alias),
+                requestedUris = setOf("copy"))
+            assertTrue(review.groups.isEmpty())
+            assertTrue(review.selectedUris.isEmpty())
+        } finally {
+            java.nio.file.Files.deleteIfExists(root.resolve("alias.jpg"))
+            java.nio.file.Files.deleteIfExists(root.resolve("original.jpg"))
+            java.nio.file.Files.deleteIfExists(root)
+        }
+    }
+
     @Test fun reviewDoesNotConflateDistinctSafSourcePaths() {
         val original = item("original").copy(sourcePath = "/saf/provider/one")
         val copy = item("copy").copy(sourcePath = "/saf/provider/two")
