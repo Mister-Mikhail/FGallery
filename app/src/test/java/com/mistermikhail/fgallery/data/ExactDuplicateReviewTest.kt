@@ -243,11 +243,26 @@ class ExactDuplicateReviewTest {
             row.fullHash
         }
         assertEquals(setOf("copy"), authorized)
-        assertEquals(2, visited.size)
+        assertEquals(3, visited.size)
         visited.forEach { row ->
             assertTrue(rescanned.any { it === row })
             assertTrue(snapshot.none { it === row })
         }
+    }
+
+    @Test fun keeperChangedDuringCopyVerificationRevokesEntireBatch() {
+        val rows = listOf(item("original"), item("copy"))
+        val review = planExactDuplicateReview(rows, requestedUris = setOf("copy"))
+        var keeperReads = 0
+        val result = verifiedExactDuplicateUris(review, rows, explicitlyConfirmed = true) { row ->
+            if (row.uri == "original") {
+                keeperReads++
+                if (keeperReads == 2) "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                else row.fullHash
+            } else row.fullHash
+        }
+        assertTrue(result.isEmpty())
+        assertEquals(2, keeperReads)
     }
 
     @Test fun freshByteGateChecksOriginalAndSelectedCopies() {
