@@ -103,6 +103,18 @@ internal suspend fun <T> preflightDuplicateTrash(
         return false
     }
     if (finalPaths != rawPaths) return false
+    // A symlink can be retargeted without changing its path string. Re-resolve
+    // both selected paths and protected originals after verification, otherwise
+    // an alias of the keeper may become actionable during a slow SAF read.
+    val finalCanonicalPaths = try {
+        finalPaths.map { java.io.File(it).canonicalPath }
+    } catch (_: java.io.IOException) { return false }
+    val finalProtectedPaths = try {
+        protectedPhysicalIdentities.map { java.io.File(it).canonicalPath }.toSet()
+    } catch (_: java.io.IOException) { return false }
+    if (finalCanonicalPaths != knownPaths || finalProtectedPaths != protectedPaths) return false
+    if (finalCanonicalPaths.toSet().size != finalCanonicalPaths.size ||
+        finalCanonicalPaths.any { it in finalProtectedPaths }) return false
     currentCoroutineContext().ensureActive()
     return true
 }
