@@ -72,6 +72,21 @@ internal object CatalogStore {
             )
         }
 
+    /**
+     * Stage 6 read-only catalogue snapshot for exact-duplicate review.
+     * Never include disconnected volumes or recycled items in an actionable
+     * proposal. This is only a review input: the mutation layer must reload
+     * current rows and rehash bytes before any individual move.
+     */
+    suspend fun exactDuplicateReviewRows(context: Context): List<CatalogMediaRow> =
+        withContext(Dispatchers.IO) {
+            val dao = CatalogDatabase.get(context).catalog()
+            val disconnected = dao.allVolumes().asSequence()
+                .filterNot { it.connected }
+                .mapTo(hashSetOf()) { it.storageId }
+            dao.allMedia().filter { !it.recycled && it.storageId !in disconnected }
+        }
+
     suspend fun priorFolders(context: Context): List<CatalogFolderRow> = withContext(Dispatchers.IO) {
         CatalogDatabase.get(context).catalog().allFolders()
     }
