@@ -192,7 +192,7 @@ internal fun quickHashCandidates(rows: List<CatalogMediaRow>): List<CatalogMedia
     rows.asSequence().distinctBy { it.uri }.filter { !it.recycled && it.sizeBytes > 0L }
         .groupBy { it.sizeBytes }.values.asSequence()
         .filter { it.size > 1 }.flatten()
-        .filter { it.quickHash == null }
+        .filter { it.quickHash.isNullOrBlank() }
         .sortedWith(compareBy<CatalogMediaRow> { it.sizeBytes }.thenBy { it.uri })
         .toList()
 
