@@ -205,4 +205,49 @@ class DuplicateTrashPreflightTest {
         assertEquals(0, reads)
     }
 
+    @Test fun symlinkAliasOfProtectedOriginalFailsBeforeReadingBytes() = runBlocking {
+        val directory = java.nio.file.Files.createTempDirectory("duplicate-preflight")
+        try {
+            val original = java.nio.file.Files.write(directory.resolve("original.jpg"), byteArrayOf(1, 2, 3))
+            val alias = directory.resolve("alias.jpg")
+            java.nio.file.Files.createSymbolicLink(alias, original)
+            var reads = 0
+            assertFalse(preflightDuplicateTrash(
+                listOf("content://provider/copy"),
+                { reads++; true },
+                sourceIdentity = { it },
+                physicalIdentity = { alias.toString() },
+                protectedPhysicalIdentities = setOf(original.toString()),
+            ))
+            assertEquals(0, reads)
+        } finally {
+            java.nio.file.Files.list(directory).use { stream ->
+                stream.forEach { java.nio.file.Files.deleteIfExists(it) }
+            }
+            java.nio.file.Files.deleteIfExists(directory)
+        }
+    }
+
+    @Test fun distinctUrisPointingToSymlinkAndTargetFailBeforeReads() = runBlocking {
+        val directory = java.nio.file.Files.createTempDirectory("duplicate-alias")
+        try {
+            val original = java.nio.file.Files.write(directory.resolve("original.jpg"), byteArrayOf(4))
+            val alias = directory.resolve("alias.jpg")
+            java.nio.file.Files.createSymbolicLink(alias, original)
+            var reads = 0
+            assertFalse(preflightDuplicateTrash(
+                listOf("uri-original", "uri-alias"),
+                { reads++; true },
+                sourceIdentity = { it },
+                physicalIdentity = { if (it == "uri-original") original.toString() else alias.toString() },
+            ))
+            assertEquals(0, reads)
+        } finally {
+            java.nio.file.Files.list(directory).use { stream ->
+                stream.forEach { java.nio.file.Files.deleteIfExists(it) }
+            }
+            java.nio.file.Files.deleteIfExists(directory)
+        }
+    }
+
 }
