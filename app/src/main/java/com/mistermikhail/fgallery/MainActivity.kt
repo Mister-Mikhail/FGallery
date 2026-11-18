@@ -195,6 +195,26 @@ class MainActivity : ComponentActivity() {
         LaunchedEffect(selectedItem?.uriKey) {
             selectedItem?.let { savedViewerUri = it.uriKey }
         }
+        // Stage 6 review is read-only until the fresh-byte trash transaction is wired.
+        var duplicateReviewOpen by remember { mutableStateOf(false) }
+        var duplicateRows by remember { mutableStateOf<List<com.mistermikhail.fgallery.data.CatalogMediaRow>?>(null) }
+        var duplicateLoadError by remember { mutableStateOf<String?>(null) }
+        var duplicateStorages by remember { mutableStateOf<Set<String>>(emptySet()) }
+        var duplicateFolders by remember { mutableStateOf<Set<String>>(emptySet()) }
+        var duplicateSelected by remember { mutableStateOf<Set<String>>(emptySet()) }
+        LaunchedEffect(duplicateReviewOpen) {
+            if (duplicateReviewOpen) {
+                duplicateRows = null
+                duplicateLoadError = null
+                duplicateSelected = emptySet()
+                try {
+                    duplicateRows = com.mistermikhail.fgallery.data.CatalogStore
+                        .exactDuplicateReviewRows(this@MainActivity)
+                } catch (error: Exception) {
+                    duplicateLoadError = error.localizedMessage ?: "Ошибка чтения каталога"
+                }
+            }
+        }
         var cleanupMode by remember { mutableStateOf(false) }
         val zoomTestPrefs = remember { getSharedPreferences("fgallery_zoom_test", MODE_PRIVATE) }
         var zoomSecondPower by remember {
@@ -1206,6 +1226,39 @@ class MainActivity : ComponentActivity() {
                         }
                     },
                 )
+            } else if (duplicateReviewOpen) {
+                BackHandler { duplicateReviewOpen = false }
+                val rows = duplicateRows
+                if (rows == null) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text(duplicateLoadError ?: "Загрузка каталога дубликатов…")
+                    }
+                } else {
+                    val review = com.mistermikhail.fgallery.data.planExactDuplicateReview(
+                        rows, duplicateStorages, duplicateFolders, duplicateSelected
+                    )
+                    com.mistermikhail.fgallery.ui.ExactDuplicateReviewScreen(
+                        review = review,
+                        availableStorages = rows.map { it.storageId }.distinct(),
+                        availableFolders = rows.map { it.folderTarget }.distinct(),
+                        onScopeChanged = { storages, folders ->
+                            duplicateStorages = storages
+                            duplicateFolders = folders
+                            duplicateSelected = emptySet()
+                        },
+                        onCopySelectionChanged = { uri, selected ->
+                            duplicateSelected = if (selected) duplicateSelected + uri else duplicateSelected - uri
+                        },
+                        // Never mutate until current-byte verification and per-file trash
+                        // preflight are integrated. Explicitly reject confirmation.
+                        onRequestTrashVerification = {
+                            Toast.makeText(this@MainActivity,
+                                "Перемещение пока недоступно: требуется повторная проверка SHA-256",
+                                Toast.LENGTH_LONG).show()
+                        },
+                        onClose = { duplicateReviewOpen = false },
+                    )
+                }
             } else if (state.recycleBinVisible) {
                 RecycleBinScreen(
                     items = state.recycleBinItems,
@@ -1273,6 +1326,13 @@ class MainActivity : ComponentActivity() {
                     onConfirmMoveChanged = viewModel::setConfirmMove,
                     onConfirmRenameChanged = viewModel::setConfirmRename,
                     livePreviewEnabled = current == null && pendingMoveItems.isEmpty(),
+                    onOpenExactDuplicates = {
+                        selectedIds = emptySet()
+                        duplicateStorages = emptySet()
+                        duplicateFolders = emptySet()
+                        duplicateSelected = emptySet()
+                        duplicateReviewOpen = true
+                    },
                     onOpenRecycleBin = {
                         selectedIds = emptySet()
                         selectedItem = null; savedViewerUri = null
