@@ -58,6 +58,9 @@ internal suspend fun <T> preflightDuplicateTrash(
         }.toSet()
     } catch (_: java.io.IOException) { return false }
     if (knownPaths.any { it in protectedPaths }) return false
+    // SAF providers can rebind a URI while another copy is being verified.
+    // Recheck the identities after all reads, before returning a preflight
+    // success; this is still not a substitute for per-file mutation checks.
     for (item in items) {
         currentCoroutineContext().ensureActive()
         val valid = try {
@@ -81,6 +84,25 @@ internal suspend fun <T> preflightDuplicateTrash(
         // Never return an authorized batch from a cancelled worker.
         currentCoroutineContext().ensureActive()
     }
+    currentCoroutineContext().ensureActive()
+    val finalIdentities = try { items.map(sourceIdentity) } catch (cancelled: java.util.concurrent.CancellationException) {
+        throw cancelled
+    } catch (interrupted: InterruptedException) {
+        Thread.currentThread().interrupt()
+        throw interrupted
+    } catch (_: Exception) {
+        return false
+    }
+    if (finalIdentities != identities) return false
+    val finalPaths = try { items.mapNotNull(physicalIdentity) } catch (cancelled: java.util.concurrent.CancellationException) {
+        throw cancelled
+    } catch (interrupted: InterruptedException) {
+        Thread.currentThread().interrupt()
+        throw interrupted
+    } catch (_: Exception) {
+        return false
+    }
+    if (finalPaths != rawPaths) return false
     currentCoroutineContext().ensureActive()
     return true
 }
