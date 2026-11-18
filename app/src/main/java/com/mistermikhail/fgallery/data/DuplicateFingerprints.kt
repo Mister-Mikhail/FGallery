@@ -145,13 +145,7 @@ internal fun exactDuplicateGroups(rows: List<CatalogMediaRow>): List<List<Catalo
         // Repeated catalogue rows are one physical item, never two copies.
         .distinctBy { it.uri }
         .filterNot { it.recycled }
-        .filter { row ->
-            // The shared grouping helper also serves non-UI callers. Never
-            // advertise a legacy/truncated fingerprint as an exact-byte match.
-            val hash = row.fullHash
-            row.sizeBytes > 0L && hash != null && hash.length == 64 &&
-                hash.all { it in '0'..'9' || it in 'a'..'f' || it in 'A'..'F' }
-        }
+        .filter { it.sizeBytes > 0L && !it.fullHash.isNullOrBlank() }
         // A completed full digest remains valid even when an older catalogue
         // has lost its quick hash. Edge hashes are only a scheduling optimization. A persisted full
         // SHA-256 is the exact-copy identity even if edge-hash versions differ.
