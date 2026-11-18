@@ -166,6 +166,18 @@ class DuplicateFingerprintsTest {
             fullHashCandidates(withEdges))
     }
 
+    @Test fun blankQuickFingerprintIsRetriedForSizeCollision() {
+        val blank = row("content://blank", size = 200, quick = "")
+        val whitespace = row("content://whitespace", size = 200, quick = "   ")
+        val missing = row("content://missing", size = 200)
+        val valid = row("content://valid", size = 200, quick = "edge")
+        val singleton = row("content://single", size = 201, quick = "")
+        val trashed = row("content://trashed", size = 200, quick = "", recycled = true)
+        assertEquals(listOf(blank, missing, whitespace),
+            quickHashCandidates(listOf(blank, whitespace, missing, valid, singleton, trashed)))
+        assertTrue(fullHashCandidates(listOf(blank, whitespace, missing)).isEmpty())
+    }
+
     @Test fun repeatedCatalogueUriCannotCreateFalseDuplicateOrHashWork() {
         val a = row("content://same", quick = "edge", full = "sha")
         assertTrue(exactDuplicateGroups(listOf(a, a.copy(name = "renamed.jpg"))).isEmpty())
