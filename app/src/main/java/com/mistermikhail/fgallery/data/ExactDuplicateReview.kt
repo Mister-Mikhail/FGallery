@@ -217,11 +217,21 @@ internal fun exactDuplicateGroupSummaries(
         return@mapNotNull null
     }
     val selected = copies.filter { it.uri in review.selectedUris }
+    // Never show a wrapped reclaimable-size estimate in a review card. An
+    // invalid catalogue size or overflow makes this group non-actionable.
+    val reclaimableBytes = try {
+        selected.fold(0L) { total, row ->
+            if (row.sizeBytes <= 0L) return@mapNotNull null
+            Math.addExact(total, row.sizeBytes)
+        }
+    } catch (_: ArithmeticException) {
+        return@mapNotNull null
+    }
     ExactDuplicateGroupSummary(
         originalUri = original.uri,
         copyUris = copies.map { it.uri },
         sizeBytes = original.sizeBytes,
-        reclaimableBytes = selected.sumOf { it.sizeBytes },
+        reclaimableBytes = reclaimableBytes,
         sha256 = digest,
     )
 }
