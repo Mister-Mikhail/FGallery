@@ -114,6 +114,17 @@ class DuplicateFingerprintsTest {
             exactDuplicateGroups(listOf(original, copy, unrelated)))
     }
 
+    @Test fun completeSha256StillGroupsWhenQuickFingerprintIsMissing() {
+        val digest = "c".repeat(64)
+        val original = row("file:///original", quick = null, full = digest)
+        val copy = row("file:///copy", quick = "edge-v2", full = digest)
+        val incomplete = row("file:///incomplete", quick = "edge-v2", full = null)
+        val different = row("file:///different", quick = null, full = "d".repeat(64))
+        val groups = exactDuplicateGroups(listOf(original, copy, incomplete, different))
+        assertEquals(1, groups.size)
+        assertEquals(setOf(original.uri, copy.uri), groups.single().map { it.uri }.toSet())
+    }
+
     @Test fun metadataOnlyRefreshRetainsHashesButChangedBytesInvalidate() {
         val old = row("file:///a", quick = "edge", full = "complete")
             .copy(perceptualHash = "perceptual", exifCamera = "Canon")
