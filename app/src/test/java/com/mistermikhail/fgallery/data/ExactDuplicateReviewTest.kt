@@ -32,6 +32,16 @@ class ExactDuplicateReviewTest {
         assertEquals(0, reads)
     }
 
+    @Test fun malformedSourcePathCannotProduceActionableDuplicateReview() {
+        val original = item("original")
+        val malformed = item("copy").copy(sourcePath = "/DCIM/bad\\u0000name.jpg")
+        val rows = listOf(original, malformed)
+        val review = planExactDuplicateReview(rows, requestedUris = setOf("copy"))
+        assertTrue(review.groups.isEmpty())
+        assertTrue(review.selectedUris.isEmpty())
+        assertTrue(confirmedExactDuplicateUris(review, rows, explicitlyConfirmed = true).isEmpty())
+    }
+
     @Test fun reviewRejectsPhysicalAliasesBeforeOfferingTrashSelection() {
         val original = item("original").copy(sourcePath = "/storage/emulated/0/DCIM/photo.jpg")
         val alias = item("copy").copy(sourcePath = "/storage/emulated/0/Pictures/../DCIM/./photo.jpg")
