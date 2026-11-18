@@ -31,8 +31,8 @@ import com.mistermikhail.fgallery.data.duplicateReviewScopeAvailable
 import com.mistermikhail.fgallery.data.duplicateConfirmationInvalidated
 
 /**
- * Stage 6 review surface. Intentionally not connected to the gallery menu or
- * trash mutation until the host supplies a fresh-byte verification pipeline.
+ * Stage 6 review surface, connected to the gallery in read-only mode.
+ * Trash mutation remains disabled until the host supplies fresh-byte verification.
  * onRequestTrashVerification is an INTENT, not permission to move files.
  */
 @Composable
@@ -81,7 +81,15 @@ internal fun ExactDuplicateReviewScreen(
                 )
             }
         }
-        if (!scopeAvailable) Text("Выбранный носитель или папка недоступны. Повторно подключите источник и обновите каталог перед подтверждением.")
+        if (!scopeAvailable) {
+            Text("Выбранный носитель или папка недоступны. Подключите источник и обновите каталог либо явно сбросьте область поиска.")
+            OutlinedButton(onClick = {
+                // A disconnected explicit scope must never be silently widened.
+                // Only an explicit reset clears both filters and pending consent.
+                confirmOpen = false
+                onScopeChanged(emptySet(), emptySet())
+            }) { Text("Сбросить область поиска") }
+        }
         if (cards.isEmpty()) Text("Точных совпадений в выбранной области не найдено")
         cards.forEachIndexed { index, card ->
             HorizontalDivider()
