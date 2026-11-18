@@ -250,4 +250,30 @@ class DuplicateTrashPreflightTest {
         }
     }
 
+    @Test fun nulSourceIdentityFailsBeforeVerifierRuns() = runBlocking {
+        var reads = 0
+        assertFalse(preflightDuplicateTrash(
+            listOf("copy"),
+            { reads++; true },
+            sourceIdentity = { "content://provider/copy\\u0000suffix" },
+        ))
+        assertEquals(0, reads)
+    }
+
+    @Test fun nulPhysicalPathsFailBeforeVerifierRuns() = runBlocking {
+        var reads = 0
+        assertFalse(preflightDuplicateTrash(
+            listOf("copy"),
+            { reads++; true },
+            sourceIdentity = { it },
+            physicalIdentity = { "/storage/photo.jpg\\u0000suffix" },
+        ))
+        assertFalse(preflightDuplicateTrash(
+            listOf("copy"),
+            { reads++; true },
+            sourceIdentity = { it },
+            protectedPhysicalIdentities = setOf("/storage/original.jpg\\u0000suffix"),
+        ))
+        assertEquals(0, reads)
+    }
 }
