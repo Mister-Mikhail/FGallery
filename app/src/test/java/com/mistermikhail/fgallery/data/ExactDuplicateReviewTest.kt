@@ -549,4 +549,18 @@ class ExactDuplicateReviewTest {
         assertEquals(0, reads)
     }
 
+    @Test fun reviewCatalogueExcludesDisconnectedAndRecycledFilesWithoutDeletingRecords() {
+        val original = item("original")
+        val copy = item("copy")
+        val offline = item("offline", storage = "usb")
+        val recycled = item("recycled").copy(recycled = true)
+        val rows = listOf(original, copy, offline, recycled)
+        val eligible = eligibleExactDuplicateReviewRows(rows, setOf("usb"))
+        assertEquals(listOf(original, copy), eligible)
+        assertEquals(4, rows.size)
+        val review = planExactDuplicateReview(eligible)
+        assertEquals(1, review.groups.size)
+        assertTrue(review.selectedUris.isEmpty())
+    }
+
 }
