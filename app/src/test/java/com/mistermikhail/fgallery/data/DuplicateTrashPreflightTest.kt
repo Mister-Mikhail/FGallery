@@ -255,7 +255,7 @@ class DuplicateTrashPreflightTest {
         assertFalse(preflightDuplicateTrash(
             listOf("copy"),
             { reads++; true },
-            sourceIdentity = { "content://provider/copy\\u0000suffix" },
+            sourceIdentity = { "content://provider/copy\u0000suffix" },
         ))
         assertEquals(0, reads)
     }
@@ -266,14 +266,49 @@ class DuplicateTrashPreflightTest {
             listOf("copy"),
             { reads++; true },
             sourceIdentity = { it },
-            physicalIdentity = { "/storage/photo.jpg\\u0000suffix" },
+            physicalIdentity = { "/storage/photo.jpg\u0000suffix" },
         ))
         assertFalse(preflightDuplicateTrash(
             listOf("copy"),
             { reads++; true },
             sourceIdentity = { it },
-            protectedPhysicalIdentities = setOf("/storage/original.jpg\\u0000suffix"),
+            protectedPhysicalIdentities = setOf("/storage/original.jpg\u0000suffix"),
         ))
         assertEquals(0, reads)
     }
+    @Test fun sourceIdentityFailureRejectsBeforeAnyVerifierRead() = runBlocking {
+        var reads = 0
+        assertFalse(preflightDuplicateTrash(
+            listOf("copy"),
+            { reads++; true },
+            sourceIdentity = { throw IllegalStateException("provider identity unavailable") },
+        ))
+        assertEquals(0, reads)
+    }
+
+    @Test fun physicalIdentityFailureRejectsBeforeAnyVerifierRead() = runBlocking {
+        var reads = 0
+        assertFalse(preflightDuplicateTrash(
+            listOf("copy"),
+            { reads++; true },
+            sourceIdentity = { it },
+            physicalIdentity = { throw java.io.IOException("storage disconnected") },
+        ))
+        assertEquals(0, reads)
+    }
+
+    @Test fun identityCancellationIsNotSwallowed() = runBlocking {
+        var cancelled = false
+        try {
+            preflightDuplicateTrash(
+                listOf("copy"),
+                { true },
+                sourceIdentity = { throw java.util.concurrent.CancellationException("cancelled") },
+            )
+        } catch (_: java.util.concurrent.CancellationException) {
+            cancelled = true
+        }
+        assertTrue(cancelled)
+    }
+
 }
