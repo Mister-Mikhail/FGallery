@@ -343,4 +343,13 @@ class DuplicateFingerprintsTest {
             candidates.map { it.uri }.toSet())
     }
 
+    @Test fun quickHashHexCaseDoesNotHideFullHashCandidates() {
+        val digest = "abcdef0123456789".repeat(4)
+        val first = row("content://first", size = 500, quick = digest.uppercase(), full = null)
+        val second = row("content://second", size = 500, quick = digest, full = null)
+        val unrelated = row("content://other", size = 500, quick = "f".repeat(64), full = null)
+        assertEquals(setOf(first.uri, second.uri),
+            fullHashCandidates(listOf(first, second, unrelated)).map { it.uri }.toSet())
+    }
+
 }
