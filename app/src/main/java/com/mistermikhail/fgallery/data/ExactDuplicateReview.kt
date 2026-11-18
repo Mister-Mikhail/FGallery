@@ -48,7 +48,9 @@ internal fun planExactDuplicateReview(
     // URIs may spell the same physical file with "." or ".." segments.
     // Never normalize opaque SAF URIs or infer paths when the catalogue has none.
     val rawPaths = indexedRows.mapNotNull { it.sourcePath }
-    if (rawPaths.any(String::isBlank)) {
+    // NUL cannot identify a filesystem path. Reject before canonicalization so
+    // malformed provider metadata never reaches a review action.
+    if (rawPaths.any { it.isBlank() || '\u0000' in it }) {
         return ExactDuplicateReview(emptyList(), emptySet(), emptySet(),
             includedStorageIds.toSet(), includedFolderTargets.toSet())
     }
