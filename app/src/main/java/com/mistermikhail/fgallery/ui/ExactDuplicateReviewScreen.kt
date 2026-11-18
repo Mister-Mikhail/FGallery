@@ -44,6 +44,7 @@ internal fun ExactDuplicateReviewScreen(
     onCopySelectionChanged: (String, Boolean) -> Unit,
     onRequestTrashVerification: (ExactDuplicateReview) -> Unit,
     onClose: () -> Unit,
+    onRefresh: () -> Unit,
     trashVerificationAvailable: Boolean = false,
 ) {
     var confirmOpen by remember(review) { mutableStateOf(false) }
@@ -119,6 +120,7 @@ internal fun ExactDuplicateReviewScreen(
         if (!trashVerificationAvailable) Text("Режим просмотра: перемещение будет доступно после подключения повторной проверки файлов и защищённой корзины.")
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = onClose) { Text("Закрыть") }
+            OutlinedButton(onClick = { confirmOpen = false; onRefresh() }) { Text("Обновить") }
             OutlinedButton(onClick = { confirmOpen = true }, enabled = trashVerificationAvailable && prompt != null) {
                 Text("В корзину…")
             }
