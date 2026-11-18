@@ -200,6 +200,6 @@ internal fun fullHashCandidates(rows: List<CatalogMediaRow>): List<CatalogMediaR
     rows.asSequence().distinctBy { it.uri }.filter { !it.recycled && it.sizeBytes > 0L && !it.quickHash.isNullOrBlank() }
         .groupBy { it.sizeBytes to it.quickHash }.values.asSequence()
         .filter { it.size > 1 }.flatten()
-        .filter { it.fullHash == null }
+        .filter { it.fullHash.isNullOrBlank() }
         .sortedWith(compareBy<CatalogMediaRow> { it.sizeBytes }.thenBy { it.uri })
         .toList()
