@@ -42,7 +42,7 @@ internal fun ExactDuplicateReviewScreen(
     availableFolders: List<String>,
     onScopeChanged: (Set<String>, Set<String>) -> Unit,
     onCopySelectionChanged: (String, Boolean) -> Unit,
-    onRequestTrashVerification: () -> Unit,
+    onRequestTrashVerification: (ExactDuplicateReview) -> Unit,
     onClose: () -> Unit,
 ) {
     var confirmOpen by remember(review) { mutableStateOf(false) }
@@ -123,7 +123,7 @@ internal fun ExactDuplicateReviewScreen(
                 TextButton(onClick = {
                     confirmOpen = false
                     // Host MUST re-read current catalogue and bytes via verifiedExactDuplicateUris.
-                    onRequestTrashVerification()
+                    onRequestTrashVerification(review)
                 }) { Text("Проверить и переместить") }
             },
             dismissButton = {
