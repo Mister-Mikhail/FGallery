@@ -145,8 +145,8 @@ internal fun exactDuplicateGroups(rows: List<CatalogMediaRow>): List<List<Catalo
         // Repeated catalogue rows are one physical item, never two copies.
         .distinctBy { it.uri }
         .filterNot { it.recycled }
-        .filter { it.sizeBytes > 0L && !it.quickHash.isNullOrBlank() && !it.fullHash.isNullOrBlank() }
-        // Edge hashes are only a scheduling optimization. A persisted full
+        .filter { it.sizeBytes > 0L && !it.fullHash.isNullOrBlank() }
+        // A completed full digest remains valid even when an older catalogue\n        // has lost its quick hash. Edge hashes are only a scheduling optimization. A persisted full
         // SHA-256 is the exact-copy identity even if edge-hash versions differ.
         .groupBy { it.sizeBytes to it.fullHash!!.lowercase(java.util.Locale.ROOT) }
         .values.filter { it.size > 1 }
