@@ -202,7 +202,8 @@ class MainActivity : ComponentActivity() {
         var duplicateStorages by remember { mutableStateOf<Set<String>>(emptySet()) }
         var duplicateFolders by remember { mutableStateOf<Set<String>>(emptySet()) }
         var duplicateSelected by remember { mutableStateOf<Set<String>>(emptySet()) }
-        LaunchedEffect(duplicateReviewOpen) {
+        var duplicateRefreshGeneration by remember { mutableIntStateOf(0) }
+        LaunchedEffect(duplicateReviewOpen, duplicateRefreshGeneration) {
             if (duplicateReviewOpen) {
                 duplicateRows = null
                 duplicateLoadError = null
@@ -1257,6 +1258,7 @@ class MainActivity : ComponentActivity() {
                                 Toast.LENGTH_LONG).show()
                         },
                         onClose = { duplicateReviewOpen = false },
+                        onRefresh = { duplicateRefreshGeneration++ },
                     )
                 }
             } else if (state.recycleBinVisible) {
