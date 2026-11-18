@@ -50,6 +50,9 @@ class ExactDuplicateReviewPresentationTest {
             .map { it.copy(sizeBytes = Long.MAX_VALUE) }
         val review = planExactDuplicateReview(rows, requestedUris = setOf("copy1", "copy2"))
         assertEquals(2, review.selectedCount)
+        // The card itself must not display a negative/wrapped byte estimate,
+        // even before the separate trash confirmation is requested.
+        assertTrue(exactDuplicateReviewCards(review).isEmpty())
         assertNull(exactDuplicateTrashPrompt(review))
     }
 
