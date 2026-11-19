@@ -1255,18 +1255,9 @@ class MainActivity : ComponentActivity() {
                     val visualPageCount = com.mistermikhail.fgallery.data.visualCandidatePageCount(scopedVisualRows.size)
                     val currentVisualPage = visualCandidatePage.coerceIn(0, visualPageCount - 1)
                     val visualRows = com.mistermikhail.fgallery.data.visualCandidatePage(scopedVisualRows, currentVisualPage)
-                    val visualCandidates = buildList<Pair<String, String>> {
-                        for (i in visualRows.indices) {
-                            if (size >= 10) break
-                            for (j in i + 1 until visualRows.size) {
-                                if (com.mistermikhail.fgallery.data.potentialVisualDuplicate(
-                                        visualRows[i], visualRows[j])) {
-                                    add(visualRows[i].uri to visualRows[j].uri)
-                                    if (size >= 10) break
-                                }
-                            }
-                        }
-                    }
+                    val visualCandidates = com.mistermikhail.fgallery.data.visualCandidatesAcrossPages(
+                        scopedVisualRows, currentVisualPage
+                    )
                     com.mistermikhail.fgallery.ui.ExactDuplicateReviewScreen(
                         review = review,
                         visualCandidates = visualCandidates,
@@ -1277,8 +1268,8 @@ class MainActivity : ComponentActivity() {
                         visualInProgress = visualVerificationBusy,
                         onVerifyVisual = { firstUri, secondUri ->
                             if (!visualVerificationBusy && !duplicateTrashInProgress) {
-                                val first = visualRows.firstOrNull { it.uri == firstUri }
-                                val second = visualRows.firstOrNull { it.uri == secondUri }
+                                val first = scopedVisualRows.firstOrNull { it.uri == firstUri }
+                                val second = scopedVisualRows.firstOrNull { it.uri == secondUri }
                                 if (first != null && second != null) {
                                     visualVerificationBusy = true
                                     val key = "$firstUri|$secondUri"
