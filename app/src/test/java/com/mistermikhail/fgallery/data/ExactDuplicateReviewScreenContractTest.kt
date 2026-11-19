@@ -24,7 +24,10 @@ class ExactDuplicateReviewScreenContractTest {
     }
 
     @Test fun visualVerificationCannotOverlapTrashConfirmation() {
-        val canConfirm = com.mistermikhail.fgallery.ui::duplicateTrashConfirmationEnabled
+        val canConfirm: (Boolean, Boolean, Boolean, Boolean) -> Boolean =
+            { available, trash, visual, prompt ->
+                com.mistermikhail.fgallery.ui.duplicateTrashConfirmationEnabled(available, trash, visual, prompt)
+            }
         assertTrue(canConfirm(true, false, false, true))
         assertFalse(canConfirm(true, false, true, true))
         assertFalse(canConfirm(true, true, false, true))
