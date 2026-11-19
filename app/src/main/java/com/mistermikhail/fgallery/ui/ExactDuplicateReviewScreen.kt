@@ -46,11 +46,12 @@ internal fun ExactDuplicateReviewScreen(
     onClose: () -> Unit,
     onRefresh: () -> Unit,
     trashVerificationAvailable: Boolean = false,
+    trashInProgress: Boolean = false,
 ) {
     var confirmOpen by remember(review) { mutableStateOf(false) }
     val cards = exactDuplicateReviewCards(review)
     val scopeAvailable = duplicateReviewScopeAvailable(review, availableStorages, availableFolders)
-    val prompt = if (scopeAvailable) exactDuplicateTrashPrompt(review) else null
+    val prompt = if (scopeAvailable && !trashInProgress) exactDuplicateTrashPrompt(review) else null
     // A disconnected SAF source invalidates an already-open confirmation.
     // Reconnection must require a fresh tap, not resurrect an old dialog.
     LaunchedEffect(scopeAvailable, prompt) {
@@ -64,7 +65,7 @@ internal fun ExactDuplicateReviewScreen(
         Text("Сравниваются полные SHA-256. Похожие фотографии и RAW+JPEG не считаются точными копиями.")
         Text("Носители (все отмечены — поиск по всем)", style = MaterialTheme.typography.titleSmall)
         availableStorages.distinct().sorted().forEach { storage ->
-            ScopeCheckbox(storage, isDuplicateScopeChecked(review.includedStorageIds, storage), enabled = scopeAvailable) { checked ->
+            ScopeCheckbox(storage, isDuplicateScopeChecked(review.includedStorageIds, storage), enabled = scopeAvailable && !trashInProgress) { checked ->
                 confirmOpen = false
                 onScopeChanged(
                     toggleDuplicateScope(availableStorages, review.includedStorageIds, storage, checked),
@@ -88,8 +89,8 @@ internal fun ExactDuplicateReviewScreen(
                 // A disconnected explicit scope must never be silently widened.
                 // Only an explicit reset clears both filters and pending consent.
                 confirmOpen = false
-                onScopeChanged(emptySet(), emptySet())
-            }) { Text("Сбросить область поиска") }
+                if (!trashInProgress) onScopeChanged(emptySet(), emptySet())
+            }, enabled = !trashInProgress) { Text("Сбросить область поиска") }
         }
         if (cards.isEmpty()) Text("Точных совпадений в выбранной области не найдено")
         cards.forEachIndexed { index, card ->
@@ -101,7 +102,7 @@ internal fun ExactDuplicateReviewScreen(
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Checkbox(
                         checked = item.manuallySelected,
-                        enabled = scopeAvailable && !item.protectedOriginal,
+                        enabled = scopeAvailable && !trashInProgress && !item.protectedOriginal,
                         onCheckedChange = {
                             confirmOpen = false
                             onCopySelectionChanged(item.uri, it)
@@ -117,16 +118,17 @@ internal fun ExactDuplicateReviewScreen(
             }
         }
         Text("Выбрано вручную: ${review.selectedCount}. Ничего не удаляется автоматически.")
+        if (trashInProgress) Text("Проверяем исходные файлы и SHA-256, затем перемещаем выбранные копии. Не закрывайте экран до завершения.")
         if (!trashVerificationAvailable) Text("Режим просмотра: перемещение будет доступно после подключения повторной проверки файлов и защищённой корзины.")
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = onClose) { Text("Закрыть") }
-            OutlinedButton(onClick = { confirmOpen = false; onRefresh() }) { Text("Обновить") }
-            OutlinedButton(onClick = { confirmOpen = true }, enabled = trashVerificationAvailable && prompt != null) {
+            OutlinedButton(onClick = onClose, enabled = !trashInProgress) { Text("Закрыть") }
+            OutlinedButton(onClick = { confirmOpen = false; onRefresh() }, enabled = !trashInProgress) { Text("Обновить") }
+            OutlinedButton(onClick = { confirmOpen = true }, enabled = trashVerificationAvailable && !trashInProgress && prompt != null) {
                 Text("В корзину…")
             }
         }
     }
-    if (confirmOpen && trashVerificationAvailable && prompt != null) {
+    if (confirmOpen && trashVerificationAvailable && !trashInProgress && prompt != null) {
         AlertDialog(
             onDismissRequest = { confirmOpen = false },
             title = { Text("Подтверждение корзины") },
