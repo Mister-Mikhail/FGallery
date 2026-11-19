@@ -205,6 +205,7 @@ class MainActivity : ComponentActivity() {
         var duplicateFolders by remember { mutableStateOf<Set<String>>(emptySet()) }
         var duplicateSelected by remember { mutableStateOf<Set<String>>(emptySet()) }
         var duplicateRefreshGeneration by remember { mutableIntStateOf(0) }
+        var visualCandidatePage by remember { mutableIntStateOf(0) }
         var visualVerificationBusy by remember { mutableStateOf(false) }
         var visualVerificationResults by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
         LaunchedEffect(duplicateReviewOpen, duplicateRefreshGeneration) {
@@ -1242,13 +1243,18 @@ class MainActivity : ComponentActivity() {
                     val review = com.mistermikhail.fgallery.data.planExactDuplicateReview(
                         rows, duplicateStorages, duplicateFolders, duplicateSelected
                     )
-                    // Candidate search is intentionally bounded until a paged visual
-                    // scan exists. Only the explicit button reads full source pixels.
-                    val visualRows = rows.asSequence()
-                        .filter { it.kind == "IMAGE" && !it.recycled }
-                        .filter { duplicateStorages.isEmpty() || it.storageId in duplicateStorages }
-                        .filter { duplicateFolders.isEmpty() || it.folderTarget in duplicateFolders }
-                        .take(250).toList()
+                    // Review the entire scoped catalogue in bounded pages. Pixel decoding
+                    // remains opt-in; a page is not a claim of an exhaustive scan.
+                    val scopedVisualRows = remember(rows, duplicateStorages, duplicateFolders) {
+                        rows.asSequence()
+                            .filter { it.kind == "IMAGE" && !it.recycled }
+                            .filter { duplicateStorages.isEmpty() || it.storageId in duplicateStorages }
+                            .filter { duplicateFolders.isEmpty() || it.folderTarget in duplicateFolders }
+                            .toList()
+                    }
+                    val visualPageCount = maxOf(1, (scopedVisualRows.size + 249) / 250)
+                    val currentVisualPage = visualCandidatePage.coerceIn(0, visualPageCount - 1)
+                    val visualRows = scopedVisualRows.drop(currentVisualPage * 250).take(250)
                     val visualCandidates = buildList<Pair<String, String>> {
                         for (i in visualRows.indices) {
                             if (size >= 10) break
@@ -1264,6 +1270,9 @@ class MainActivity : ComponentActivity() {
                     com.mistermikhail.fgallery.ui.ExactDuplicateReviewScreen(
                         review = review,
                         visualCandidates = visualCandidates,
+                        visualPage = currentVisualPage,
+                        visualPageCount = visualPageCount,
+                        onVisualPageChanged = { visualCandidatePage = it; visualVerificationResults = emptyMap() },
                         visualStatus = visualVerificationResults,
                         visualInProgress = visualVerificationBusy,
                         onVerifyVisual = { firstUri, secondUri ->
@@ -1308,6 +1317,7 @@ class MainActivity : ComponentActivity() {
                             duplicateStorages = storages
                             duplicateFolders = folders
                             duplicateSelected = emptySet()
+                            visualCandidatePage = 0
                             visualVerificationResults = emptyMap()
                         },
                         onCopySelectionChanged = { uri, selected ->
@@ -1341,7 +1351,7 @@ class MainActivity : ComponentActivity() {
                         trashVerificationAvailable = true,
                         trashInProgress = duplicateTrashInProgress,
                         onClose = { duplicateReviewOpen = false },
-                        onRefresh = { visualVerificationResults = emptyMap(); duplicateRefreshGeneration++ },
+                        onRefresh = { visualCandidatePage = 0; visualVerificationResults = emptyMap(); duplicateRefreshGeneration++ },
                     )
                 }
             } else if (state.recycleBinVisible) {
