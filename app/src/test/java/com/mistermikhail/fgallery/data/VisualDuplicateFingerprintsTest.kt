@@ -102,4 +102,27 @@ class VisualDuplicateFingerprintsTest {
         assertTrue(potentialResizedDuplicate(original, second.copy(dateTakenMillis = 1_002_000L)))
     }
 
+    @Test fun crossPageResizeIsFoundWithoutComparingAllPairs() {
+        val rows = (0 until 501).map { index ->
+            row("content://image-$index", if (index == 0 || index == 500)
+                "0123456789abcdef" else "ffffffffffffffff")
+                .copy(dateTakenMillis = if (index == 0 || index == 500) 1_000_000L else 2_000_000L + index * 10_000L)
+        }
+        assertTrue(visualCandidatesAcrossPages(rows, 0).contains("content://image-0" to "content://image-500"))
+        assertFalse(visualCandidatesAcrossPages(rows, 2).contains("content://image-0" to "content://image-500"))
+    }
+
+    @Test fun cropCandidateAcrossPagesDoesNotNeedMatchingHash() {
+        val rows = (0 until 251).map { index ->
+            row("content://image-$index", "0000000000000000")
+                .copy(name = "unrelated-$index.jpg", dateTakenMillis = 10_000_000L + index * 10_000L)
+        }.toMutableList()
+        rows[0] = row("content://original", "0000000000000000")
+            .copy(name = "frame.jpg", dateTakenMillis = 1_000_000L)
+        rows[250] = row("content://crop", "ffffffffffffffff")
+            .copy(name = "frame-crop.jpg", dateTakenMillis = 1_000_000L,
+                width = 1600, height = 1200)
+        assertTrue(visualCandidatesAcrossPages(rows, 0).contains("content://original" to "content://crop"))
+    }
+
 }
