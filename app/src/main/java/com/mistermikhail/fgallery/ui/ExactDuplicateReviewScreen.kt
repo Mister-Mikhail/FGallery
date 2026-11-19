@@ -167,7 +167,7 @@ internal fun ExactDuplicateReviewScreen(
         AlertDialog(
             onDismissRequest = { confirmOpen = false },
             title = { Text("Подтверждение корзины") },
-            text = { Text(prompt.message + " Объём: ${prompt.selectedBytes} байт.") },
+            text = { Text(prompt?.message.orEmpty() + " Объём: ${prompt?.selectedBytes} байт.") },
             confirmButton = {
                 TextButton(onClick = {
                     confirmOpen = false
