@@ -574,8 +574,11 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
                         verified == setOf(uri)
                     }
                 }
-                // Persist each successful move before attempting the next one.
-                CatalogStore.removeUris(context, setOf(uri))
+                // The physical move has already succeeded. A Room write error
+                // must not abort the remaining independently verified moves or
+                // leave this item visible as if it were still at its old URI.
+                // refresh() in finally reconciles any failed catalogue write.
+                runCatching { CatalogStore.removeUris(context, setOf(uri)) }
                 completed++
                 val removed = setOf(uri)
                 withContext(Dispatchers.Main) {
