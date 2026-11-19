@@ -41,9 +41,16 @@ internal object VisualDuplicatePixelVerification {
     }
 
     private fun matchesIntegerScale(large: Pixels, small: Pixels, scale: Int): Boolean {
+        // A true nearest-neighbour enlargement repeats each source pixel over
+        // the WHOLE scale x scale block. Sampling just its top-left corner
+        // falsely accepts edited or unrelated images with matching samples.
         for (y in 0 until small.height) for (x in 0 until small.width) {
-            if (small.argb[y * small.width + x] !=
-                large.argb[(y * scale) * large.width + x * scale]) return false
+            val expected = small.argb[y * small.width + x]
+            for (dy in 0 until scale) for (dx in 0 until scale) {
+                if (large.argb[(y * scale + dy) * large.width + x * scale + dx] != expected) {
+                    return false
+                }
+            }
         }
         return true
     }
