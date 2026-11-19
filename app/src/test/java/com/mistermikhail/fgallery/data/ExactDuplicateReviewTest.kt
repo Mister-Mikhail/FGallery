@@ -31,6 +31,24 @@ class ExactDuplicateReviewTest {
         assertTrue(exactDuplicateMovePairStillValid(review, listOf(original, second), "second"))
     }
 
+    @Test fun partialTrashRetainsOriginalAndRechecksRemainingCopyAgainstFreshKeeper() {
+        val original = item("original")
+        val first = item("first")
+        val second = item("second")
+        val reviewed = planExactDuplicateReview(
+            listOf(original, first, second), requestedUris = setOf("first", "second"),
+        )
+        // The first move succeeded and its catalogue row is gone.
+        val remaining = listOf(original, second)
+        assertTrue(exactDuplicateMovePairStillValid(reviewed, remaining, "second"))
+        assertTrue(!exactDuplicateMovePairStillValid(reviewed,
+            listOf(original.copy(fullHash = "b".repeat(64)), second), "second"))
+        assertTrue(!exactDuplicateMovePairStillValid(reviewed,
+            listOf(original, second.copy(fullHash = "b".repeat(64))), "second"))
+        // The protected original can never become a candidate after a partial move.
+        assertTrue(!exactDuplicateMovePairStillValid(reviewed, remaining, "original"))
+    }
+
     @Test fun perMoveGateRejectsChangedKeeperCopyAndDuplicateUri() {
         val original = item("original")
         val copy = item("copy")
