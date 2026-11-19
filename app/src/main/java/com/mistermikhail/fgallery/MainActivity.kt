@@ -1232,7 +1232,7 @@ class MainActivity : ComponentActivity() {
                     },
                 )
             } else if (duplicateReviewOpen) {
-                BackHandler { if (!duplicateTrashInProgress) duplicateReviewOpen = false }
+                BackHandler { if (!duplicateTrashInProgress && !visualVerificationBusy) duplicateReviewOpen = false }
                 val rows = duplicateRows
                 if (rows == null) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -1308,6 +1308,7 @@ class MainActivity : ComponentActivity() {
                             duplicateStorages = storages
                             duplicateFolders = folders
                             duplicateSelected = emptySet()
+                            visualVerificationResults = emptyMap()
                         },
                         onCopySelectionChanged = { uri, selected ->
                             duplicateSelected = if (selected) duplicateSelected + uri else duplicateSelected - uri
@@ -1340,7 +1341,7 @@ class MainActivity : ComponentActivity() {
                         trashVerificationAvailable = true,
                         trashInProgress = duplicateTrashInProgress,
                         onClose = { duplicateReviewOpen = false },
-                        onRefresh = { duplicateRefreshGeneration++ },
+                        onRefresh = { visualVerificationResults = emptyMap(); duplicateRefreshGeneration++ },
                     )
                 }
             } else if (state.recycleBinVisible) {
