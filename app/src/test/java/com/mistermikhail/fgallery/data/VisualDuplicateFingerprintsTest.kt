@@ -125,4 +125,21 @@ class VisualDuplicateFingerprintsTest {
         assertTrue(visualCandidatesAcrossPages(rows, 0).contains("content://original" to "content://crop"))
     }
 
+    @Test fun crossPageCropWithoutExifTimestampIsStillReviewable() {
+        val rows = (0 until 251).map { index ->
+            row("content://other-$index", "0000000000000000")
+                .copy(name = "other-$index.jpg", dateTakenMillis = 0L)
+        }.toMutableList()
+        rows[0] = row("content://original", "0000000000000000")
+            .copy(name = "DSC_12345.jpg", dateTakenMillis = 0L)
+        rows[250] = row("content://cropped", "ffffffffffffffff")
+            .copy(name = "DSC_12345-crop.jpg", dateTakenMillis = 0L,
+                width = 1600, height = 1200)
+        assertTrue(potentialCropDuplicate(rows[0], rows[250]))
+        assertTrue(visualCandidatesAcrossPages(rows, 0).contains(
+            "content://original" to "content://cropped"))
+        assertFalse(potentialCropDuplicate(rows[0],
+            rows[250].copy(dateTakenMillis = 1_010_000L, name = "unrelated.jpg")))
+    }
+
 }
