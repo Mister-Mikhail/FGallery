@@ -518,7 +518,7 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
      * A failed check stops subsequent moves. Already completed moves are
      * reconciled individually, including when a later move fails.
      */
-    suspend fun trashConfirmedExactDuplicates(
+    internal suspend fun trashConfirmedExactDuplicates(
         reviewed: com.mistermikhail.fgallery.data.ExactDuplicateReview,
     ): Int = withContext(Dispatchers.IO) {
         val context = getApplication<Application>()
