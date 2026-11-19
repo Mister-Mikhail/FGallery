@@ -98,6 +98,29 @@ class ExactDuplicateReviewPresentationTest {
         assertNull(exactDuplicateTrashPrompt(review))
     }
 
+    @Test fun handcraftedMalformedDigestCannotRenderActionableCardOrPrompt() {
+        val rows = listOf(row("original"), row("copy"))
+        val safe = planExactDuplicateReview(rows, requestedUris = setOf("copy"))
+        assertEquals(1, safe.selectedCount)
+        // A UI state restored from an old snapshot must not bypass the
+        // planner's strict full-SHA-256 contract.
+        val malformed = safe.copy(groups = safe.groups.map { group ->
+            group.map { it.copy(fullHash = "a".repeat(63) + "z") }
+        })
+        assertTrue(exactDuplicateReviewCards(malformed).isEmpty())
+        assertNull(exactDuplicateTrashPrompt(malformed))
+    }
+
+    @Test fun handcraftedZeroByteGroupCannotOfferTrash() {
+        val rows = listOf(row("original"), row("copy"))
+        val safe = planExactDuplicateReview(rows, requestedUris = setOf("copy"))
+        val zeroBytes = safe.copy(groups = safe.groups.map { group ->
+            group.map { it.copy(sizeBytes = 0L) }
+        })
+        assertTrue(exactDuplicateReviewCards(zeroBytes).isEmpty())
+        assertNull(exactDuplicateTrashPrompt(zeroBytes))
+    }
+
     @Test fun scopedAndAmbiguousReviewsCannotProduceTrashPrompt() {
         val rows = listOf(row("original"), row("copy"))
         val ambiguous = planExactDuplicateReview(rows + rows[1].copy(dateModifiedMillis = 200),
