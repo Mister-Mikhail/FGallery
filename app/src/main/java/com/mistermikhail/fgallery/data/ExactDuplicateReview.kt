@@ -272,7 +272,13 @@ internal fun exactDuplicateGroupSummaries(
     val original = group.firstOrNull() ?: return@mapNotNull null
     if (group.size < 2 || original.uri !in review.protectedUris) return@mapNotNull null
     val copies = group.drop(1)
-    if (copies.any { it.uri in review.protectedUris }) return@mapNotNull null
+    // A restored or hand-built UI snapshot must not show two aliases of one
+    // URI as independent disposable copies. Every group must have exactly one
+    // protected keeper, and a selected URI must never be the keeper elsewhere.
+    if (group.any { it.uri.isBlank() } ||
+        group.map { it.uri }.toSet().size != group.size ||
+        copies.any { it.uri in review.protectedUris } ||
+        group.count { it.uri in review.protectedUris } != 1) return@mapNotNull null
     val digest = original.fullHash ?: return@mapNotNull null
     // Even a malformed hand-built/stale review must not render a plausible
     // SHA-256 card or offer an action. Reject zero-length files and invalid
