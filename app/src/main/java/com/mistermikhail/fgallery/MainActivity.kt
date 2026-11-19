@@ -196,7 +196,7 @@ class MainActivity : ComponentActivity() {
         LaunchedEffect(selectedItem?.uriKey) {
             selectedItem?.let { savedViewerUri = it.uriKey }
         }
-        // Stage 6 review is read-only until the fresh-byte trash transaction is wired.
+        // Stage 6 review uses a single-flight fresh-byte trash transaction.
         var duplicateReviewOpen by remember { mutableStateOf(false) }
         var duplicateTrashInProgress by remember { mutableStateOf(false) }
         var duplicateRows by remember { mutableStateOf<List<com.mistermikhail.fgallery.data.CatalogMediaRow>?>(null) }
@@ -1262,8 +1262,7 @@ class MainActivity : ComponentActivity() {
                                         val moved = viewModel.trashConfirmedExactDuplicates(confirmedReview)
                                         duplicateRefreshGeneration++
                                         Toast.makeText(this@MainActivity,
-                                            if (moved > 0) "В корзину перемещено: $moved"
-                                            else "Файлы изменились или проверка SHA-256 не прошла. Обновите список.",
+                                            com.mistermikhail.fgallery.ui.exactDuplicateTrashFeedback(moved),
                                             Toast.LENGTH_LONG).show()
                                     } catch (cancelled: kotlinx.coroutines.CancellationException) {
                                         throw cancelled
