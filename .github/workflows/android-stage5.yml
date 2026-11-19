@@ -5,11 +5,13 @@ on:
     branches:
       - main
       - feature/fgallery-0.4.0-integration
-      - fix/fgallery-m4v-saf-mime-regression
   pull_request:
     branches:
       - main
       - feature/fgallery-0.4.0-integration
+    # Stage 6 branch runs fast CI on pushes; full CI is dispatched before QA.
+    paths-ignore:
+      - 'docs/**'
   workflow_dispatch:
     inputs:
       publish_qa:
