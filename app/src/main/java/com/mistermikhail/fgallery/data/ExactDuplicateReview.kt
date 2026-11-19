@@ -85,6 +85,36 @@ internal fun planExactDuplicateReview(
 }
 
 /**
+ * Mutation-time snapshot gate for one selected copy and its protected keeper.
+ * Earlier successful moves may shrink a group, so compare the two relevant
+ * rows rather than the entire original review after every move.
+ */
+internal fun exactDuplicateMovePairStillValid(
+    reviewed: ExactDuplicateReview,
+    currentRows: List<CatalogMediaRow>,
+    selectedUri: String,
+): Boolean {
+    if (selectedUri !in reviewed.selectedUris || selectedUri in reviewed.protectedUris) return false
+    val originalGroup = reviewed.groups.singleOrNull { group ->
+        group.drop(1).any { it.uri == selectedUri }
+    } ?: return false
+    val keeper = originalGroup.first()
+    val copy = originalGroup.single { it.uri == selectedUri }
+    if (currentRows.count { it.uri == keeper.uri } != 1 ||
+        currentRows.count { it.uri == copy.uri } != 1) return false
+    if (currentRows.first { it.uri == keeper.uri } != keeper ||
+        currentRows.first { it.uri == copy.uri } != copy) return false
+    val fresh = planExactDuplicateReview(
+        currentRows, reviewed.includedStorageIds,
+        reviewed.includedFolderTargets, setOf(selectedUri),
+    )
+    return selectedUri in fresh.selectedUris &&
+        fresh.groups.any { group ->
+            group.first().uri == keeper.uri && group.any { it.uri == selectedUri }
+        }
+}
+
+/**
  * Confirmation is bound to the same exact group snapshot. Any catalog change
  * between review and confirmation invalidates the proposal (fail closed).
  * This does not replace a final on-disk metadata/hash check before mutation.
