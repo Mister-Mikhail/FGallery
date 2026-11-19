@@ -35,6 +35,9 @@ import com.mistermikhail.fgallery.data.duplicateConfirmationInvalidated
  * controls are locked while it is running to prevent overlapping requests.
  * onRequestTrashVerification is an INTENT, not permission to move files.
  */
+internal fun duplicateScopeEditingEnabled(scopeAvailable: Boolean, trashInProgress: Boolean): Boolean =
+    scopeAvailable && !trashInProgress
+
 internal fun exactDuplicateTrashFeedback(moved: Int): String =
     if (moved > 0) "В корзину перемещено: $moved"
     else "Файлы изменились или проверка SHA-256 не прошла. Обновите список."
@@ -69,7 +72,7 @@ internal fun ExactDuplicateReviewScreen(
         Text("Сравниваются полные SHA-256. Похожие фотографии и RAW+JPEG не считаются точными копиями.")
         Text("Носители (все отмечены — поиск по всем)", style = MaterialTheme.typography.titleSmall)
         availableStorages.distinct().sorted().forEach { storage ->
-            ScopeCheckbox(storage, isDuplicateScopeChecked(review.includedStorageIds, storage), enabled = scopeAvailable && !trashInProgress) { checked ->
+            ScopeCheckbox(storage, isDuplicateScopeChecked(review.includedStorageIds, storage), enabled = duplicateScopeEditingEnabled(scopeAvailable, trashInProgress)) { checked ->
                 confirmOpen = false
                 onScopeChanged(
                     toggleDuplicateScope(availableStorages, review.includedStorageIds, storage, checked),
@@ -79,7 +82,7 @@ internal fun ExactDuplicateReviewScreen(
         }
         Text("Папки (все отмечены — поиск по всем)", style = MaterialTheme.typography.titleSmall)
         availableFolders.distinct().sorted().forEach { folder ->
-            ScopeCheckbox(folder, isDuplicateScopeChecked(review.includedFolderTargets, folder), enabled = scopeAvailable && !trashInProgress) { checked ->
+            ScopeCheckbox(folder, isDuplicateScopeChecked(review.includedFolderTargets, folder), enabled = duplicateScopeEditingEnabled(scopeAvailable, trashInProgress)) { checked ->
                 confirmOpen = false
                 onScopeChanged(
                     review.includedStorageIds,
@@ -106,7 +109,7 @@ internal fun ExactDuplicateReviewScreen(
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Checkbox(
                         checked = item.manuallySelected,
-                        enabled = scopeAvailable && !trashInProgress && !item.protectedOriginal,
+                        enabled = duplicateScopeEditingEnabled(scopeAvailable, trashInProgress) && !item.protectedOriginal,
                         onCheckedChange = {
                             confirmOpen = false
                             onCopySelectionChanged(item.uri, it)
