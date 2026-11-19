@@ -198,6 +198,7 @@ class MainActivity : ComponentActivity() {
         }
         // Stage 6 review is read-only until the fresh-byte trash transaction is wired.
         var duplicateReviewOpen by remember { mutableStateOf(false) }
+        var duplicateTrashInProgress by remember { mutableStateOf(false) }
         var duplicateRows by remember { mutableStateOf<List<com.mistermikhail.fgallery.data.CatalogMediaRow>?>(null) }
         var duplicateLoadError by remember { mutableStateOf<String?>(null) }
         var duplicateStorages by remember { mutableStateOf<Set<String>>(emptySet()) }
@@ -1229,7 +1230,7 @@ class MainActivity : ComponentActivity() {
                     },
                 )
             } else if (duplicateReviewOpen) {
-                BackHandler { duplicateReviewOpen = false }
+                BackHandler { if (!duplicateTrashInProgress) duplicateReviewOpen = false }
                 val rows = duplicateRows
                 if (rows == null) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -1252,23 +1253,33 @@ class MainActivity : ComponentActivity() {
                             duplicateSelected = if (selected) duplicateSelected + uri else duplicateSelected - uri
                         },
                         onRequestTrashVerification = { confirmedReview ->
-                            uiScope.launch {
-                                try {
-                                    val moved = viewModel.trashConfirmedExactDuplicates(confirmedReview)
-                                    duplicateRefreshGeneration++
-                                    Toast.makeText(this@MainActivity,
-                                        "В корзину перемещено: $moved", Toast.LENGTH_LONG).show()
-                                } catch (cancelled: kotlinx.coroutines.CancellationException) {
-                                    throw cancelled
-                                } catch (error: Exception) {
-                                    duplicateRefreshGeneration++
-                                    Toast.makeText(this@MainActivity,
-                                        "Проверка или перемещение остановлено: ${error.localizedMessage ?: "нет доступа"}",
-                                        Toast.LENGTH_LONG).show()
+                            // One active mutation per review. Keep the selected
+                            // snapshot stable until the transaction completes.
+                            if (!duplicateTrashInProgress) {
+                                duplicateTrashInProgress = true
+                                uiScope.launch {
+                                    try {
+                                        val moved = viewModel.trashConfirmedExactDuplicates(confirmedReview)
+                                        duplicateRefreshGeneration++
+                                        Toast.makeText(this@MainActivity,
+                                            if (moved > 0) "В корзину перемещено: $moved"
+                                            else "Файлы изменились или проверка SHA-256 не прошла. Обновите список.",
+                                            Toast.LENGTH_LONG).show()
+                                    } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                                        throw cancelled
+                                    } catch (error: Exception) {
+                                        duplicateRefreshGeneration++
+                                        Toast.makeText(this@MainActivity,
+                                            "Проверка или перемещение остановлено: ${error.localizedMessage ?: "нет доступа"}",
+                                            Toast.LENGTH_LONG).show()
+                                    } finally {
+                                        duplicateTrashInProgress = false
+                                    }
                                 }
                             }
                         },
                         trashVerificationAvailable = true,
+                        trashInProgress = duplicateTrashInProgress,
                         onClose = { duplicateReviewOpen = false },
                         onRefresh = { duplicateRefreshGeneration++ },
                     )
