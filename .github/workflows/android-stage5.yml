@@ -27,7 +27,8 @@ concurrency:
 
 jobs:
   r8-build:
-    if: github.event_name != 'pull_request' || github.head_ref != 'fix/fgallery-m4v-saf-mime-regression'
+    # Run on PR events too: connector-authored pushes may not emit push workflows.
+    if: github.event_name == 'push' || github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -73,7 +74,8 @@ jobs:
           path: app/build/outputs/mapping/release/mapping.txt
 
   r8-device-tests:
-    if: github.event_name != 'pull_request' || github.head_ref != 'fix/fgallery-m4v-saf-mime-regression'
+    # Run on PR events too: connector-authored pushes may not emit push workflows.
+    if: github.event_name == 'push' || github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
