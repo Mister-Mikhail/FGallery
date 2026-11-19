@@ -42,7 +42,8 @@ internal fun exactDuplicateReviewCards(
                     protectedOriginal = original,
                     manuallySelected = !original && row.uri in review.selectedUris,
                     explanation = if (original) {
-                        "Защищённый оригинал — нельзя выбрать для корзины"
+                        "Защищённый оригинал — нельзя выбрать для корзины. " +
+                            exactDuplicateKeeperReason(group)
                     } else {
                         "Точная копия: совпадают размер и полный SHA-256; выбор только вручную"
                     },
@@ -91,4 +92,27 @@ internal fun exactDuplicateTrashPrompt(
             "Оригиналы останутся на месте. Перед операцией файлы и SHA-256 " +
             "будут проверены повторно. Отмена не изменяет файлы.",
     )
+}
+
+/**
+ * Explain the deterministic keeper choice without implying that a matching
+ * SHA-256 identifies the historical camera original. All group members are
+ * byte-identical; the app protects one copy and never selects any for trash.
+ */
+internal fun exactDuplicateKeeperReason(group: List<CatalogMediaRow>): String {
+    val keeper = group.firstOrNull() ?: return "Копия сохранена по правилу защиты."
+    if (group.size < 2) return "Копия сохранена по правилу защиты."
+    val others = group.drop(1)
+    val keeperDate = keeper.dateTakenMillis.takeIf { it > 0L }
+    if (keeperDate != null && others.all {
+            it.dateTakenMillis <= 0L || keeperDate < it.dateTakenMillis
+        }) {
+        return "Сохранена копия с самой ранней датой съёмки."
+    }
+    if (!keeper.exifCamera.isNullOrBlank() &&
+        others.all { it.exifCamera.isNullOrBlank() }) {
+        return "Сохранена копия с метаданными камеры."
+    }
+    return "Сохранена одна копия по стабильному порядку каталога; " +
+        "исторический оригинал по SHA-256 определить нельзя."
 }
