@@ -16,7 +16,7 @@ internal object VisualDuplicateSourceVerification {
 
     suspend fun verify(context: Context, first: CatalogMediaRow, second: CatalogMediaRow):
         VisualDuplicatePixelVerification.Result = withContext(Dispatchers.IO) {
-        if (!potentialResizedDuplicate(first, second)) {
+        if (!potentialVisualDuplicate(first, second)) {
             return@withContext VisualDuplicatePixelVerification.Result.UNVERIFIED
         }
         val a = decode(context, first.uri) ?: return@withContext VisualDuplicatePixelVerification.Result.UNVERIFIED
