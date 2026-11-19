@@ -76,7 +76,7 @@ internal fun ExactDuplicateReviewScreen(
         Text("Сравниваются полные SHA-256. Похожие фотографии и RAW+JPEG не считаются точными копиями.")
         Text("Носители (все отмечены — поиск по всем)", style = MaterialTheme.typography.titleSmall)
         availableStorages.distinct().sorted().forEach { storage ->
-            ScopeCheckbox(storage, isDuplicateScopeChecked(review.includedStorageIds, storage), enabled = duplicateScopeEditingEnabled(scopeAvailable, trashInProgress)) { checked ->
+            ScopeCheckbox(storage, isDuplicateScopeChecked(review.includedStorageIds, storage), enabled = duplicateScopeEditingEnabled(scopeAvailable, trashInProgress || visualInProgress)) { checked ->
                 confirmOpen = false
                 onScopeChanged(
                     toggleDuplicateScope(availableStorages, review.includedStorageIds, storage, checked),
@@ -86,7 +86,7 @@ internal fun ExactDuplicateReviewScreen(
         }
         Text("Папки (все отмечены — поиск по всем)", style = MaterialTheme.typography.titleSmall)
         availableFolders.distinct().sorted().forEach { folder ->
-            ScopeCheckbox(folder, isDuplicateScopeChecked(review.includedFolderTargets, folder), enabled = duplicateScopeEditingEnabled(scopeAvailable, trashInProgress)) { checked ->
+            ScopeCheckbox(folder, isDuplicateScopeChecked(review.includedFolderTargets, folder), enabled = duplicateScopeEditingEnabled(scopeAvailable, trashInProgress || visualInProgress)) { checked ->
                 confirmOpen = false
                 onScopeChanged(
                     review.includedStorageIds,
@@ -101,7 +101,7 @@ internal fun ExactDuplicateReviewScreen(
                 // Only an explicit reset clears both filters and pending consent.
                 confirmOpen = false
                 if (!trashInProgress) onScopeChanged(emptySet(), emptySet())
-            }, enabled = !trashInProgress) { Text("Сбросить область поиска") }
+            }, enabled = !trashInProgress && !visualInProgress) { Text("Сбросить область поиска") }
         }
         if (cards.isEmpty()) Text("Точных совпадений в выбранной области не найдено")
         cards.forEachIndexed { index, card ->
@@ -113,7 +113,7 @@ internal fun ExactDuplicateReviewScreen(
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Checkbox(
                         checked = item.manuallySelected,
-                        enabled = duplicateScopeEditingEnabled(scopeAvailable, trashInProgress) && !item.protectedOriginal,
+                        enabled = duplicateScopeEditingEnabled(scopeAvailable, trashInProgress || visualInProgress) && !item.protectedOriginal,
                         onCheckedChange = {
                             confirmOpen = false
                             onCopySelectionChanged(item.uri, it)
@@ -145,8 +145,8 @@ internal fun ExactDuplicateReviewScreen(
         if (trashInProgress) Text("Проверяем исходные файлы и SHA-256, затем перемещаем выбранные копии. Не закрывайте экран до завершения.")
         if (!trashVerificationAvailable) Text("Режим просмотра: перемещение будет доступно после подключения повторной проверки файлов и защищённой корзины.")
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = onClose, enabled = !trashInProgress) { Text("Закрыть") }
-            OutlinedButton(onClick = { confirmOpen = false; onRefresh() }, enabled = !trashInProgress) { Text("Обновить") }
+            OutlinedButton(onClick = onClose, enabled = !trashInProgress && !visualInProgress) { Text("Закрыть") }
+            OutlinedButton(onClick = { confirmOpen = false; onRefresh() }, enabled = !trashInProgress && !visualInProgress) { Text("Обновить") }
             OutlinedButton(onClick = { confirmOpen = true }, enabled = trashVerificationAvailable && !trashInProgress && prompt != null) {
                 Text("В корзину…")
             }
