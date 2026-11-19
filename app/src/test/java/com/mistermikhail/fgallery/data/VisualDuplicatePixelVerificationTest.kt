@@ -27,6 +27,17 @@ class VisualDuplicatePixelVerificationTest {
         assertEquals(Result.UNVERIFIED, VisualDuplicatePixelVerification.verify(large, edited))
     }
 
+    @Test fun integerResizeRejectsChangesOutsideSampledBlockCorners() {
+        val small = pixels(3, 3) { x, y -> 0xff000000.toInt() or (x * 51 + y * 7) }
+        val enlarged = pixels(6, 6) { x, y -> small.argb[(y / 2) * 3 + x / 2] }
+        assertEquals(Result.EXACT_INTEGER_RESIZE, VisualDuplicatePixelVerification.verify(enlarged, small))
+        // Top-left samples of every 2x2 block remain unchanged. The former
+        // implementation incorrectly accepted this edited enlargement.
+        val edited = enlarged.copy(argb = enlarged.argb.copyOf().also { it[1] = it[1] xor 1 })
+        assertEquals(Result.UNVERIFIED, VisualDuplicatePixelVerification.verify(edited, small))
+        assertEquals(Result.UNVERIFIED, VisualDuplicatePixelVerification.verify(small, edited))
+    }
+
     @Test fun exactCropRequiresEveryOriginalPixelAndRejectsBurstFrames() {
         val original = pixels(7, 6) { x, y -> 0xff000000.toInt() or (x * 31 + y * 73) }
         val crop = pixels(5, 4) { x, y -> original.argb[(y + 1) * 7 + x + 2] }
