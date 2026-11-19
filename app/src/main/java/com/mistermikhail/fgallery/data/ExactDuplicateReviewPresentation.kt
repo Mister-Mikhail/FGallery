@@ -104,8 +104,10 @@ internal fun exactDuplicateKeeperReason(group: List<CatalogMediaRow>): String {
     if (group.size < 2) return "Копия сохранена по правилу защиты."
     val others = group.drop(1)
     val keeperDate = keeper.dateTakenMillis.takeIf { it > 0L }
+    // Missing dates are unknown, not evidence that the keeper is the
+    // earliest capture. Never present an unverified chronological claim.
     if (keeperDate != null && others.all {
-            it.dateTakenMillis <= 0L || keeperDate < it.dateTakenMillis
+            it.dateTakenMillis > 0L && keeperDate < it.dateTakenMillis
         }) {
         return "Сохранена копия с самой ранней датой съёмки."
     }
