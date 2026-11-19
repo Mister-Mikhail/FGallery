@@ -511,6 +511,95 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
         } finally { refresh() }
     }
 
+    /**
+     * Stage 6: perform an explicitly confirmed exact-duplicate review, one
+     * physical move at a time. Re-read Room and both sources inside the bin's
+     * pre-move callback; never trust the earlier UI fingerprint as proof.
+     * A failed check stops subsequent moves. Already completed moves are
+     * reconciled individually, including when a later move fails.
+     */
+    suspend fun trashConfirmedExactDuplicates(
+        reviewed: com.mistermikhail.fgallery.data.ExactDuplicateReview,
+    ): Int = withContext(Dispatchers.IO) {
+        val context = getApplication<Application>()
+        val initial = CatalogStore.exactDuplicateReviewRows(context)
+        val confirmed = com.mistermikhail.fgallery.data.confirmedExactDuplicateUris(
+            reviewed, initial, explicitlyConfirmed = true,
+            includedStorageIds = reviewed.includedStorageIds,
+            includedFolderTargets = reviewed.includedFolderTargets,
+        )
+        check(confirmed.isNotEmpty() && confirmed == reviewed.selectedUris) {
+            "Каталог дубликатов изменился. Обновите список и подтвердите заново."
+        }
+        // Verify every chosen copy and its keeper BEFORE the first mutation.
+        check(com.mistermikhail.fgallery.data.verifyCurrentExactDuplicateSelection(
+            context, reviewed, initial, explicitlyConfirmed = true,
+        ) == confirmed) { "SHA-256 изменился. Обновите список дубликатов." }
+
+        var completed = 0
+        try {
+            for (uri in confirmed.sorted()) {
+                val originalGroup = reviewed.groups.firstOrNull { group ->
+                    group.drop(1).any { it.uri == uri }
+                } ?: error("Не найдена защищённая исходная копия")
+                val keeperSnapshot = originalGroup.first()
+                val copySnapshot = originalGroup.first { it.uri == uri }
+                val current = CatalogStore.exactDuplicateReviewRows(context)
+                val currentKeeper = current.singleOrNull { it.uri == keeperSnapshot.uri }
+                val currentCopy = current.singleOrNull { it.uri == uri }
+                check(currentKeeper == keeperSnapshot && currentCopy == copySnapshot) {
+                    "Файл или оригинал изменился. Операция остановлена."
+                }
+                val currentReview = com.mistermikhail.fgallery.data.planExactDuplicateReview(
+                    current, reviewed.includedStorageIds, reviewed.includedFolderTargets,
+                    setOf(uri),
+                )
+                check(uri in currentReview.selectedUris &&
+                    currentReview.groups.any { group ->
+                        group.first().uri == keeperSnapshot.uri &&
+                            group.any { it.uri == uri }
+                    }) { "Защищённый оригинал больше не подтверждён." }
+                val row = currentCopy!!
+                val item = MediaItem(
+                    row.mediaId, android.net.Uri.parse(row.uri), row.name, row.mimeType,
+                    MediaKind.valueOf(row.kind), row.dateTakenMillis,
+                    row.width, row.height, row.durationMillis, row.album,
+                    row.relativePath, row.sizeBytes, row.dateModifiedMillis,
+                    row.storageId, row.storageName, row.folderTarget, row.sourcePath,
+                )
+                driveBin.trashWithPreMoveCheck(listOf(item)) { candidate ->
+                    val latest = CatalogStore.exactDuplicateReviewRows(context)
+                    val keeper = latest.singleOrNull { it.uri == keeperSnapshot.uri }
+                    val copy = latest.singleOrNull { it.uri == uri }
+                    if (candidate.uriKey != uri || keeper != keeperSnapshot ||
+                        copy != copySnapshot) false
+                    else {
+                        val verified = com.mistermikhail.fgallery.data.verifyCurrentExactDuplicateSelection(
+                            context,
+                            com.mistermikhail.fgallery.data.planExactDuplicateReview(
+                                latest, reviewed.includedStorageIds,
+                                reviewed.includedFolderTargets, setOf(uri),
+                            ),
+                            latest, explicitlyConfirmed = true,
+                        )
+                        verified == setOf(uri)
+                    }
+                }
+                // Persist each successful move before attempting the next one.
+                CatalogStore.removeUris(context, setOf(uri))
+                completed++
+                val removed = setOf(uri)
+                withContext(Dispatchers.Main) {
+                    _uiState.update { derive(it.copy(allItems = it.allItems.filterNot { media -> media.uriKey in removed })) }
+                    LibrarySnapshot.removeItems(removed)
+                }
+            }
+        } finally {
+            refresh()
+        }
+        completed
+    }
+
     suspend fun restoreFromRecycleBin(items: List<MediaItem>) {
         try {
             driveBin.restore(items)
