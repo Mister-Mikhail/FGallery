@@ -31,10 +31,15 @@ import com.mistermikhail.fgallery.data.duplicateReviewScopeAvailable
 import com.mistermikhail.fgallery.data.duplicateConfirmationInvalidated
 
 /**
- * Stage 6 review surface, connected to the gallery in read-only mode.
- * Trash mutation remains disabled until the host supplies fresh-byte verification.
+ * Stage 6 review surface. The host owns the verified trash transaction;
+ * controls are locked while it is running to prevent overlapping requests.
  * onRequestTrashVerification is an INTENT, not permission to move files.
  */
+@Composable
+internal fun exactDuplicateTrashFeedback(moved: Int): String =
+    if (moved > 0) "В корзину перемещено: $moved"
+    else "Файлы изменились или проверка SHA-256 не прошла. Обновите список."
+
 @Composable
 internal fun ExactDuplicateReviewScreen(
     review: ExactDuplicateReview,
