@@ -39,6 +39,31 @@ class ExactDuplicateReviewPresentationTest {
         assertFalse(protected.manuallySelected)
     }
 
+    @Test fun unknownCopyCaptureDateDoesNotProveKeeperIsEarliest() {
+        val rows = listOf(
+            row("original").copy(dateTakenMillis = 1L),
+            row("copy").copy(dateTakenMillis = 0L),
+        )
+        val review = planExactDuplicateReview(rows)
+        val keeper = exactDuplicateReviewCards(review).single().items.first()
+        assertEquals("original", keeper.uri)
+        assertTrue(keeper.protectedOriginal)
+        assertFalse(keeper.explanation.contains("самой ранней датой"))
+        assertTrue(keeper.explanation.contains("исторический оригинал"))
+    }
+
+    @Test fun allKnownLaterCaptureDatesPermitEarliestDateExplanation() {
+        val rows = listOf(
+            row("original").copy(dateTakenMillis = 1L),
+            row("copy1").copy(dateTakenMillis = 2L),
+            row("copy2").copy(dateTakenMillis = 3L),
+        )
+        val review = planExactDuplicateReview(rows)
+        val keeper = exactDuplicateReviewCards(review).single().items.first()
+        assertTrue(keeper.explanation.contains("самой ранней датой"))
+        assertEquals(0, review.selectedCount)
+    }
+
     @Test fun keeperWithEqualCaptureDatesExplainsDeterministicFallback() {
         val rows = listOf(row("a"), row("b")).map { it.copy(dateTakenMillis = 100L) }
         val review = planExactDuplicateReview(rows)
