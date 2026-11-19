@@ -83,20 +83,21 @@ internal fun isCameraRawImage(name: String): Boolean =
  * capture timestamp shortlist candidates; only source-pixel verification can
  * confirm a crop. Never use this predicate to authorize trash.
  */
+internal fun cropCandidateStem(name: String): String = name.substringBeforeLast('.')
+    .lowercase(java.util.Locale.ROOT).removeSuffix("-crop").removeSuffix("_crop")
+
 internal fun potentialCropDuplicate(a: CatalogMediaRow, b: CatalogMediaRow): Boolean {
     if (a.uri == b.uri || a.recycled || b.recycled ||
         a.kind != "IMAGE" || b.kind != "IMAGE" ||
         a.width < 64 || b.width < 64 || a.height < 64 || b.height < 64 ||
         a.name.endsWith(".gif", true) || b.name.endsWith(".gif", true) ||
         isCameraRawImage(a.name) || isCameraRawImage(b.name)) return false
-    if (a.dateTakenMillis <= 0L || b.dateTakenMillis <= 0L ||
+    if (a.dateTakenMillis > 0L && b.dateTakenMillis > 0L &&
         kotlin.math.abs(a.dateTakenMillis - b.dateTakenMillis) > 2_000L) return false
     if (!a.exifCamera.isNullOrBlank() && !b.exifCamera.isNullOrBlank() &&
         !a.exifCamera.equals(b.exifCamera, ignoreCase = true)) return false
-    fun stem(name: String): String = name.substringBeforeLast('.')
-        .lowercase(java.util.Locale.ROOT).removeSuffix("-crop").removeSuffix("_crop")
-    val sharedStem = stem(a.name)
-    if (sharedStem.length < 5 || sharedStem != stem(b.name)) return false
+    val sharedStem = cropCandidateStem(a.name)
+    if (sharedStem.length < 5 || sharedStem != cropCandidateStem(b.name)) return false
     val large = if (a.width.toLong() * a.height >= b.width.toLong() * b.height) a else b
     val small = if (large === a) b else a
     val largeArea = large.width.toLong() * large.height
@@ -141,6 +142,7 @@ internal fun visualCandidatesAcrossPages(
     if (page < 0 || page >= visualCandidatePageCount(items.size, pageSize)) return emptyList()
     val hashSlices = HashMap<String, MutableList<Int>>()
     val timeBuckets = HashMap<Long, MutableList<Int>>()
+    val cropStems = HashMap<String, MutableList<Int>>()
     fun hashKeys(hash: String?): List<String> {
         if (hash == null || hash.length != 16 || !hash.all {
                 it in '0'..'9' || it in 'a'..'f' || it in 'A'..'F'
@@ -154,6 +156,8 @@ internal fun visualCandidatesAcrossPages(
     }
     items.forEachIndexed { index, row ->
         if (row.kind != "IMAGE" || row.recycled || isCameraRawImage(row.name)) return@forEachIndexed
+        val stem = cropCandidateStem(row.name)
+        if (stem.length >= 5) cropStems.getOrPut(stem) { mutableListOf() }.add(index)
         hashKeys(row.perceptualHash).forEach { key ->
             hashSlices.getOrPut(key) { mutableListOf() }.add(index)
         }
@@ -168,6 +172,7 @@ internal fun visualCandidatesAcrossPages(
         val first = items[i]
         if (first.kind != "IMAGE" || first.recycled || isCameraRawImage(first.name)) continue
         val candidates = HashSet<Int>()
+        cropStems[cropCandidateStem(first.name)]?.let(candidates::addAll)
         hashKeys(first.perceptualHash).forEach { key ->
             hashSlices[key]?.let(candidates::addAll)
         }
