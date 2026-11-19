@@ -127,7 +127,7 @@ class VisualDuplicateFingerprintsTest {
 
     @Test fun crossPageCropWithoutExifTimestampIsStillReviewable() {
         val rows = (0 until 251).map { index ->
-            row("content://other-$index", "0000000000000000")
+            row("content://other-$index", "aaaaaaaaaaaaaaaa")
                 .copy(name = "other-$index.jpg", dateTakenMillis = 0L)
         }.toMutableList()
         rows[0] = row("content://original", "0000000000000000")
