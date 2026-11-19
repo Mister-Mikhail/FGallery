@@ -205,6 +205,8 @@ class MainActivity : ComponentActivity() {
         var duplicateFolders by remember { mutableStateOf<Set<String>>(emptySet()) }
         var duplicateSelected by remember { mutableStateOf<Set<String>>(emptySet()) }
         var duplicateRefreshGeneration by remember { mutableIntStateOf(0) }
+        var visualVerificationBusy by remember { mutableStateOf(false) }
+        var visualVerificationResults by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
         LaunchedEffect(duplicateReviewOpen, duplicateRefreshGeneration) {
             if (duplicateReviewOpen) {
                 duplicateRows = null
@@ -1240,8 +1242,66 @@ class MainActivity : ComponentActivity() {
                     val review = com.mistermikhail.fgallery.data.planExactDuplicateReview(
                         rows, duplicateStorages, duplicateFolders, duplicateSelected
                     )
+                    // Candidate search is intentionally bounded until a paged visual
+                    // scan exists. Only the explicit button reads full source pixels.
+                    val visualRows = rows.asSequence()
+                        .filter { it.kind == "IMAGE" && !it.recycled }
+                        .filter { duplicateStorages.isEmpty() || it.storageId in duplicateStorages }
+                        .filter { duplicateFolders.isEmpty() || it.folderTarget in duplicateFolders }
+                        .take(250).toList()
+                    val visualCandidates = buildList<Pair<String, String>> {
+                        for (i in visualRows.indices) {
+                            if (size >= 10) break
+                            for (j in i + 1 until visualRows.size) {
+                                if (com.mistermikhail.fgallery.data.potentialResizedDuplicate(
+                                        visualRows[i], visualRows[j])) {
+                                    add(visualRows[i].uri to visualRows[j].uri)
+                                    if (size >= 10) break
+                                }
+                            }
+                        }
+                    }
                     com.mistermikhail.fgallery.ui.ExactDuplicateReviewScreen(
                         review = review,
+                        visualCandidates = visualCandidates,
+                        visualStatus = visualVerificationResults,
+                        visualInProgress = visualVerificationBusy,
+                        onVerifyVisual = { firstUri, secondUri ->
+                            if (!visualVerificationBusy && !duplicateTrashInProgress) {
+                                val first = visualRows.firstOrNull { it.uri == firstUri }
+                                val second = visualRows.firstOrNull { it.uri == secondUri }
+                                if (first != null && second != null) {
+                                    visualVerificationBusy = true
+                                    val key = "$firstUri|$secondUri"
+                                    visualVerificationResults = visualVerificationResults +
+                                        (key to "Проверяем исходные файлы…")
+                                    uiScope.launch {
+                                        try {
+                                            val result = com.mistermikhail.fgallery.data
+                                                .VisualDuplicateSourceVerification.verify(
+                                                    this@MainActivity, first, second)
+                                            visualVerificationResults = visualVerificationResults +
+                                                (key to when (result) {
+                                                    com.mistermikhail.fgallery.data.VisualDuplicatePixelVerification.Result.EXACT_PIXELS ->
+                                                        "Пиксели совпадают. Только информация."
+                                                    com.mistermikhail.fgallery.data.VisualDuplicatePixelVerification.Result.EXACT_CROP ->
+                                                        "Подтверждено точное кадрирование. Только информация."
+                                                    com.mistermikhail.fgallery.data.VisualDuplicatePixelVerification.Result.EXACT_INTEGER_RESIZE ->
+                                                        "Подтвержден точный целочисленный resize. Только информация."
+                                                    else -> "Совпадение не подтверждено."
+                                                })
+                                        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                                            throw cancelled
+                                        } catch (error: Exception) {
+                                            visualVerificationResults = visualVerificationResults +
+                                                (key to "Не удалось проверить исходные файлы.")
+                                        } finally {
+                                            visualVerificationBusy = false
+                                        }
+                                    }
+                                }
+                            }
+                        },
                         availableStorages = rows.map { it.storageId }.distinct(),
                         availableFolders = rows.map { it.folderTarget }.distinct(),
                         onScopeChanged = { storages, folders ->
