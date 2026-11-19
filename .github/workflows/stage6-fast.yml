@@ -10,6 +10,12 @@ on:
       - 'settings.gradle*'
       - 'gradle/**'
       - '.github/workflows/stage6-fast.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'app/**'
+      - '.github/workflows/stage6-fast.yml'
   workflow_dispatch:
 
 concurrency:
@@ -35,7 +41,9 @@ jobs:
             --tests '*ExactDuplicate*' \
             --tests '*DuplicateFingerprint*' \
             --tests '*VisualDuplicate*' \
-            --tests '*DuplicateTrash*'
+            --tests '*DuplicateTrash*' \
+            --tests '*DuplicateScopeTransition*' \
+            --tests '*CurrentDuplicateSha256*'
       - name: Upload focused JVM test reports
         if: always()
         uses: actions/upload-artifact@v4
