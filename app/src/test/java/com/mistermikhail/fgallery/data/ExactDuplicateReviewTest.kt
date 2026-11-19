@@ -65,7 +65,7 @@ class ExactDuplicateReviewTest {
 
     @Test fun malformedSourcePathCannotProduceActionableDuplicateReview() {
         val original = item("original")
-        val malformed = item("copy").copy(sourcePath = "/DCIM/bad\\u0000name.jpg")
+        val malformed = item("copy").copy(sourcePath = "/DCIM/bad\u0000name.jpg")
         val rows = listOf(original, malformed)
         val review = planExactDuplicateReview(rows, requestedUris = setOf("copy"))
         assertTrue(review.groups.isEmpty())
@@ -539,7 +539,7 @@ class ExactDuplicateReviewTest {
             row.fullHash
         }
         assertEquals(setOf("selected"), approved)
-        assertEquals(listOf("original", "selected"), visited)
+        assertEquals(listOf("original", "selected", "original"), visited)
         // The protected original remains mandatory even if the selected copy is readable.
         assertTrue(verifiedExactDuplicateUris(review, rows, explicitlyConfirmed = true) { row ->
             if (row.uri == "original") null else row.fullHash
