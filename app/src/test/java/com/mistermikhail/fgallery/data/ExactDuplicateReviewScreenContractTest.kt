@@ -8,6 +8,14 @@ import org.junit.Test
 
 /** Contract for the Stage 6 Compose review: scope changes must discard consent. */
 class ExactDuplicateReviewScreenContractTest {
+    @Test fun verifiedTrashFeedbackNeverReportsZeroMovedAsSuccess() {
+        assertEquals("В корзину перемещено: 2",
+            com.mistermikhail.fgallery.ui.exactDuplicateTrashFeedback(2))
+        val refused = com.mistermikhail.fgallery.ui.exactDuplicateTrashFeedback(0)
+        assertFalse(refused.contains("перемещено"))
+        assertTrue(refused.contains("SHA-256"))
+    }
+
     private fun row(uri: String, storage: String, folder: String) = CatalogMediaRow(
         uri = uri, mediaId = 1, name = "$uri.jpg", mimeType = "image/jpeg",
         kind = "IMAGE", dateTakenMillis = if (uri == "original") 1 else 2, width = 200, height = 200,
