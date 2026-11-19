@@ -79,7 +79,7 @@ internal fun ExactDuplicateReviewScreen(
         }
         Text("Папки (все отмечены — поиск по всем)", style = MaterialTheme.typography.titleSmall)
         availableFolders.distinct().sorted().forEach { folder ->
-            ScopeCheckbox(folder, isDuplicateScopeChecked(review.includedFolderTargets, folder), enabled = scopeAvailable) { checked ->
+            ScopeCheckbox(folder, isDuplicateScopeChecked(review.includedFolderTargets, folder), enabled = scopeAvailable && !trashInProgress) { checked ->
                 confirmOpen = false
                 onScopeChanged(
                     review.includedStorageIds,
