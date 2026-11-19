@@ -22,9 +22,37 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  stage6-focused-jvm:
+    if: github.event_name == 'pull_request' && github.head_ref == 'fix/fgallery-m4v-saf-mime-regression'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+      - name: Focused Stage 6 duplicate tests
+        run: |
+          gradle :app:testDebugUnitTest \
+            --tests '*ExactDuplicate*' \
+            --tests '*DuplicateFingerprint*' \
+            --tests '*VisualDuplicate*' \
+            --tests '*DuplicateTrash*'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage6-focused-jvm-results
+          path: |
+            app/build/reports/tests/testDebugUnitTest/
+            app/build/test-results/testDebugUnitTest/
+
   build:
-    # Integration branch uses android-stage5.yml (R8 + Android 16) instead.
-    if: github.head_ref != 'feature/fgallery-0.4.0-integration'
+    # Stage 6 PR uses focused-jvm; do not build a full debug APK on every commit.
+    if: github.head_ref != 'feature/fgallery-0.4.0-integration' && github.head_ref != 'fix/fgallery-m4v-saf-mime-regression'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -66,8 +94,8 @@ jobs:
           path: app/build/outputs/apk/debug/app-universal-debug.apk
 
   device-tests:
-    # Debug instrumentation task is not defined for the integration variant.
-    if: github.head_ref != 'feature/fgallery-0.4.0-integration'
+    # Android 16 is a QA release gate, not a per-commit Stage 6 check.
+    if: github.head_ref != 'feature/fgallery-0.4.0-integration' && github.head_ref != 'fix/fgallery-m4v-saf-mime-regression'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
