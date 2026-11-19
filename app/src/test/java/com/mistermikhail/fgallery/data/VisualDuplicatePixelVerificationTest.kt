@@ -46,9 +46,21 @@ class VisualDuplicatePixelVerificationTest {
         assertEquals(Result.UNVERIFIED, VisualDuplicatePixelVerification.verify(original, burst))
     }
 
+    @Test fun exactCropWorksBeyondOld4096PositionLimit() {
+        val original = pixels(140, 120) { x, y ->
+            0xff000000.toInt() or (x * 65537 + y * 131)
+        }
+        val crop = pixels(45, 36) { x, y ->
+            original.argb[(y + 67) * original.width + x + 71]
+        }
+        assertEquals(Result.EXACT_CROP, VisualDuplicatePixelVerification.verify(original, crop))
+        val retouched = crop.copy(argb = crop.argb.copyOf().also { it[100] = it[100] xor 1 })
+        assertEquals(Result.UNVERIFIED, VisualDuplicatePixelVerification.verify(original, retouched))
+    }
+
     @Test fun invalidAndExpensiveGeometryFailsClosed() {
         val original = pixels(100, 100) { x, y -> x + y }
-        val small = pixels(2, 2) { x, y -> x + y }
+        val small = pixels(2, 2) { x, y -> 10000 + x + y }
         assertEquals(Result.UNVERIFIED, VisualDuplicatePixelVerification.verify(original, small))
         assertEquals(Result.UNVERIFIED, VisualDuplicatePixelVerification.verify(Pixels(0, 1, intArrayOf()), small))
         assertEquals(Result.UNVERIFIED, VisualDuplicatePixelVerification.verify(Pixels(2, 2, intArrayOf(1)), small))
