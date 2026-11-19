@@ -1,0 +1,50 @@
+name: Stage 6 fast checks
+
+on:
+  push:
+    branches:
+      - fix/fgallery-m4v-saf-mime-regression
+    paths:
+      - 'app/**'
+      - 'build.gradle*'
+      - 'settings.gradle*'
+      - 'gradle/**'
+      - '.github/workflows/stage6-fast.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: stage6-fast-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  focused-jvm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+      - name: Compile and run Stage 6 exact/visual duplicate regression tests
+        run: |
+          gradle :app:testDebugUnitTest \
+            --tests '*ExactDuplicate*' \
+            --tests '*DuplicateFingerprint*' \
+            --tests '*VisualDuplicate*' \
+            --tests '*DuplicateTrash*'
+      - name: Upload focused JVM test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage6-fast-jvm-reports
+          path: |
+            app/build/reports/tests/testDebugUnitTest/
+            app/build/test-results/testDebugUnitTest/
+
+# Full release gate remains .github/workflows/android-stage5.yml.
+# Run it via workflow_dispatch on the exact QA candidate SHA; both R8 and
+# Android 16 jobs must pass before any [publish-qa] or QA prerelease.
