@@ -130,7 +130,8 @@ internal fun <T> fingerprintCandidateWindow(
     if (candidates.isEmpty() || maxAttempts <= 0) return emptyList()
     val offset = Math.floorMod(start, candidates.size)
     return List(minOf(candidates.size, maxAttempts)) {
-        candidates[(offset + it) % candidates.size]
+        // Avoid Int overflow when a very large catalogue wraps near its end.
+        candidates[((offset.toLong() + it.toLong()) % candidates.size).toInt()]
     }
 }
 
