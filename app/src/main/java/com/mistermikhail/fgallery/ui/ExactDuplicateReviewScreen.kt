@@ -55,6 +55,9 @@ internal fun ExactDuplicateReviewScreen(
     trashVerificationAvailable: Boolean = false,
     trashInProgress: Boolean = false,
     visualCandidates: List<Pair<String, String>> = emptyList(),
+    visualPage: Int = 0,
+    visualPageCount: Int = 1,
+    onVisualPageChanged: (Int) -> Unit = {},
     visualStatus: Map<String, String> = emptyMap(),
     onVerifyVisual: (String, String) -> Unit = { _, _ -> },
     visualInProgress: Boolean = false,
@@ -130,8 +133,13 @@ internal fun ExactDuplicateReviewScreen(
         }
         HorizontalDivider()
         Text("Визуальные кандидаты (только просмотр)", style = MaterialTheme.typography.titleMedium)
-        Text("dHash лишь предлагает пары. Проверка читает исходные пиксели; результат не разрешает перемещение в корзину. Показана ограниченная выборка кандидатов.")
-        if (visualCandidates.isEmpty()) Text("В ограниченной выборке кандидатов нет.")
+        Text("dHash лишь предлагает пары. Проверка читает исходные пиксели; результат не разрешает перемещение в корзину. Поиск ведётся постранично: пары между страницами пока не проверяются.")
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = { onVisualPageChanged(visualPage - 1) }, enabled = visualPage > 0 && !visualInProgress && !trashInProgress) { Text("Назад") }
+            Text("Страница ${visualPage + 1} из $visualPageCount", modifier = Modifier.padding(top = 12.dp))
+            OutlinedButton(onClick = { onVisualPageChanged(visualPage + 1) }, enabled = visualPage + 1 < visualPageCount && !visualInProgress && !trashInProgress) { Text("Далее") }
+        }
+        if (visualCandidates.isEmpty()) Text("На этой странице кандидатов нет.")
         visualCandidates.forEach { (first, second) ->
             val key = "$first|$second"
             Text(first.substringAfterLast('/') + " / " + second.substringAfterLast('/'))
