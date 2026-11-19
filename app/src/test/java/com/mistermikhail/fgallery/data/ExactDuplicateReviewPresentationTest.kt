@@ -31,6 +31,23 @@ class ExactDuplicateReviewPresentationTest {
         assertNull(exactDuplicateTrashPrompt(review))
     }
 
+    @Test fun protectedKeeperExplainsEarliestCaptureWithoutClaimingCameraOriginal() {
+        val review = planExactDuplicateReview(listOf(row("copy"), row("original")))
+        val protected = exactDuplicateReviewCards(review).single().items.first()
+        assertEquals("original", protected.uri)
+        assertTrue(protected.explanation.contains("самой ранней датой"))
+        assertFalse(protected.manuallySelected)
+    }
+
+    @Test fun keeperWithEqualCaptureDatesExplainsDeterministicFallback() {
+        val rows = listOf(row("a"), row("b")).map { it.copy(dateTakenMillis = 100L) }
+        val review = planExactDuplicateReview(rows)
+        val protected = exactDuplicateReviewCards(review).single().items.first()
+        assertEquals("a", protected.uri)
+        assertTrue(protected.explanation.contains("исторический оригинал"))
+        assertFalse(protected.manuallySelected)
+    }
+
     @Test fun confirmationPromptOnlyCountsManuallySelectedCopies() {
         val rows = listOf(row("original"), row("copy1"), row("copy2"))
         val review = planExactDuplicateReview(rows, requestedUris = setOf("copy2"))
