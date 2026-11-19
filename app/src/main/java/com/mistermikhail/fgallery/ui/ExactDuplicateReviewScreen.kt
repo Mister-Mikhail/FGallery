@@ -38,6 +38,9 @@ import com.mistermikhail.fgallery.data.duplicateConfirmationInvalidated
 internal fun duplicateScopeEditingEnabled(scopeAvailable: Boolean, trashInProgress: Boolean): Boolean =
     scopeAvailable && !trashInProgress
 
+internal fun duplicateTrashConfirmationEnabled(scopeAvailable: Boolean, trashInProgress: Boolean, visualInProgress: Boolean, hasPrompt: Boolean): Boolean =
+    scopeAvailable && !trashInProgress && !visualInProgress && hasPrompt
+
 internal fun exactDuplicateTrashFeedback(moved: Int): String =
     if (moved > 0) "В корзину перемещено: $moved"
     else "Файлы изменились или проверка SHA-256 не прошла. Обновите список."
@@ -65,7 +68,7 @@ internal fun ExactDuplicateReviewScreen(
     var confirmOpen by remember(review) { mutableStateOf(false) }
     val cards = exactDuplicateReviewCards(review)
     val scopeAvailable = duplicateReviewScopeAvailable(review, availableStorages, availableFolders)
-    val prompt = if (scopeAvailable && !trashInProgress) exactDuplicateTrashPrompt(review) else null
+    val prompt = if (scopeAvailable && !trashInProgress && !visualInProgress) exactDuplicateTrashPrompt(review) else null
     // A disconnected SAF source invalidates an already-open confirmation.
     // Reconnection must require a fresh tap, not resurrect an old dialog.
     LaunchedEffect(scopeAvailable, prompt) {
@@ -133,7 +136,7 @@ internal fun ExactDuplicateReviewScreen(
         }
         HorizontalDivider()
         Text("Визуальные кандидаты (только просмотр)", style = MaterialTheme.typography.titleMedium)
-        Text("dHash лишь предлагает пары. Проверка читает исходные пиксели; результат не разрешает перемещение в корзину. Поиск ведётся постранично: пары между страницами пока не проверяются.")
+        Text("dHash лишь предлагает пары. Проверка читает исходные пиксели; результат не разрешает перемещение в корзину. Кандидаты ищутся также между страницами каталога. Каждая пара показывается на странице её первого изображения; не более 10 пар на страницу.")
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = { onVisualPageChanged(visualPage - 1) }, enabled = visualPage > 0 && !visualInProgress && !trashInProgress) { Text("Назад") }
             Text("Страница ${visualPage + 1} из $visualPageCount", modifier = Modifier.padding(top = 12.dp))
@@ -155,12 +158,12 @@ internal fun ExactDuplicateReviewScreen(
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = onClose, enabled = !trashInProgress && !visualInProgress) { Text("Закрыть") }
             OutlinedButton(onClick = { confirmOpen = false; onRefresh() }, enabled = !trashInProgress && !visualInProgress) { Text("Обновить") }
-            OutlinedButton(onClick = { confirmOpen = true }, enabled = trashVerificationAvailable && !trashInProgress && prompt != null) {
+            OutlinedButton(onClick = { confirmOpen = true }, enabled = trashVerificationAvailable && duplicateTrashConfirmationEnabled(scopeAvailable, trashInProgress, visualInProgress, prompt != null)) {
                 Text("В корзину…")
             }
         }
     }
-    if (confirmOpen && trashVerificationAvailable && !trashInProgress && prompt != null) {
+    if (confirmOpen && trashVerificationAvailable && duplicateTrashConfirmationEnabled(scopeAvailable, trashInProgress, visualInProgress, prompt != null)) {
         AlertDialog(
             onDismissRequest = { confirmOpen = false },
             title = { Text("Подтверждение корзины") },
