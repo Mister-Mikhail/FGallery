@@ -274,7 +274,13 @@ internal fun exactDuplicateGroupSummaries(
     val copies = group.drop(1)
     if (copies.any { it.uri in review.protectedUris }) return@mapNotNull null
     val digest = original.fullHash ?: return@mapNotNull null
-    if (digest.isBlank() || copies.any { !it.fullHash.equals(digest, ignoreCase = true) || it.sizeBytes != original.sizeBytes }) {
+    // Even a malformed hand-built/stale review must not render a plausible
+    // SHA-256 card or offer an action. Reject zero-length files and invalid
+    // digests rather than trusting the planner was always the caller.
+    if (original.sizeBytes <= 0L || digest.length != 64 ||
+        digest.any { it !in '0'..'9' && it !in 'a'..'f' && it !in 'A'..'F' } ||
+        copies.any { !it.fullHash.equals(digest, ignoreCase = true) ||
+            it.sizeBytes != original.sizeBytes }) {
         return@mapNotNull null
     }
     val selected = copies.filter { it.uri in review.selectedUris }
