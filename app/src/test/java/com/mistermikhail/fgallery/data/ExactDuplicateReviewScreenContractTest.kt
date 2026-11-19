@@ -16,6 +16,13 @@ class ExactDuplicateReviewScreenContractTest {
         assertTrue(refused.contains("SHA-256"))
     }
 
+    @Test fun folderAndStorageScopeControlsStayLockedDuringVerifiedTrash() {
+        assertTrue(com.mistermikhail.fgallery.ui.duplicateScopeEditingEnabled(true, false))
+        assertFalse(com.mistermikhail.fgallery.ui.duplicateScopeEditingEnabled(true, true))
+        assertFalse(com.mistermikhail.fgallery.ui.duplicateScopeEditingEnabled(false, false))
+        assertFalse(com.mistermikhail.fgallery.ui.duplicateScopeEditingEnabled(false, true))
+    }
+
     private fun row(uri: String, storage: String, folder: String) = CatalogMediaRow(
         uri = uri, mediaId = 1, name = "$uri.jpg", mimeType = "image/jpeg",
         kind = "IMAGE", dateTakenMillis = if (uri == "original") 1 else 2, width = 200, height = 200,
