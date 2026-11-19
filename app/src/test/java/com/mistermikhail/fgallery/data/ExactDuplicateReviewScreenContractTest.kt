@@ -23,6 +23,15 @@ class ExactDuplicateReviewScreenContractTest {
         assertFalse(com.mistermikhail.fgallery.ui.duplicateScopeEditingEnabled(false, true))
     }
 
+    @Test fun visualVerificationCannotOverlapTrashConfirmation() {
+        val canConfirm = com.mistermikhail.fgallery.ui::duplicateTrashConfirmationEnabled
+        assertTrue(canConfirm(true, false, false, true))
+        assertFalse(canConfirm(true, false, true, true))
+        assertFalse(canConfirm(true, true, false, true))
+        assertFalse(canConfirm(false, false, false, true))
+        assertFalse(canConfirm(true, false, false, false))
+    }
+
     private fun row(uri: String, storage: String, folder: String) = CatalogMediaRow(
         uri = uri, mediaId = 1, name = "$uri.jpg", mimeType = "image/jpeg",
         kind = "IMAGE", dateTakenMillis = if (uri == "original") 1 else 2, width = 200, height = 200,
