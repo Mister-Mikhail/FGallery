@@ -119,3 +119,72 @@ internal fun <T> visualCandidatePage(items: List<T>, page: Int, pageSize: Int = 
     if (page < 0 || page >= visualCandidatePageCount(items.size, pageSize)) return emptyList()
     return items.drop(page * pageSize).take(pageSize)
 }
+
+/**
+ * Candidate discovery across page boundaries. Each displayed page owns its
+ * earlier-indexed anchors, so a pair appears only once in the review.
+ *
+ * Six disjoint dHash slices provide a lossless shortlist for Hamming <= 5:
+ * at least one slice must be identical. Capture-time buckets independently
+ * shortlist crops (which cannot rely on dHash).
+ *
+ * The indexes are metadata-only. Source pixels must still be verified by the
+ * existing read-only verifier; no result from here authorizes deletion.
+ */
+internal fun visualCandidatesAcrossPages(
+    items: List<CatalogMediaRow>,
+    page: Int,
+    pageSize: Int = 250,
+    maxPairs: Int = 10,
+): List<Pair<String, String>> {
+    require(pageSize > 0 && maxPairs > 0)
+    if (page < 0 || page >= visualCandidatePageCount(items.size, pageSize)) return emptyList()
+    val hashSlices = HashMap<String, MutableList<Int>>()
+    val timeBuckets = HashMap<Long, MutableList<Int>>()
+    fun hashKeys(hash: String?): List<String> {
+        if (hash == null || hash.length != 16 || !hash.all {
+                it in '0'..'9' || it in 'a'..'f' || it in 'A'..'F'
+            }) return emptyList()
+        val normalized = hash.lowercase(java.util.Locale.ROOT)
+        return (0 until 6).map { part ->
+            val start = part * 16 / 6
+            val end = (part + 1) * 16 / 6
+            "$part:${normalized.substring(start, end)}"
+        }
+    }
+    items.forEachIndexed { index, row ->
+        if (row.kind != "IMAGE" || row.recycled || isCameraRawImage(row.name)) return@forEachIndexed
+        hashKeys(row.perceptualHash).forEach { key ->
+            hashSlices.getOrPut(key) { mutableListOf() }.add(index)
+        }
+        if (row.dateTakenMillis > 0L) {
+            timeBuckets.getOrPut(row.dateTakenMillis / 2_000L) { mutableListOf() }.add(index)
+        }
+    }
+    val result = ArrayList<Pair<String, String>>(maxPairs)
+    val start = page * pageSize
+    val end = minOf(items.size, start + pageSize)
+    for (i in start until end) {
+        val first = items[i]
+        if (first.kind != "IMAGE" || first.recycled || isCameraRawImage(first.name)) continue
+        val candidates = HashSet<Int>()
+        hashKeys(first.perceptualHash).forEach { key ->
+            hashSlices[key]?.let(candidates::addAll)
+        }
+        if (first.dateTakenMillis > 0L) {
+            val bucket = first.dateTakenMillis / 2_000L
+            for (near in bucket - 1L..bucket + 1L) {
+                timeBuckets[near]?.let(candidates::addAll)
+            }
+        }
+        for (j in candidates.sorted()) {
+            if (j <= i) continue
+            val second = items[j]
+            if (potentialVisualDuplicate(first, second)) {
+                result.add(first.uri to second.uri)
+                if (result.size == maxPairs) return result
+            }
+        }
+    }
+    return result
+}
