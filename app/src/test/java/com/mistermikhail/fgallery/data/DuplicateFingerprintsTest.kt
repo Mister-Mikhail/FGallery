@@ -29,6 +29,15 @@ class DuplicateFingerprintsTest {
         quickHash = quick, fullHash = full, recycled = recycled,
     )
 
+    @Test fun fingerprintWindowWrapsAtEndAndHandlesExtremeCursorValues() {
+        val candidates = listOf("a", "b", "c", "d", "e")
+        assertEquals(listOf("e", "a", "b"), fingerprintCandidateWindow(candidates, 4, 3))
+        assertEquals(listOf("c", "d", "e"), fingerprintCandidateWindow(candidates, Int.MAX_VALUE, 3))
+        assertEquals(listOf("c", "d", "e"), fingerprintCandidateWindow(candidates, Int.MIN_VALUE, 3))
+        assertTrue(fingerprintCandidateWindow(candidates, 0, 0).isEmpty())
+        assertEquals(candidates, fingerprintCandidateWindow(candidates, 0, Int.MAX_VALUE))
+    }
+
     @Test fun staleFileOrProviderGenerationMustNotReceiveFingerprint() {
         val indexedSize = 256_000L
         val indexedModified = 1_730_000_000_875L
