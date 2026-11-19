@@ -545,21 +545,10 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
                 val keeperSnapshot = originalGroup.first()
                 val copySnapshot = originalGroup.first { it.uri == uri }
                 val current = CatalogStore.exactDuplicateReviewRows(context)
-                val currentKeeper = current.singleOrNull { it.uri == keeperSnapshot.uri }
-                val currentCopy = current.singleOrNull { it.uri == uri }
-                check(currentKeeper == keeperSnapshot && currentCopy == copySnapshot) {
-                    "Файл или оригинал изменился. Операция остановлена."
-                }
-                val currentReview = com.mistermikhail.fgallery.data.planExactDuplicateReview(
-                    current, reviewed.includedStorageIds, reviewed.includedFolderTargets,
-                    setOf(uri),
-                )
-                check(uri in currentReview.selectedUris &&
-                    currentReview.groups.any { group ->
-                        group.first().uri == keeperSnapshot.uri &&
-                            group.any { it.uri == uri }
-                    }) { "Защищённый оригинал больше не подтверждён." }
-                val row = currentCopy!!
+                check(com.mistermikhail.fgallery.data.exactDuplicateMovePairStillValid(
+                    reviewed, current, uri,
+                )) { "Файл или защищённый оригинал изменился. Операция остановлена." }
+                val row = current.single { it.uri == uri }
                 val item = MediaItem(
                     row.mediaId, android.net.Uri.parse(row.uri), row.name, row.mimeType,
                     MediaKind.valueOf(row.kind), row.dateTakenMillis,
@@ -569,10 +558,10 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
                 )
                 driveBin.trashWithPreMoveCheck(listOf(item)) { candidate ->
                     val latest = CatalogStore.exactDuplicateReviewRows(context)
-                    val keeper = latest.singleOrNull { it.uri == keeperSnapshot.uri }
-                    val copy = latest.singleOrNull { it.uri == uri }
-                    if (candidate.uriKey != uri || keeper != keeperSnapshot ||
-                        copy != copySnapshot) false
+                    if (candidate.uriKey != uri ||
+                        !com.mistermikhail.fgallery.data.exactDuplicateMovePairStillValid(
+                            reviewed, latest, uri,
+                        )) false
                     else {
                         val verified = com.mistermikhail.fgallery.data.verifyCurrentExactDuplicateSelection(
                             context,
