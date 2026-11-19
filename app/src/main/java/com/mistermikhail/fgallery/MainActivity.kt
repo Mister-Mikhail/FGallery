@@ -1251,13 +1251,24 @@ class MainActivity : ComponentActivity() {
                         onCopySelectionChanged = { uri, selected ->
                             duplicateSelected = if (selected) duplicateSelected + uri else duplicateSelected - uri
                         },
-                        // Never mutate until current-byte verification and per-file trash
-                        // preflight are integrated. Explicitly reject confirmation.
-                        onRequestTrashVerification = {
-                            Toast.makeText(this@MainActivity,
-                                "Перемещение пока недоступно: требуется повторная проверка SHA-256",
-                                Toast.LENGTH_LONG).show()
+                        onRequestTrashVerification = { confirmedReview ->
+                            scope.launch {
+                                try {
+                                    val moved = viewModel.trashConfirmedExactDuplicates(confirmedReview)
+                                    duplicateRefreshGeneration++
+                                    Toast.makeText(this@MainActivity,
+                                        "В корзину перемещено: $moved", Toast.LENGTH_LONG).show()
+                                } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                                    throw cancelled
+                                } catch (error: Exception) {
+                                    duplicateRefreshGeneration++
+                                    Toast.makeText(this@MainActivity,
+                                        "Проверка или перемещение остановлено: ${error.localizedMessage ?: "нет доступа"}",
+                                        Toast.LENGTH_LONG).show()
+                                }
+                            }
                         },
+                        trashVerificationAvailable = true,
                         onClose = { duplicateReviewOpen = false },
                         onRefresh = { duplicateRefreshGeneration++ },
                     )
