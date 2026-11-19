@@ -111,6 +111,31 @@ class ExactDuplicateReviewPresentationTest {
         assertNull(exactDuplicateTrashPrompt(malformed))
     }
 
+    @Test fun restoredReviewWithRepeatedUriCannotOfferTwoCopiesForTrash() {
+        val rows = listOf(row("original"), row("copy"))
+        val safe = planExactDuplicateReview(rows, requestedUris = setOf("copy"))
+        val repeated = safe.copy(groups = safe.groups.map { group ->
+            group + group.last()
+        })
+        assertTrue(exactDuplicateReviewCards(repeated).isEmpty())
+        assertNull(exactDuplicateTrashPrompt(repeated))
+    }
+
+    @Test fun restoredReviewWithBlankOrProtectedCopyUriCannotOfferTrash() {
+        val rows = listOf(row("original"), row("copy"))
+        val safe = planExactDuplicateReview(rows, requestedUris = setOf("copy"))
+        val blank = safe.copy(groups = safe.groups.map { group ->
+            group.dropLast(1) + group.last().copy(uri = " ")
+        })
+        assertTrue(exactDuplicateReviewCards(blank).isEmpty())
+        assertNull(exactDuplicateTrashPrompt(blank))
+        val protectedAlias = safe.copy(groups = safe.groups.map { group ->
+            group.dropLast(1) + group.last().copy(uri = "original")
+        })
+        assertTrue(exactDuplicateReviewCards(protectedAlias).isEmpty())
+        assertNull(exactDuplicateTrashPrompt(protectedAlias))
+    }
+
     @Test fun handcraftedZeroByteGroupCannotOfferTrash() {
         val rows = listOf(row("original"), row("copy"))
         val safe = planExactDuplicateReview(rows, requestedUris = setOf("copy"))
