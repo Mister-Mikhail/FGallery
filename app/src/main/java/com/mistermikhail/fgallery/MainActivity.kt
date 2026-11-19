@@ -1253,7 +1253,7 @@ class MainActivity : ComponentActivity() {
                         for (i in visualRows.indices) {
                             if (size >= 10) break
                             for (j in i + 1 until visualRows.size) {
-                                if (com.mistermikhail.fgallery.data.potentialResizedDuplicate(
+                                if (com.mistermikhail.fgallery.data.potentialVisualDuplicate(
                                         visualRows[i], visualRows[j])) {
                                     add(visualRows[i].uri to visualRows[j].uri)
                                     if (size >= 10) break
