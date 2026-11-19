@@ -18,6 +18,37 @@ class ExactDuplicateReviewTest {
         recycled = false,
     )
 
+    @Test fun perMoveGateAllowsRemainingCopyAfterEarlierCopyMoved() {
+        val original = item("original")
+        val first = item("first")
+        val second = item("second")
+        val review = planExactDuplicateReview(
+            listOf(original, first, second), requestedUris = setOf("first", "second"),
+        )
+        assertTrue(exactDuplicateMovePairStillValid(review, listOf(original, first, second), "first"))
+        // First move has removed one copy from Room. The remaining copy still
+        // has the same protected original and must be independently eligible.
+        assertTrue(exactDuplicateMovePairStillValid(review, listOf(original, second), "second"))
+    }
+
+    @Test fun perMoveGateRejectsChangedKeeperCopyAndDuplicateUri() {
+        val original = item("original")
+        val copy = item("copy")
+        val review = planExactDuplicateReview(
+            listOf(original, copy), requestedUris = setOf("copy"),
+        )
+        assertTrue(!exactDuplicateMovePairStillValid(
+            review, listOf(original.copy(dateModifiedMillis = 200), copy), "copy",
+        ))
+        assertTrue(!exactDuplicateMovePairStillValid(
+            review, listOf(original, copy.copy(dateModifiedMillis = 200)), "copy",
+        ))
+        assertTrue(!exactDuplicateMovePairStillValid(
+            review, listOf(original, copy, copy), "copy",
+        ))
+        assertTrue(!exactDuplicateMovePairStillValid(review, listOf(original, copy), "original"))
+    }
+
     @Test fun blankCatalogueUriInvalidatesEntireDuplicateReview() {
         val rows = listOf(item("original"), item("copy"), item(" "))
         val review = planExactDuplicateReview(rows, requestedUris = setOf("copy"))
