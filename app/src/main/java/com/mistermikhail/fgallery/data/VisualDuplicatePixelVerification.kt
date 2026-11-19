@@ -56,16 +56,29 @@ internal object VisualDuplicatePixelVerification {
     }
 
     private fun matchesExactCrop(large: Pixels, small: Pixels): Boolean {
-        // Avoid unbounded quadratic scans on huge images; not verified is safe.
-        val positions = (large.width - small.width + 1).toLong() *
-            (large.height - small.height + 1).toLong()
-        if (positions > 4096L) return false
-        for (top in 0..(large.height - small.height)) {
-            for (left in 0..(large.width - small.width)) {
+        // A large offset is normal for real camera crops. Scan candidate
+        // positions using a small set of anchors, then compare every pixel.
+        // Bound expensive full comparisons on uniform/repetitive images.
+        val maxTop = large.height - small.height
+        val maxLeft = large.width - small.width
+        val anchorX = small.width / 2
+        val anchorY = small.height / 2
+        val first = small.argb[0]
+        val center = small.argb[anchorY * small.width + anchorX]
+        val last = small.argb.last()
+        var fullComparisons = 0
+        for (top in 0..maxTop) {
+            for (left in 0..maxLeft) {
+                val base = top * large.width + left
+                if (large.argb[base] != first ||
+                    large.argb[base + anchorY * large.width + anchorX] != center ||
+                    large.argb[base + (small.height - 1) * large.width + small.width - 1] != last
+                ) continue
+                if (++fullComparisons > 128) return false
                 var equal = true
                 loop@ for (y in 0 until small.height) for (x in 0 until small.width) {
                     if (small.argb[y * small.width + x] !=
-                        large.argb[(top + y) * large.width + left + x]) {
+                        large.argb[base + y * large.width + x]) {
                         equal = false
                         break@loop
                     }
