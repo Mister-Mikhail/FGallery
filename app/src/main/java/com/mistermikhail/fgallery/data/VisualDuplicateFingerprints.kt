@@ -107,3 +107,15 @@ internal fun potentialCropDuplicate(a: CatalogMediaRow, b: CatalogMediaRow): Boo
 
 internal fun potentialVisualDuplicate(a: CatalogMediaRow, b: CatalogMediaRow): Boolean =
     potentialResizedDuplicate(a, b) || potentialCropDuplicate(a, b)
+
+/** Bounded review window. A page only compares items inside that window. */
+internal fun visualCandidatePageCount(itemCount: Int, pageSize: Int = 250): Int {
+    require(pageSize > 0)
+    return maxOf(1, itemCount / pageSize + if (itemCount % pageSize == 0) 0 else 1)
+}
+
+internal fun <T> visualCandidatePage(items: List<T>, page: Int, pageSize: Int = 250): List<T> {
+    require(pageSize > 0)
+    if (page < 0 || page >= visualCandidatePageCount(items.size, pageSize)) return emptyList()
+    return items.drop(page * pageSize).take(pageSize)
+}
