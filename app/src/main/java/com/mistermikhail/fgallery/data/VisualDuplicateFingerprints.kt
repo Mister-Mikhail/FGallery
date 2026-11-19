@@ -75,3 +75,35 @@ internal fun isCameraRawImage(name: String): Boolean =
         "dng", "cr2", "cr3", "nef", "nrw", "arw", "sr2", "srf",
         "orf", "rw2", "raf", "pef", "raw", "3fr", "fff", "iiq",
     )
+
+
+/**
+ * Conservative crop discovery without relying on dHash: cropping changes the
+ * thumbnail gradients and aspect ratio. A shared camera filename stem and
+ * capture timestamp shortlist candidates; only source-pixel verification can
+ * confirm a crop. Never use this predicate to authorize trash.
+ */
+internal fun potentialCropDuplicate(a: CatalogMediaRow, b: CatalogMediaRow): Boolean {
+    if (a.uri == b.uri || a.recycled || b.recycled ||
+        a.kind != "IMAGE" || b.kind != "IMAGE" ||
+        a.width < 64 || b.width < 64 || a.height < 64 || b.height < 64 ||
+        a.name.endsWith(".gif", true) || b.name.endsWith(".gif", true) ||
+        isCameraRawImage(a.name) || isCameraRawImage(b.name)) return false
+    if (a.dateTakenMillis <= 0L || b.dateTakenMillis <= 0L ||
+        kotlin.math.abs(a.dateTakenMillis - b.dateTakenMillis) > 2_000L) return false
+    if (!a.exifCamera.isNullOrBlank() && !b.exifCamera.isNullOrBlank() &&
+        !a.exifCamera.equals(b.exifCamera, ignoreCase = true)) return false
+    fun stem(name: String): String = name.substringBeforeLast('.')
+        .lowercase(java.util.Locale.ROOT).removeSuffix("-crop").removeSuffix("_crop")
+    val sharedStem = stem(a.name)
+    if (sharedStem.length < 5 || sharedStem != stem(b.name)) return false
+    val large = if (a.width.toLong() * a.height >= b.width.toLong() * b.height) a else b
+    val small = if (large === a) b else a
+    val largeArea = large.width.toLong() * large.height
+    val smallArea = small.width.toLong() * small.height
+    return large.width >= small.width && large.height >= small.height &&
+        largeArea > smallArea && smallArea * 4 >= largeArea
+}
+
+internal fun potentialVisualDuplicate(a: CatalogMediaRow, b: CatalogMediaRow): Boolean =
+    potentialResizedDuplicate(a, b) || potentialCropDuplicate(a, b)
