@@ -1252,7 +1252,7 @@ class MainActivity : ComponentActivity() {
                             duplicateSelected = if (selected) duplicateSelected + uri else duplicateSelected - uri
                         },
                         onRequestTrashVerification = { confirmedReview ->
-                            scope.launch {
+                            uiScope.launch {
                                 try {
                                     val moved = viewModel.trashConfirmedExactDuplicates(confirmedReview)
                                     duplicateRefreshGeneration++
