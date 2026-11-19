@@ -35,7 +35,6 @@ import com.mistermikhail.fgallery.data.duplicateConfirmationInvalidated
  * controls are locked while it is running to prevent overlapping requests.
  * onRequestTrashVerification is an INTENT, not permission to move files.
  */
-@Composable
 internal fun exactDuplicateTrashFeedback(moved: Int): String =
     if (moved > 0) "В корзину перемещено: $moved"
     else "Файлы изменились или проверка SHA-256 не прошла. Обновите список."
