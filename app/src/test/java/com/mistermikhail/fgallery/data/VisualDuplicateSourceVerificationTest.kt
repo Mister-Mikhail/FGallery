@@ -49,4 +49,21 @@ class VisualDuplicateSourceVerificationTest {
         assertFalse(potentialCropDuplicate(source, crop.copy(uri = source.uri)))
         assertFalse(potentialCropDuplicate(source, crop.copy(recycled = true)))
     }
+
+    @Test fun visualReviewPagesCoverItemsBeyondFirst250WithoutOverlap() {
+        val all = (0 until 501).toList()
+        assertTrue(visualCandidatePageCount(all.size) == 3)
+        assertTrue(visualCandidatePage(all, 0).size == 250)
+        assertTrue(visualCandidatePage(all, 1).first() == 250)
+        assertTrue(visualCandidatePage(all, 2) == listOf(500))
+        assertTrue((0 until 3).flatMap { visualCandidatePage(all, it) } == all)
+    }
+
+    @Test fun visualReviewPagingRejectsOutOfRangePagesAndExactBoundaries() {
+        assertTrue(visualCandidatePageCount(500) == 2)
+        assertTrue(visualCandidatePageCount(0) == 1)
+        assertTrue(visualCandidatePage(emptyList<Int>(), 0).isEmpty())
+        assertTrue(visualCandidatePage(listOf(1, 2), -1).isEmpty())
+        assertTrue(visualCandidatePage(listOf(1, 2), 1).isEmpty())
+    }
 }
