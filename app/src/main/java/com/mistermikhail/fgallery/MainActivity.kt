@@ -1252,9 +1252,9 @@ class MainActivity : ComponentActivity() {
                             .filter { duplicateFolders.isEmpty() || it.folderTarget in duplicateFolders }
                             .toList()
                     }
-                    val visualPageCount = maxOf(1, (scopedVisualRows.size + 249) / 250)
+                    val visualPageCount = com.mistermikhail.fgallery.data.visualCandidatePageCount(scopedVisualRows.size)
                     val currentVisualPage = visualCandidatePage.coerceIn(0, visualPageCount - 1)
-                    val visualRows = scopedVisualRows.drop(currentVisualPage * 250).take(250)
+                    val visualRows = com.mistermikhail.fgallery.data.visualCandidatePage(scopedVisualRows, currentVisualPage)
                     val visualCandidates = buildList<Pair<String, String>> {
                         for (i in visualRows.indices) {
                             if (size >= 10) break
