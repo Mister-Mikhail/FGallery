@@ -54,6 +54,10 @@ internal fun ExactDuplicateReviewScreen(
     onRefresh: () -> Unit,
     trashVerificationAvailable: Boolean = false,
     trashInProgress: Boolean = false,
+    visualCandidates: List<Pair<String, String>> = emptyList(),
+    visualStatus: Map<String, String> = emptyMap(),
+    onVerifyVisual: (String, String) -> Unit = { _, _ -> },
+    visualInProgress: Boolean = false,
 ) {
     var confirmOpen by remember(review) { mutableStateOf(false) }
     val cards = exactDuplicateReviewCards(review)
@@ -123,6 +127,19 @@ internal fun ExactDuplicateReviewScreen(
                     }
                 }
             }
+        }
+        HorizontalDivider()
+        Text("Визуальные кандидаты (только просмотр)", style = MaterialTheme.typography.titleMedium)
+        Text("dHash лишь предлагает пары. Проверка читает исходные пиксели; результат не разрешает перемещение в корзину. Показана ограниченная выборка кандидатов.")
+        if (visualCandidates.isEmpty()) Text("В ограниченной выборке кандидатов нет.")
+        visualCandidates.forEach { (first, second) ->
+            val key = "$first|$second"
+            Text(first.substringAfterLast('/') + " / " + second.substringAfterLast('/'))
+            Text(visualStatus[key] ?: "Не проверено", style = MaterialTheme.typography.bodySmall)
+            OutlinedButton(
+                enabled = !visualInProgress && !trashInProgress,
+                onClick = { onVerifyVisual(first, second) },
+            ) { Text("Проверить исходные пиксели") }
         }
         Text("Выбрано вручную: ${review.selectedCount}. Ничего не удаляется автоматически.")
         if (trashInProgress) Text("Проверяем исходные файлы и SHA-256, затем перемещаем выбранные копии. Не закрывайте экран до завершения.")
