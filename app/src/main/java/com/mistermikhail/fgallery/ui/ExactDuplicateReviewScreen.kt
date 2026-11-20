@@ -123,11 +123,16 @@ internal fun ExactDuplicateReviewScreen(
     var confirmOpen by remember { mutableStateOf(false) }
     var previewUri by remember { mutableStateOf<String?>(null) }
     // Selection feedback is immediate; the host still owns authoritative verification.
-    val pendingSelections = remember(review.groups) { mutableStateMapOf<String, Boolean>() }
+    val pendingSelections = remember { mutableStateMapOf<String, Boolean>() }
     val cards = remember(review) { exactDuplicateReviewCards(review) }
-    LaunchedEffect(review.selectedUris) {
+    LaunchedEffect(review.groups, review.selectedUris) {
+        // Preserve in-flight taps across catalogue emissions, but never carry
+        // selections over to files no longer present in the current review.
+        val currentUris = review.groups.asSequence().flatten().map { it.uri }.toHashSet()
         pendingSelections.keys.toList().forEach { uri ->
-            if (pendingSelections[uri] == (uri in review.selectedUris)) pendingSelections.remove(uri)
+            if (uri !in currentUris || pendingSelections[uri] == (uri in review.selectedUris)) {
+                pendingSelections.remove(uri)
+            }
         }
     }
     // User explicitly selected all accessible storage as the default search scope.
