@@ -8,6 +8,17 @@ import org.junit.Test
 
 /** Contract for the Stage 6 Compose review: scope changes must discard consent. */
 class ExactDuplicateReviewScreenContractTest {
+    @Test fun fileSizePresentationDoesNotRoundOrOverflowSafetyInputs() {
+        val size = com.mistermikhail.fgallery.ui::duplicateReviewFileSize
+        assertEquals("0 Б", size(0))
+        assertEquals("1023 Б", size(1023))
+        assertEquals("1.0 КБ", size(1024))
+        assertEquals("1.0 МБ", size(1048576))
+        assertEquals("1.00 ГБ", size(1073741824))
+        assertEquals("Размер неизвестен", size(-1))
+        assertTrue(size(Long.MAX_VALUE).contains("ГБ"))
+    }
+
     @Test fun twoColumnReviewKeepsOddFinalRowAndNeverAddsThirdColumn() {
         val rows: (Int) -> Int = { com.mistermikhail.fgallery.ui.duplicateReviewRows(it) }
         assertEquals(0, rows(0))
