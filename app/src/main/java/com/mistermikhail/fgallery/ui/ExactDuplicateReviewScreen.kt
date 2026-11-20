@@ -1,5 +1,9 @@
 package com.mistermikhail.fgallery.ui
 
+import android.net.Uri
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -8,6 +12,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.window.Dialog
+import coil3.compose.AsyncImage
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -66,6 +73,7 @@ internal fun ExactDuplicateReviewScreen(
     visualInProgress: Boolean = false,
 ) {
     var confirmOpen by remember(review) { mutableStateOf(false) }
+    var previewUri by remember { mutableStateOf<String?>(null) }
     val cards = exactDuplicateReviewCards(review)
     val scopeAvailable = duplicateReviewScopeAvailable(review, availableStorages, availableFolders)
     val prompt = if (scopeAvailable && !trashInProgress && !visualInProgress) exactDuplicateTrashPrompt(review) else null
@@ -114,7 +122,7 @@ internal fun ExactDuplicateReviewScreen(
             HorizontalDivider()
             Text("Группа ${index + 1} · ${card.items.size} файла · ${card.sizeBytes} байт",
                 style = MaterialTheme.typography.titleMedium)
-            Text("SHA-256: ${card.sha256}", style = MaterialTheme.typography.bodySmall)
+            Text("Идентичные байты · SHA-256: ${card.sha256.take(16)}…", style = MaterialTheme.typography.bodySmall)
             card.items.forEach { item ->
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Checkbox(
@@ -125,7 +133,8 @@ internal fun ExactDuplicateReviewScreen(
                             onCopySelectionChanged(item.uri, it)
                         },
                     )
-                    Column {
+                    DuplicatePreview(item.uri, item.displayName) { previewUri = item.uri }
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(item.displayName)
                         Text("${item.storageId} · ${item.folderTarget}",
                             style = MaterialTheme.typography.bodySmall)
@@ -145,7 +154,11 @@ internal fun ExactDuplicateReviewScreen(
         if (visualCandidates.isEmpty()) Text("На этой странице кандидатов нет.")
         visualCandidates.forEach { (first, second) ->
             val key = "$first|$second"
-            Text(first.substringAfterLast('/') + " / " + second.substringAfterLast('/'))
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                DuplicatePreview(first, first.substringAfterLast('/')) { previewUri = first }
+                DuplicatePreview(second, second.substringAfterLast('/')) { previewUri = second }
+            }
+            Text("Визуальный кандидат — исходные пиксели ещё не проверены.")
             Text(visualStatus[key] ?: "Не проверено", style = MaterialTheme.typography.bodySmall)
             OutlinedButton(
                 enabled = !visualInProgress && !trashInProgress,
@@ -160,6 +173,20 @@ internal fun ExactDuplicateReviewScreen(
             OutlinedButton(onClick = { confirmOpen = false; onRefresh() }, enabled = !trashInProgress && !visualInProgress) { Text("Обновить") }
             OutlinedButton(onClick = { confirmOpen = true }, enabled = trashVerificationAvailable && duplicateTrashConfirmationEnabled(scopeAvailable, trashInProgress, visualInProgress, prompt != null)) {
                 Text("В корзину…")
+            }
+        }
+    }
+    if (previewUri != null) {
+        Dialog(onDismissRequest = { previewUri = null }) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                AsyncImage(
+                    model = Uri.parse(previewUri),
+                    contentDescription = "Просмотр файла",
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.fillMaxWidth().height(440.dp),
+                )
+                Text(previewUri.orEmpty().substringAfterLast('/'), style = MaterialTheme.typography.bodySmall)
+                OutlinedButton(onClick = { previewUri = null }) { Text("Вернуться к совпадениям") }
             }
         }
     }
@@ -188,4 +215,15 @@ private fun ScopeCheckbox(label: String, checked: Boolean, enabled: Boolean, onC
         Checkbox(checked = checked, enabled = enabled, onCheckedChange = onCheckedChange)
         Text(label, modifier = Modifier.padding(top = 12.dp))
     }
+}
+
+/** Opening a preview never changes the duplicate selection or authorizes trash. */
+@Composable
+private fun DuplicatePreview(uri: String, name: String, onOpen: () -> Unit) {
+    AsyncImage(
+        model = Uri.parse(uri),
+        contentDescription = "Открыть $name",
+        contentScale = ContentScale.Crop,
+        modifier = Modifier.size(112.dp).clickable(onClick = onOpen),
+    )
 }
