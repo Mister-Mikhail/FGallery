@@ -19,7 +19,7 @@ class ExactDuplicateReviewScreenContractTest {
     }
 
     @Test fun visualCandidateStatusNeverSuggestsDeletionAndDistinguishesVerification() {
-        val label = com.mistermikhail.fgallery.ui::visualCandidateReviewLabel
+        val label: (String?) -> String = { com.mistermikhail.fgallery.ui.visualCandidateReviewLabel(it) }
         assertTrue(label(null).contains("Ожидает проверки"))
         assertTrue(label("").contains("Ожидает проверки"))
         val verified = label("Пиксели совпадают после масштабирования")
