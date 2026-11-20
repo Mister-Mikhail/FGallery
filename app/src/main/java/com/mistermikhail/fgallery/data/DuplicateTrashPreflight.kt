@@ -38,7 +38,7 @@ internal suspend fun <T> preflightDuplicateTrash(
     // A path containing "." or ".." is the same source as its normalized
     // counterpart. Compare lexical identities before reading any bytes; this
     // follows existing filesystem symlinks but never infers opaque SAF identities.
-    val rawPaths = try { items.mapNotNull(physicalIdentity) } catch (cancelled: java.util.concurrent.CancellationException) {
+    val rawPaths = try { items.map(physicalIdentity) } catch (cancelled: java.util.concurrent.CancellationException) {
         throw cancelled
     } catch (interrupted: InterruptedException) {
         Thread.currentThread().interrupt()
@@ -46,8 +46,8 @@ internal suspend fun <T> preflightDuplicateTrash(
     } catch (_: Exception) {
         return false
     }
-    if (rawPaths.any { it.isBlank() || '\u0000' in it }) return false
-    val knownPaths = try { rawPaths.map { java.io.File(it).canonicalPath } } catch (_: java.io.IOException) { return false }
+    if (rawPaths.any { it != null && (it.isBlank() || '\u0000' in it) }) return false
+    val knownPaths = try { rawPaths.map { it?.let { path -> java.io.File(path).canonicalPath } } } catch (_: java.io.IOException) { return false }
     if (knownPaths.toSet().size != knownPaths.size) return false
     // Provider aliases may have different URIs but the same underlying path.
     // Check protected originals as well as duplicate selected copies.
@@ -94,7 +94,7 @@ internal suspend fun <T> preflightDuplicateTrash(
         return false
     }
     if (finalIdentities != identities) return false
-    val finalPaths = try { items.mapNotNull(physicalIdentity) } catch (cancelled: java.util.concurrent.CancellationException) {
+    val finalPaths = try { items.map(physicalIdentity) } catch (cancelled: java.util.concurrent.CancellationException) {
         throw cancelled
     } catch (interrupted: InterruptedException) {
         Thread.currentThread().interrupt()
@@ -107,7 +107,7 @@ internal suspend fun <T> preflightDuplicateTrash(
     // both selected paths and protected originals after verification, otherwise
     // an alias of the keeper may become actionable during a slow SAF read.
     val finalCanonicalPaths = try {
-        finalPaths.map { java.io.File(it).canonicalPath }
+        finalPaths.map { it?.let { path -> java.io.File(path).canonicalPath } }
     } catch (_: java.io.IOException) { return false }
     val finalProtectedPaths = try {
         protectedPhysicalIdentities.map { java.io.File(it).canonicalPath }.toSet()
