@@ -12,8 +12,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Surface
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.ui.graphics.Color
@@ -159,14 +158,20 @@ internal fun ExactDuplicateReviewScreen(
         if (duplicateConfirmationInvalidated(review, availableStorages, availableFolders)) confirmOpen = false
     }
     MaterialTheme(colorScheme = darkColorScheme(background = Color.Black, surface = Color(0xFF161616), onBackground = Color(0xFFE0E0E0), onSurface = Color(0xFFE0E0E0))) {
-    Column(
-        modifier = Modifier.fillMaxSize().background(Color.Black).verticalScroll(rememberScrollState()).padding(16.dp),
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().background(Color.Black),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text("Точные дубликаты", style = MaterialTheme.typography.titleLarge)
+        item(key = "heading") {
+            Text("Точные дубликаты", style = MaterialTheme.typography.titleLarge)
+        }
+        item(key = "description") {
         Text("Сравниваются полные SHA-256. Похожие фотографии и RAW+JPEG не считаются точными копиями.")
         Text("Поиск по всей доступной памяти устройства. Выбор папок временно отключён.", style = MaterialTheme.typography.bodySmall)
+        }
         if (!scopeAvailable) {
+            item(key = "scope-warning") {
             Text("Выбранный носитель или папка недоступны. Подключите источник и обновите каталог либо явно сбросьте область поиска.")
             OutlinedButton(onClick = {
                 // A disconnected explicit scope must never be silently widened.
@@ -174,12 +179,14 @@ internal fun ExactDuplicateReviewScreen(
                 confirmOpen = false
                 if (!trashInProgress && !visualInProgress) onScopeChanged(emptySet(), emptySet())
             }, enabled = !trashInProgress && !visualInProgress) { Text("Сбросить область поиска") }
+            }
         }
         val selectedNow = cards.sumOf { card -> card.items.count { item ->
             !item.protectedOriginal && (pendingSelections[item.uri] ?: item.manuallySelected)
         } }
-        Text("Выбрано вручную: $selectedNow. Ничего не удаляется автоматически.")
+        item(key = "selection-summary") { Text("Выбрано вручную: $selectedNow. Ничего не удаляется автоматически.") }
         if (selectedNow > 0) {
+            item(key = "selection-actions") {
             Surface(color = Color(0xFF242424)) {
                 Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
                     Text("Выбрано копий: $selectedNow")
@@ -191,16 +198,20 @@ internal fun ExactDuplicateReviewScreen(
                     if (pendingSelections.isNotEmpty()) Text("Синхронизация выделения…", style = MaterialTheme.typography.bodySmall)
                 }
             }
+            }
         }
-        Text("Найдено: ${cards.size} групп · ${cards.sumOf { it.items.size }} файлов", style = MaterialTheme.typography.titleMedium)
-        if (cards.isEmpty()) Text("Точных совпадений в доступной памяти не найдено")
+        item(key = "result-count") { Text("Найдено: ${cards.size} групп · ${cards.sumOf { it.items.size }} файлов", style = MaterialTheme.typography.titleMedium) }
+        if (cards.isEmpty()) item(key = "no-exact") { Text("Точных совпадений в доступной памяти не найдено") }
         cards.forEachIndexed { index, card ->
+            item(key = "group-${card.sha256}-$index") {
             HorizontalDivider()
             Text("Группа ${index + 1} · ${card.items.size} файлов · ${duplicateReviewFileSize(card.sizeBytes)} каждый",
                 style = MaterialTheme.typography.titleMedium)
             Text("Точное совпадение: размер и полный SHA-256 идентичны", style = MaterialTheme.typography.bodySmall)
             Text("SHA-256: ${card.sha256.take(16)}…", style = MaterialTheme.typography.bodySmall)
-            card.items.chunked(2).forEach { pair ->
+            }
+            card.items.chunked(2).forEachIndexed { rowIndex, pair ->
+                item(key = "copies-${card.sha256}-$index-$rowIndex") {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -234,8 +245,10 @@ internal fun ExactDuplicateReviewScreen(
                     }
                     if (pair.size == 1) Spacer(modifier = Modifier.weight(1f))
                 }
+                }
             }
         }
+        item(key = "visual-heading") {
         HorizontalDivider()
         Text("Визуальные кандидаты (только просмотр)", style = MaterialTheme.typography.titleMedium)
         Text("dHash лишь предлагает пары. Проверка читает исходные пиксели; результат не разрешает перемещение в корзину. Кандидаты ищутся также между страницами каталога. Каждая пара показывается на странице её первого изображения; не более 10 пар на страницу.")
@@ -244,8 +257,10 @@ internal fun ExactDuplicateReviewScreen(
             Text("Страница ${visualPage + 1} из $visualPageCount", modifier = Modifier.padding(top = 12.dp))
             OutlinedButton(onClick = { onVisualPageChanged(visualPage + 1) }, enabled = visualPage + 1 < visualPageCount && !visualInProgress && !trashInProgress) { Text("Далее") }
         }
-        if (visualCandidates.isEmpty()) Text("На этой странице кандидатов нет.")
-        visualCandidates.forEach { (first, second) ->
+        }
+        if (visualCandidates.isEmpty()) item(key = "no-visual") { Text("На этой странице кандидатов нет.") }
+        visualCandidates.forEachIndexed { candidateIndex, (first, second) ->
+            item(key = "visual-$visualPage-$candidateIndex") {
             val key = "$first|$second"
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Column(modifier = Modifier.weight(1f)) {
@@ -262,7 +277,9 @@ internal fun ExactDuplicateReviewScreen(
                 enabled = !visualInProgress && !trashInProgress,
                 onClick = { onVerifyVisual(first, second) },
             ) { Text("Проверить исходные пиксели") }
+            }
         }
+        item(key = "footer") {
         if (trashInProgress) Text("Проверяем исходные файлы и SHA-256, затем перемещаем выбранные копии. Не закрывайте экран до завершения.")
         if (!trashVerificationAvailable) Text("Режим просмотра: перемещение будет доступно после подключения повторной проверки файлов и защищённой корзины.")
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -272,6 +289,7 @@ internal fun ExactDuplicateReviewScreen(
                     trashInProgress, visualInProgress, prompt != null, pendingSelections.size)) {
                 Text("В корзину…")
             }
+        }
         }
     }
     }
