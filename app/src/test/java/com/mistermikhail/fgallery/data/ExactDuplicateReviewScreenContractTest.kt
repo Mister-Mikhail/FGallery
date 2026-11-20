@@ -8,6 +8,17 @@ import org.junit.Test
 
 /** Contract for the Stage 6 Compose review: scope changes must discard consent. */
 class ExactDuplicateReviewScreenContractTest {
+    @Test fun visualCandidateStatusNeverSuggestsDeletionAndDistinguishesVerification() {
+        val label = com.mistermikhail.fgallery.ui::visualCandidateReviewLabel
+        assertTrue(label(null).contains("Ожидает проверки"))
+        assertTrue(label("").contains("Ожидает проверки"))
+        val verified = label("Пиксели совпадают после масштабирования")
+        assertTrue(verified.contains("Результат проверки"))
+        assertTrue(verified.contains("Пиксели совпадают"))
+        assertTrue(verified.contains("удаление недоступно"))
+        assertFalse(verified.contains("Ожидает проверки"))
+    }
+
     @Test fun fileSizePresentationDoesNotRoundOrOverflowSafetyInputs() {
         val size: (Long) -> String = { com.mistermikhail.fgallery.ui.duplicateReviewFileSize(it) }
         assertEquals("0 Б", size(0))
