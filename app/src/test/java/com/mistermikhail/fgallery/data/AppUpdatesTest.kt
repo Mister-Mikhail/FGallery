@@ -11,6 +11,8 @@ class AppUpdatesTest {
         assertFalse(AppUpdates.isNewerVersion("0.2.5", "0.2.6"))
         assertFalse(AppUpdates.isNewerVersion("0.2.7-beta", "0.2.6"))
         assertFalse(AppUpdates.isNewerVersion("invalid", "0.2.6"))
+        assertTrue(AppUpdates.isNewerVersion("0.4.1", "0.4.0-qa56.1"))
+        assertFalse(AppUpdates.isNewerVersion("0.4.0-beta", "0.3.9-qa56.1"))
     }
 
     @Test fun qaReleaseTagsUseBuildCodeNotVersionName() {
@@ -28,5 +30,7 @@ class AppUpdatesTest {
             AppUpdates.releaseVersionAndCode("v0.2.9", "", "0.2.8", 10))
         assertNull(AppUpdates.releaseVersionAndCode("v0.2.9", "", "0.3.0", 23))
         assertNull(AppUpdates.releaseVersionAndCode("v0.3.0-beta", "", "0.2.9", 11))
+        assertEquals("0.4.1" to 58L,
+            AppUpdates.releaseVersionAndCode("v0.4.1", "", "0.4.0-qa56.1", 57))
     }
 }
