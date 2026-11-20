@@ -83,6 +83,17 @@ internal fun duplicateFolderScopeSummary(availableCount: Int, selected: Set<Stri
     if (selected.isEmpty()) "Все папки ($availableCount)"
     else "Выбрано папок: ${selected.size} из $availableCount"
 
+/** Pending checkbox changes are presentation-only and must block both trash entry points. */
+internal fun duplicateTrashActionEnabled(
+    verifiedAvailable: Boolean,
+    scopeAvailable: Boolean,
+    trashInProgress: Boolean,
+    visualInProgress: Boolean,
+    hasPrompt: Boolean,
+    pendingSelectionCount: Int,
+): Boolean = verifiedAvailable && pendingSelectionCount == 0 &&
+    duplicateTrashConfirmationEnabled(scopeAvailable, trashInProgress, visualInProgress, hasPrompt)
+
 internal fun exactDuplicateTrashFeedback(moved: Int): String =
     if (moved > 0) "В корзину перемещено: $moved"
     else "Файлы изменились или проверка SHA-256 не прошла. Обновите список."
@@ -167,7 +178,7 @@ internal fun ExactDuplicateReviewScreen(
                                     onCheckedChange = {
                                         confirmOpen = false
                                         pendingSelections[item.uri] = it
-                                    onCopySelectionChanged(item.uri, it)
+                                        onCopySelectionChanged(item.uri, it)
                                     },
                                 )
                                 Text(
@@ -222,8 +233,8 @@ internal fun ExactDuplicateReviewScreen(
                     Text("Выбрано копий: $selectedNow")
                     OutlinedButton(
                         onClick = { confirmOpen = true },
-                        enabled = trashVerificationAvailable && pendingSelections.isEmpty() &&
-                            duplicateTrashConfirmationEnabled(scopeAvailable, trashInProgress, visualInProgress, prompt != null),
+                        enabled = duplicateTrashActionEnabled(trashVerificationAvailable, scopeAvailable, trashInProgress,
+                            visualInProgress, prompt != null, pendingSelections.size),
                     ) { Text("Проверить и переместить в корзину…") }
                     if (pendingSelections.isNotEmpty()) Text("Синхронизация выделения…", style = MaterialTheme.typography.bodySmall)
                 }
@@ -234,15 +245,17 @@ internal fun ExactDuplicateReviewScreen(
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = onClose, enabled = !trashInProgress && !visualInProgress) { Text("Закрыть") }
             OutlinedButton(onClick = { confirmOpen = false; onRefresh() }, enabled = !trashInProgress && !visualInProgress) { Text("Обновить") }
-            OutlinedButton(onClick = { confirmOpen = true }, enabled = trashVerificationAvailable && duplicateTrashConfirmationEnabled(scopeAvailable, trashInProgress, visualInProgress, prompt != null)) {
+            OutlinedButton(onClick = { confirmOpen = true }, enabled = duplicateTrashActionEnabled(trashVerificationAvailable, scopeAvailable,
+                    trashInProgress, visualInProgress, prompt != null, pendingSelections.size)) {
                 Text("В корзину…")
             }
         }
     }
     }
+    MaterialTheme(colorScheme = darkColorScheme(background = Color.Black, surface = Color(0xFF161616), onBackground = Color(0xFFE0E0E0), onSurface = Color(0xFFE0E0E0))) {
     if (previewUri != null) {
         Dialog(onDismissRequest = { previewUri = null }) {
-            MaterialTheme(colorScheme = darkColorScheme()) { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Surface(color = Color(0xFF161616)) { Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 AsyncImage(
                     model = Uri.parse(previewUri),
                     contentDescription = "Просмотр файла",
@@ -270,6 +283,7 @@ internal fun ExactDuplicateReviewScreen(
                 TextButton(onClick = { confirmOpen = false }) { Text("Отмена") }
             },
         )
+    }
     }
 }
 
