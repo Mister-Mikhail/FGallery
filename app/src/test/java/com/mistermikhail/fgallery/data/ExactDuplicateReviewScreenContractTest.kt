@@ -8,6 +8,14 @@ import org.junit.Test
 
 /** Contract for the Stage 6 Compose review: scope changes must discard consent. */
 class ExactDuplicateReviewScreenContractTest {
+    @Test fun allStorageDefaultClearsOnlyLegacyScopeAndNeverRequiresSelection() {
+        val reset = com.mistermikhail.fgallery.ui::duplicateLegacyScopeNeedsReset
+        assertFalse(reset(emptySet(), emptySet()))
+        assertTrue(reset(setOf("external_primary"), emptySet()))
+        assertTrue(reset(emptySet(), setOf("/storage/emulated/0/DCIM")))
+        assertTrue(reset(setOf("usb"), setOf("DCIM")))
+    }
+
     @Test fun collapsedFolderFilterSummaryNeverTreatsExplicitScopeAsAll() {
         val summary: (Int, Set<String>) -> String = { count, selected -> com.mistermikhail.fgallery.ui.duplicateFolderScopeSummary(count, selected) }
         assertEquals("Все папки (12)", summary(12, emptySet()))
