@@ -112,6 +112,11 @@ internal fun ExactDuplicateReviewScreen(
     // Selection feedback is immediate; the host still owns authoritative verification.
     val pendingSelections = remember(review.groups) { mutableStateMapOf<String, Boolean>() }
     val cards = remember(review) { exactDuplicateReviewCards(review) }
+    LaunchedEffect(review.selectedUris) {
+        pendingSelections.keys.toList().forEach { uri ->
+            if (pendingSelections[uri] == (uri in review.selectedUris)) pendingSelections.remove(uri)
+        }
+    }
     val scopeAvailable = duplicateReviewScopeAvailable(review, availableStorages, availableFolders)
     val prompt = if (scopeAvailable && !trashInProgress && !visualInProgress) exactDuplicateTrashPrompt(review) else null
     // A disconnected SAF source invalidates an already-open confirmation.
