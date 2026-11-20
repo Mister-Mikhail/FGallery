@@ -39,8 +39,6 @@ import androidx.compose.ui.unit.dp
 import com.mistermikhail.fgallery.data.ExactDuplicateReview
 import com.mistermikhail.fgallery.data.exactDuplicateReviewCards
 import com.mistermikhail.fgallery.data.exactDuplicateTrashPrompt
-import com.mistermikhail.fgallery.data.toggleDuplicateScope
-import com.mistermikhail.fgallery.data.isDuplicateScopeChecked
 import com.mistermikhail.fgallery.data.duplicateReviewScopeAvailable
 import com.mistermikhail.fgallery.data.duplicateConfirmationInvalidated
 
@@ -166,8 +164,25 @@ internal fun ExactDuplicateReviewScreen(
                 if (!trashInProgress && !visualInProgress) onScopeChanged(emptySet(), emptySet())
             }, enabled = !trashInProgress && !visualInProgress) { Text("Сбросить область поиска") }
         }
+        val selectedNow = cards.sumOf { card -> card.items.count { item ->
+            !item.protectedOriginal && (pendingSelections[item.uri] ?: item.manuallySelected)
+        } }
+        Text("Выбрано вручную: $selectedNow. Ничего не удаляется автоматически.")
+        if (selectedNow > 0) {
+            Surface(color = Color(0xFF242424)) {
+                Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
+                    Text("Выбрано копий: $selectedNow")
+                    OutlinedButton(
+                        onClick = { confirmOpen = true },
+                        enabled = duplicateTrashActionEnabled(trashVerificationAvailable, scopeAvailable, trashInProgress,
+                            visualInProgress, prompt != null, pendingSelections.size),
+                    ) { Text("Проверить и переместить в корзину…") }
+                    if (pendingSelections.isNotEmpty()) Text("Синхронизация выделения…", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
         Text("Найдено: ${cards.size} групп · ${cards.sumOf { it.items.size }} файлов", style = MaterialTheme.typography.titleMedium)
-        if (cards.isEmpty()) Text("Точных совпадений в выбранной области не найдено")
+        if (cards.isEmpty()) Text("Точных совпадений в доступной памяти не найдено")
         cards.forEachIndexed { index, card ->
             HorizontalDivider()
             Text("Группа ${index + 1} · ${card.items.size} файлов · ${duplicateReviewFileSize(card.sizeBytes)} каждый",
@@ -236,23 +251,6 @@ internal fun ExactDuplicateReviewScreen(
                 enabled = !visualInProgress && !trashInProgress,
                 onClick = { onVerifyVisual(first, second) },
             ) { Text("Проверить исходные пиксели") }
-        }
-        val selectedNow = cards.sumOf { card -> card.items.count { item ->
-            !item.protectedOriginal && (pendingSelections[item.uri] ?: item.manuallySelected)
-        } }
-        Text("Выбрано вручную: $selectedNow. Ничего не удаляется автоматически.")
-        if (selectedNow > 0) {
-            Surface(color = Color(0xFF242424)) {
-                Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
-                    Text("Выбрано копий: $selectedNow")
-                    OutlinedButton(
-                        onClick = { confirmOpen = true },
-                        enabled = duplicateTrashActionEnabled(trashVerificationAvailable, scopeAvailable, trashInProgress,
-                            visualInProgress, prompt != null, pendingSelections.size),
-                    ) { Text("Проверить и переместить в корзину…") }
-                    if (pendingSelections.isNotEmpty()) Text("Синхронизация выделения…", style = MaterialTheme.typography.bodySmall)
-                }
-            }
         }
         if (trashInProgress) Text("Проверяем исходные файлы и SHA-256, затем перемещаем выбранные копии. Не закрывайте экран до завершения.")
         if (!trashVerificationAvailable) Text("Режим просмотра: перемещение будет доступно после подключения повторной проверки файлов и защищённой корзины.")
