@@ -9,7 +9,7 @@ import org.junit.Test
 /** Contract for the Stage 6 Compose review: scope changes must discard consent. */
 class ExactDuplicateReviewScreenContractTest {
     @Test fun fileSizePresentationDoesNotRoundOrOverflowSafetyInputs() {
-        val size = com.mistermikhail.fgallery.ui::duplicateReviewFileSize
+        val size: (Long) -> String = { com.mistermikhail.fgallery.ui.duplicateReviewFileSize(it) }
         assertEquals("0 Б", size(0))
         assertEquals("1023 Б", size(1023))
         assertEquals("1.0 КБ", size(1024))
