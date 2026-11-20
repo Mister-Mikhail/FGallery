@@ -118,7 +118,7 @@ internal fun ExactDuplicateReviewScreen(
     onVerifyVisual: (String, String) -> Unit = { _, _ -> },
     visualInProgress: Boolean = false,
 ) {
-    var confirmOpen by remember(review) { mutableStateOf(false) }
+    var confirmOpen by remember { mutableStateOf(false) }
     var previewUri by remember { mutableStateOf<String?>(null) }
     // Selection feedback is immediate; the host still owns authoritative verification.
     val pendingSelections = remember(review.groups) { mutableStateMapOf<String, Boolean>() }
@@ -128,11 +128,21 @@ internal fun ExactDuplicateReviewScreen(
             if (pendingSelections[uri] == (uri in review.selectedUris)) pendingSelections.remove(uri)
         }
     }
+    // User explicitly selected all accessible storage as the default search scope.
+    // Reset legacy filters once; never widen scope while a trash transaction is active.
+    LaunchedEffect(review.includedStorageIds, review.includedFolderTargets, trashInProgress, visualInProgress) {
+        if (!trashInProgress && !visualInProgress &&
+            (review.includedStorageIds.isNotEmpty() || review.includedFolderTargets.isNotEmpty())) {
+            confirmOpen = false
+            onScopeChanged(emptySet(), emptySet())
+        }
+    }
     val scopeAvailable = duplicateReviewScopeAvailable(review, availableStorages, availableFolders)
     val prompt = if (scopeAvailable && !trashInProgress && !visualInProgress) exactDuplicateTrashPrompt(review) else null
     // A disconnected SAF source invalidates an already-open confirmation.
     // Reconnection must require a fresh tap, not resurrect an old dialog.
-    LaunchedEffect(scopeAvailable, prompt) {
+    LaunchedEffect(scopeAvailable, prompt, pendingSelections.size) {
+        if (pendingSelections.isNotEmpty()) confirmOpen = false
         if (duplicateConfirmationInvalidated(review, availableStorages, availableFolders)) confirmOpen = false
     }
     MaterialTheme(colorScheme = darkColorScheme(background = Color.Black, surface = Color(0xFF161616), onBackground = Color(0xFFE0E0E0), onSurface = Color(0xFFE0E0E0))) {
@@ -267,7 +277,7 @@ internal fun ExactDuplicateReviewScreen(
             } }
         }
     }
-    if (confirmOpen && trashVerificationAvailable && duplicateTrashConfirmationEnabled(scopeAvailable, trashInProgress, visualInProgress, prompt != null)) {
+    if (confirmOpen && duplicateTrashActionEnabled(trashVerificationAvailable, scopeAvailable, trashInProgress, visualInProgress, prompt != null, pendingSelections.size)) {
         AlertDialog(
             onDismissRequest = { confirmOpen = false },
             title = { Text("Подтверждение корзины") },
