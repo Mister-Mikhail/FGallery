@@ -35,6 +35,19 @@ class ExactDuplicateReviewScreenContractTest {
         assertFalse(canConfirm(true, false, false, false))
     }
 
+    @Test fun previewIdentityDoesNotAlterManualSelectionOrProtectedOriginal() {
+        val rows = listOf(row("original", "phone", "Camera"), row("copy", "phone", "Camera"))
+        val review = planExactDuplicateReview(rows, requestedUris = setOf("copy"))
+        val cardsBefore = exactDuplicateReviewCards(review)
+        // Preview uses a URI, not a selection or trash callback.
+        val previewUri = cardsBefore.single().items.last().uri
+        assertEquals("copy", previewUri)
+        val cardsAfter = exactDuplicateReviewCards(review)
+        assertEquals(cardsBefore, cardsAfter)
+        assertEquals(setOf("copy"), review.selectedUris)
+        assertTrue(cardsAfter.single().items.first().protectedOriginal)
+    }
+
     private fun row(uri: String, storage: String, folder: String) = CatalogMediaRow(
         uri = uri, mediaId = 1, name = "$uri.jpg", mimeType = "image/jpeg",
         kind = "IMAGE", dateTakenMillis = if (uri == "original") 1 else 2, width = 200, height = 200,
