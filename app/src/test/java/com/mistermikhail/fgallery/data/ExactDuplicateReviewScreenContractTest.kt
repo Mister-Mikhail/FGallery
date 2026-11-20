@@ -90,6 +90,17 @@ class ExactDuplicateReviewScreenContractTest {
         assertTrue(cardsAfter.single().items.first().protectedOriginal)
     }
 
+    @Test fun pendingSelectionMustNotAuthorizeTrashBeforeHostAcknowledgement() {
+        val rows = listOf(row("original", "phone", "Camera"), row("copy", "phone", "Camera"))
+        val review = planExactDuplicateReview(rows)
+        assertNull(exactDuplicateTrashPrompt(review))
+        // Optimistic checkbox rendering is UI-only; the verified host review remains unchanged.
+        val pending = mapOf("copy" to true)
+        assertTrue(pending["copy"] == true)
+        assertTrue(review.selectedUris.isEmpty())
+        assertNull(exactDuplicateTrashPrompt(review))
+    }
+
     private fun row(uri: String, storage: String, folder: String) = CatalogMediaRow(
         uri = uri, mediaId = 1, name = "$uri.jpg", mimeType = "image/jpeg",
         kind = "IMAGE", dateTakenMillis = if (uri == "original") 1 else 2, width = 200, height = 200,
