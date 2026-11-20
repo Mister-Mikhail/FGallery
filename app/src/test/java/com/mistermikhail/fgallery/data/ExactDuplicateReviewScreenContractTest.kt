@@ -90,6 +90,18 @@ class ExactDuplicateReviewScreenContractTest {
         assertTrue(cardsAfter.single().items.first().protectedOriginal)
     }
 
+    @Test fun pendingSelectionBlocksBothTrashButtonsUntilHostAcknowledges() {
+        val enabled = com.mistermikhail.fgallery.ui::duplicateTrashActionEnabled
+        assertTrue(enabled(true, true, false, false, true, 0))
+        assertFalse(enabled(true, true, false, false, true, 1))
+        assertFalse(enabled(true, true, false, false, true, 3))
+        assertFalse(enabled(false, true, false, false, true, 0))
+        assertFalse(enabled(true, false, false, false, true, 0))
+        assertFalse(enabled(true, true, true, false, true, 0))
+        assertFalse(enabled(true, true, false, true, true, 0))
+        assertFalse(enabled(true, true, false, false, false, 0))
+    }
+
     @Test fun pendingSelectionMustNotAuthorizeTrashBeforeHostAcknowledgement() {
         val rows = listOf(row("original", "phone", "Camera"), row("copy", "phone", "Camera"))
         val review = planExactDuplicateReview(rows)
