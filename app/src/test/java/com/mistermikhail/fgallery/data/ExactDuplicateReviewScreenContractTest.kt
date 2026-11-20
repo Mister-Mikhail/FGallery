@@ -9,7 +9,7 @@ import org.junit.Test
 /** Contract for the Stage 6 Compose review: scope changes must discard consent. */
 class ExactDuplicateReviewScreenContractTest {
     @Test fun collapsedFolderFilterSummaryNeverTreatsExplicitScopeAsAll() {
-        val summary = com.mistermikhail.fgallery.ui::duplicateFolderScopeSummary
+        val summary: (Int, Set<String>) -> String = { count, selected -> com.mistermikhail.fgallery.ui.duplicateFolderScopeSummary(count, selected) }
         assertEquals("Все папки (12)", summary(12, emptySet()))
         assertEquals("Выбрано папок: 2 из 12", summary(12, setOf("WhatsApp Images", "WhatsApp Video")))
         assertEquals("Выбрано папок: 1 из 0", summary(0, setOf("disconnected-usb")))
@@ -91,7 +91,9 @@ class ExactDuplicateReviewScreenContractTest {
     }
 
     @Test fun pendingSelectionBlocksBothTrashButtonsUntilHostAcknowledges() {
-        val enabled = com.mistermikhail.fgallery.ui::duplicateTrashActionEnabled
+        val enabled: (Boolean, Boolean, Boolean, Boolean, Boolean, Int) -> Boolean = { verified, scope, trash, visual, prompt, pending ->
+            com.mistermikhail.fgallery.ui.duplicateTrashActionEnabled(verified, scope, trash, visual, prompt, pending)
+        }
         assertTrue(enabled(true, true, false, false, true, 0))
         assertFalse(enabled(true, true, false, false, true, 1))
         assertFalse(enabled(true, true, false, false, true, 3))
