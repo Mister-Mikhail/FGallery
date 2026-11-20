@@ -53,6 +53,17 @@ internal fun duplicateTrashConfirmationEnabled(scopeAvailable: Boolean, trashInP
 internal fun duplicateReviewRows(itemCount: Int): Int =
     if (itemCount <= 0) 0 else (itemCount / 2) + (itemCount % 2)
 
+/** Presentation only: byte counts never determine deletion safety. */
+internal fun duplicateReviewFileSize(bytes: Long): String {
+    if (bytes < 0L) return "Размер неизвестен"
+    if (bytes < 1024L) return "$bytes Б"
+    val kib = bytes.toDouble() / 1024.0
+    if (kib < 1024.0) return String.format(java.util.Locale.ROOT, "%.1f КБ", kib)
+    val mib = kib / 1024.0
+    if (mib < 1024.0) return String.format(java.util.Locale.ROOT, "%.1f МБ", mib)
+    return String.format(java.util.Locale.ROOT, "%.2f ГБ", mib / 1024.0)
+}
+
 internal fun exactDuplicateTrashFeedback(moved: Int): String =
     if (moved > 0) "В корзину перемещено: $moved"
     else "Файлы изменились или проверка SHA-256 не прошла. Обновите список."
@@ -122,12 +133,14 @@ internal fun ExactDuplicateReviewScreen(
                 if (!trashInProgress) onScopeChanged(emptySet(), emptySet())
             }, enabled = !trashInProgress && !visualInProgress) { Text("Сбросить область поиска") }
         }
+        Text("Найдено: ${cards.size} групп · ${cards.sumOf { it.items.size }} файлов", style = MaterialTheme.typography.titleMedium)
         if (cards.isEmpty()) Text("Точных совпадений в выбранной области не найдено")
         cards.forEachIndexed { index, card ->
             HorizontalDivider()
-            Text("Группа ${index + 1} · ${card.items.size} файла · ${card.sizeBytes} байт",
+            Text("Группа ${index + 1} · ${card.items.size} файлов · ${duplicateReviewFileSize(card.sizeBytes)} каждый",
                 style = MaterialTheme.typography.titleMedium)
-            Text("Идентичные байты · SHA-256: ${card.sha256.take(16)}…", style = MaterialTheme.typography.bodySmall)
+            Text("Точное совпадение: размер и полный SHA-256 идентичны", style = MaterialTheme.typography.bodySmall)
+            Text("SHA-256: ${card.sha256.take(16)}…", style = MaterialTheme.typography.bodySmall)
             card.items.chunked(2).forEach { pair ->
                 Row(
                     modifier = Modifier.fillMaxWidth(),
