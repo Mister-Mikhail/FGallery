@@ -83,6 +83,10 @@ internal fun duplicateFolderScopeSummary(availableCount: Int, selected: Set<Stri
     if (selected.isEmpty()) "Все папки ($availableCount)"
     else "Выбрано папок: ${selected.size} из $availableCount"
 
+/** Legacy filters must not survive the user's all-storage search decision. */
+internal fun duplicateLegacyScopeNeedsReset(storages: Set<String>, folders: Set<String>): Boolean =
+    storages.isNotEmpty() || folders.isNotEmpty()
+
 /** Pending checkbox changes are presentation-only and must block both trash entry points. */
 internal fun duplicateTrashActionEnabled(
     verifiedAvailable: Boolean,
@@ -132,7 +136,7 @@ internal fun ExactDuplicateReviewScreen(
     // Reset legacy filters once; never widen scope while a trash transaction is active.
     LaunchedEffect(review.includedStorageIds, review.includedFolderTargets, trashInProgress, visualInProgress) {
         if (!trashInProgress && !visualInProgress &&
-            (review.includedStorageIds.isNotEmpty() || review.includedFolderTargets.isNotEmpty())) {
+            duplicateLegacyScopeNeedsReset(review.includedStorageIds, review.includedFolderTargets)) {
             confirmOpen = false
             onScopeChanged(emptySet(), emptySet())
         }
