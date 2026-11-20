@@ -141,7 +141,7 @@ class AppUpdates(
 
         internal fun isNewerVersion(candidate: String, installed: String): Boolean {
             fun parts(value: String): List<Long>? {
-                val text = value.removePrefix("v").takeIf { it.matches(Regex("\\d+\\.\\d+\\.\\d+")) } ?: return null
+                val text = value.removePrefix("v").substringBefore("-").takeIf { it.matches(Regex("\\d+\\.\\d+\\.\\d+")) } ?: return null
                 return text.split('.').map { it.toLongOrNull() ?: return null }
             }
             val next = parts(candidate) ?: return false
