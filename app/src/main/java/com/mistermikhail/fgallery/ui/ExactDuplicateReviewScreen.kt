@@ -64,6 +64,14 @@ internal fun duplicateReviewFileSize(bytes: Long): String {
     return String.format(java.util.Locale.ROOT, "%.2f ГБ", mib / 1024.0)
 }
 
+/** Candidate status is informative only; never authorizes trash. */
+internal fun visualCandidateReviewLabel(status: String?): String =
+    if (status.isNullOrBlank()) {
+        "Ожидает проверки исходных пикселей · удаление недоступно"
+    } else {
+        "Результат проверки: $status · удаление недоступно"
+    }
+
 internal fun exactDuplicateTrashFeedback(moved: Int): String =
     if (moved > 0) "В корзину перемещено: $moved"
     else "Файлы изменились или проверка SHA-256 не прошла. Обновите список."
@@ -197,8 +205,7 @@ internal fun ExactDuplicateReviewScreen(
                     Text(second.substringAfterLast('/'), style = MaterialTheme.typography.bodySmall)
                 }
             }
-            Text("Визуальный кандидат — исходные пиксели ещё не проверены.")
-            Text(visualStatus[key] ?: "Не проверено", style = MaterialTheme.typography.bodySmall)
+            Text(visualCandidateReviewLabel(visualStatus[key]), style = MaterialTheme.typography.bodySmall)
             OutlinedButton(
                 enabled = !visualInProgress && !trashInProgress,
                 onClick = { onVerifyVisual(first, second) },
