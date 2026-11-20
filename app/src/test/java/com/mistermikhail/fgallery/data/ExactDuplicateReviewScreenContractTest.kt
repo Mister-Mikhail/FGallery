@@ -51,7 +51,9 @@ class ExactDuplicateReviewScreenContractTest {
     }
 
     @Test fun lazyDuplicateRowKeysRemainStableAcrossCheckboxToggles() {
-        val key = com.mistermikhail.fgallery.ui::duplicateCopyRowKey
+        val key: (String, Int, Int) -> String = { hash, group, row ->
+            com.mistermikhail.fgallery.ui.duplicateCopyRowKey(hash, group, row)
+        }
         assertEquals("copies-abc-0-0", key("abc", 0, 0))
         assertEquals(key("abc", 0, 1), key("abc", 0, 1))
         assertFalse(key("abc", 0, 0) == key("abc", 0, 1))
