@@ -2,6 +2,8 @@ package com.mistermikhail.fgallery.ui
 
 import android.net.Uri
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Spacer
@@ -12,6 +14,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Surface
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.AlertDialog
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.window.Dialog
@@ -24,6 +29,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -103,8 +109,9 @@ internal fun ExactDuplicateReviewScreen(
 ) {
     var confirmOpen by remember(review) { mutableStateOf(false) }
     var previewUri by remember { mutableStateOf<String?>(null) }
-    var foldersExpanded by remember { mutableStateOf(false) }
-    val cards = exactDuplicateReviewCards(review)
+    // Selection feedback is immediate; the host still owns authoritative verification.
+    val pendingSelections = remember(review.groups) { mutableStateMapOf<String, Boolean>() }
+    val cards = remember(review) { exactDuplicateReviewCards(review) }
     val scopeAvailable = duplicateReviewScopeAvailable(review, availableStorages, availableFolders)
     val prompt = if (scopeAvailable && !trashInProgress && !visualInProgress) exactDuplicateTrashPrompt(review) else null
     // A disconnected SAF source invalidates an already-open confirmation.
@@ -112,51 +119,21 @@ internal fun ExactDuplicateReviewScreen(
     LaunchedEffect(scopeAvailable, prompt) {
         if (duplicateConfirmationInvalidated(review, availableStorages, availableFolders)) confirmOpen = false
     }
+    MaterialTheme(colorScheme = darkColorScheme(background = Color.Black, surface = Color(0xFF161616), onBackground = Color(0xFFE0E0E0), onSurface = Color(0xFFE0E0E0))) {
     Column(
-        modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp),
+        modifier = Modifier.fillMaxSize().background(Color.Black).verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text("Точные дубликаты", style = MaterialTheme.typography.titleLarge)
         Text("Сравниваются полные SHA-256. Похожие фотографии и RAW+JPEG не считаются точными копиями.")
-        Text("Носители (все отмечены — поиск по всем)", style = MaterialTheme.typography.titleSmall)
-        availableStorages.distinct().sorted().forEach { storage ->
-            ScopeCheckbox(storage, isDuplicateScopeChecked(review.includedStorageIds, storage), enabled = duplicateScopeEditingEnabled(scopeAvailable, trashInProgress || visualInProgress)) { checked ->
-                confirmOpen = false
-                onScopeChanged(
-                    toggleDuplicateScope(availableStorages, review.includedStorageIds, storage, checked),
-                    review.includedFolderTargets,
-                )
-            }
-        }
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(
-                "Папки: ${duplicateFolderScopeSummary(availableFolders.distinct().size, review.includedFolderTargets)}",
-                modifier = Modifier.weight(1f),
-                style = MaterialTheme.typography.titleSmall,
-            )
-            OutlinedButton(onClick = { foldersExpanded = !foldersExpanded }) {
-                Text(if (foldersExpanded) "Скрыть" else "Выбрать")
-            }
-        }
-        if (foldersExpanded) {
-            Text("Без выбранных ограничений поиск выполняется по всем папкам.", style = MaterialTheme.typography.bodySmall)
-            availableFolders.distinct().sorted().forEach { folder ->
-                ScopeCheckbox(folder, isDuplicateScopeChecked(review.includedFolderTargets, folder), enabled = duplicateScopeEditingEnabled(scopeAvailable, trashInProgress || visualInProgress)) { checked ->
-                    confirmOpen = false
-                    onScopeChanged(
-                        review.includedStorageIds,
-                        toggleDuplicateScope(availableFolders, review.includedFolderTargets, folder, checked),
-                    )
-                }
-            }
-        }
+        Text("Поиск по всей доступной памяти устройства. Выбор папок временно отключён.", style = MaterialTheme.typography.bodySmall)
         if (!scopeAvailable) {
             Text("Выбранный носитель или папка недоступны. Подключите источник и обновите каталог либо явно сбросьте область поиска.")
             OutlinedButton(onClick = {
                 // A disconnected explicit scope must never be silently widened.
                 // Only an explicit reset clears both filters and pending consent.
                 confirmOpen = false
-                if (!trashInProgress) onScopeChanged(emptySet(), emptySet())
+                if (!trashInProgress && !visualInProgress) onScopeChanged(emptySet(), emptySet())
             }, enabled = !trashInProgress && !visualInProgress) { Text("Сбросить область поиска") }
         }
         Text("Найдено: ${cards.size} групп · ${cards.sumOf { it.items.size }} файлов", style = MaterialTheme.typography.titleMedium)
@@ -180,11 +157,12 @@ internal fun ExactDuplicateReviewScreen(
                             DuplicatePreview(item.uri, item.displayName) { previewUri = item.uri }
                             Row {
                                 Checkbox(
-                                    checked = item.manuallySelected,
+                                    checked = pendingSelections[item.uri] ?: item.manuallySelected,
                                     enabled = duplicateScopeEditingEnabled(scopeAvailable, trashInProgress || visualInProgress) && !item.protectedOriginal,
                                     onCheckedChange = {
                                         confirmOpen = false
-                                        onCopySelectionChanged(item.uri, it)
+                                        pendingSelections[item.uri] = it
+                                    onCopySelectionChanged(item.uri, it)
                                     },
                                 )
                                 Text(
@@ -229,7 +207,23 @@ internal fun ExactDuplicateReviewScreen(
                 onClick = { onVerifyVisual(first, second) },
             ) { Text("Проверить исходные пиксели") }
         }
-        Text("Выбрано вручную: ${review.selectedCount}. Ничего не удаляется автоматически.")
+        val selectedNow = cards.sumOf { card -> card.items.count { item ->
+            !item.protectedOriginal && (pendingSelections[item.uri] ?: item.manuallySelected)
+        } }
+        Text("Выбрано вручную: $selectedNow. Ничего не удаляется автоматически.")
+        if (selectedNow > 0) {
+            Surface(color = Color(0xFF242424)) {
+                Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
+                    Text("Выбрано копий: $selectedNow")
+                    OutlinedButton(
+                        onClick = { confirmOpen = true },
+                        enabled = trashVerificationAvailable && pendingSelections.isEmpty() &&
+                            duplicateTrashConfirmationEnabled(scopeAvailable, trashInProgress, visualInProgress, prompt != null),
+                    ) { Text("Проверить и переместить в корзину…") }
+                    if (pendingSelections.isNotEmpty()) Text("Синхронизация выделения…", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
         if (trashInProgress) Text("Проверяем исходные файлы и SHA-256, затем перемещаем выбранные копии. Не закрывайте экран до завершения.")
         if (!trashVerificationAvailable) Text("Режим просмотра: перемещение будет доступно после подключения повторной проверки файлов и защищённой корзины.")
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -240,9 +234,10 @@ internal fun ExactDuplicateReviewScreen(
             }
         }
     }
+    }
     if (previewUri != null) {
         Dialog(onDismissRequest = { previewUri = null }) {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            MaterialTheme(colorScheme = darkColorScheme()) { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 AsyncImage(
                     model = Uri.parse(previewUri),
                     contentDescription = "Просмотр файла",
@@ -251,7 +246,7 @@ internal fun ExactDuplicateReviewScreen(
                 )
                 Text(previewUri.orEmpty().substringAfterLast('/'), style = MaterialTheme.typography.bodySmall)
                 OutlinedButton(onClick = { previewUri = null }) { Text("Вернуться к совпадениям") }
-            }
+            } }
         }
     }
     if (confirmOpen && trashVerificationAvailable && duplicateTrashConfirmationEnabled(scopeAvailable, trashInProgress, visualInProgress, prompt != null)) {
