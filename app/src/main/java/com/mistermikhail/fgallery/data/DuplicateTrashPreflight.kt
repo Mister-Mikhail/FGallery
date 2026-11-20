@@ -48,7 +48,7 @@ internal suspend fun <T> preflightDuplicateTrash(
     }
     if (rawPaths.any { it != null && (it.isBlank() || '\u0000' in it) }) return false
     val knownPaths = try { rawPaths.map { it?.let { path -> java.io.File(path).canonicalPath } } } catch (_: java.io.IOException) { return false }
-    if (knownPaths.toSet().size != knownPaths.size) return false
+    if (knownPaths.filterNotNull().toSet().size != knownPaths.count { it != null }) return false
     // Provider aliases may have different URIs but the same underlying path.
     // Check protected originals as well as duplicate selected copies.
     val protectedPaths = try {
@@ -113,7 +113,7 @@ internal suspend fun <T> preflightDuplicateTrash(
         protectedPhysicalIdentities.map { java.io.File(it).canonicalPath }.toSet()
     } catch (_: java.io.IOException) { return false }
     if (finalCanonicalPaths != knownPaths || finalProtectedPaths != protectedPaths) return false
-    if (finalCanonicalPaths.toSet().size != finalCanonicalPaths.size ||
+    if (finalCanonicalPaths.filterNotNull().toSet().size != finalCanonicalPaths.count { it != null } ||
         finalCanonicalPaths.any { it in finalProtectedPaths }) return false
     currentCoroutineContext().ensureActive()
     return true
