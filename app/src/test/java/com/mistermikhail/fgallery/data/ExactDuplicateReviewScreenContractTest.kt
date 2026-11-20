@@ -9,7 +9,9 @@ import org.junit.Test
 /** Contract for the Stage 6 Compose review: scope changes must discard consent. */
 class ExactDuplicateReviewScreenContractTest {
     @Test fun allStorageDefaultClearsOnlyLegacyScopeAndNeverRequiresSelection() {
-        val reset = com.mistermikhail.fgallery.ui::duplicateLegacyScopeNeedsReset
+        val reset: (Set<String>, Set<String>) -> Boolean = { storages, folders ->
+            com.mistermikhail.fgallery.ui.duplicateLegacyScopeNeedsReset(storages, folders)
+        }
         assertFalse(reset(emptySet(), emptySet()))
         assertTrue(reset(setOf("external_primary"), emptySet()))
         assertTrue(reset(emptySet(), setOf("/storage/emulated/0/DCIM")))
