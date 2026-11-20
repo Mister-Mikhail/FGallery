@@ -96,6 +96,15 @@ internal fun duplicateTrashActionEnabled(
 ): Boolean = verifiedAvailable && pendingSelectionCount == 0 &&
     duplicateTrashConfirmationEnabled(scopeAvailable, trashInProgress, visualInProgress, hasPrompt)
 
+/** Pending taps remain visible until acknowledged, but cannot outlive their files. */
+internal fun duplicatePendingSelectionKeysToDiscard(
+    pending: Map<String, Boolean>,
+    currentUris: Set<String>,
+    selectedUris: Set<String>,
+): Set<String> = pending.filter { (uri, checked) ->
+    uri !in currentUris || checked == (uri in selectedUris)
+}.keys
+
 internal fun exactDuplicateTrashFeedback(moved: Int): String =
     if (moved > 0) "В корзину перемещено: $moved"
     else "Файлы изменились или проверка SHA-256 не прошла. Обновите список."
@@ -129,11 +138,8 @@ internal fun ExactDuplicateReviewScreen(
         // Preserve in-flight taps across catalogue emissions, but never carry
         // selections over to files no longer present in the current review.
         val currentUris = review.groups.asSequence().flatten().map { it.uri }.toHashSet()
-        pendingSelections.keys.toList().forEach { uri ->
-            if (uri !in currentUris || pendingSelections[uri] == (uri in review.selectedUris)) {
-                pendingSelections.remove(uri)
-            }
-        }
+        duplicatePendingSelectionKeysToDiscard(pendingSelections, currentUris, review.selectedUris)
+            .forEach { pendingSelections.remove(it) }
     }
     // User explicitly selected all accessible storage as the default search scope.
     // Reset legacy filters once; never widen scope while a trash transaction is active.
