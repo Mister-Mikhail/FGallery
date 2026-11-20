@@ -3,7 +3,9 @@ package com.mistermikhail.fgallery.ui
 import android.net.Uri
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.weight
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -123,23 +125,38 @@ internal fun ExactDuplicateReviewScreen(
             Text("Группа ${index + 1} · ${card.items.size} файла · ${card.sizeBytes} байт",
                 style = MaterialTheme.typography.titleMedium)
             Text("Идентичные байты · SHA-256: ${card.sha256.take(16)}…", style = MaterialTheme.typography.bodySmall)
-            card.items.forEach { item ->
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Checkbox(
-                        checked = item.manuallySelected,
-                        enabled = duplicateScopeEditingEnabled(scopeAvailable, trashInProgress || visualInProgress) && !item.protectedOriginal,
-                        onCheckedChange = {
-                            confirmOpen = false
-                            onCopySelectionChanged(item.uri, it)
-                        },
-                    )
-                    DuplicatePreview(item.uri, item.displayName) { previewUri = item.uri }
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(item.displayName)
-                        Text("${item.storageId} · ${item.folderTarget}",
-                            style = MaterialTheme.typography.bodySmall)
-                        Text(item.explanation, style = MaterialTheme.typography.bodySmall)
+            card.items.chunked(2).forEach { pair ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    pair.forEach { item ->
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            DuplicatePreview(item.uri, item.displayName) { previewUri = item.uri }
+                            Row {
+                                Checkbox(
+                                    checked = item.manuallySelected,
+                                    enabled = duplicateScopeEditingEnabled(scopeAvailable, trashInProgress || visualInProgress) && !item.protectedOriginal,
+                                    onCheckedChange = {
+                                        confirmOpen = false
+                                        onCopySelectionChanged(item.uri, it)
+                                    },
+                                )
+                                Text(
+                                    if (item.protectedOriginal) "Сохранить" else "Копия",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    modifier = Modifier.padding(top = 14.dp),
+                                )
+                            }
+                            Text(item.displayName, style = MaterialTheme.typography.bodyMedium)
+                            Text("${item.storageId} · ${item.folderTarget}", style = MaterialTheme.typography.bodySmall)
+                            Text(item.explanation, style = MaterialTheme.typography.bodySmall)
+                        }
                     }
+                    if (pair.size == 1) Spacer(modifier = Modifier.weight(1f))
                 }
             }
         }
@@ -154,9 +171,15 @@ internal fun ExactDuplicateReviewScreen(
         if (visualCandidates.isEmpty()) Text("На этой странице кандидатов нет.")
         visualCandidates.forEach { (first, second) ->
             val key = "$first|$second"
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                DuplicatePreview(first, first.substringAfterLast('/')) { previewUri = first }
-                DuplicatePreview(second, second.substringAfterLast('/')) { previewUri = second }
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(modifier = Modifier.weight(1f)) {
+                    DuplicatePreview(first, first.substringAfterLast('/')) { previewUri = first }
+                    Text(first.substringAfterLast('/'), style = MaterialTheme.typography.bodySmall)
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    DuplicatePreview(second, second.substringAfterLast('/')) { previewUri = second }
+                    Text(second.substringAfterLast('/'), style = MaterialTheme.typography.bodySmall)
+                }
             }
             Text("Визуальный кандидат — исходные пиксели ещё не проверены.")
             Text(visualStatus[key] ?: "Не проверено", style = MaterialTheme.typography.bodySmall)
@@ -223,7 +246,7 @@ private fun DuplicatePreview(uri: String, name: String, onOpen: () -> Unit) {
     AsyncImage(
         model = Uri.parse(uri),
         contentDescription = "Открыть $name",
-        contentScale = ContentScale.Crop,
-        modifier = Modifier.size(112.dp).clickable(onClick = onOpen),
+        contentScale = ContentScale.Fit,
+        modifier = Modifier.fillMaxWidth().aspectRatio(1f).clickable(onClick = onOpen),
     )
 }
