@@ -8,6 +8,16 @@ import org.junit.Test
 
 /** Contract for the Stage 6 Compose review: scope changes must discard consent. */
 class ExactDuplicateReviewScreenContractTest {
+    @Test fun twoColumnReviewKeepsOddFinalRowAndNeverAddsThirdColumn() {
+        val rows: (Int) -> Int = { com.mistermikhail.fgallery.ui.duplicateReviewRows(it) }
+        assertEquals(0, rows(0))
+        assertEquals(1, rows(1))
+        assertEquals(1, rows(2))
+        assertEquals(2, rows(3))
+        assertEquals(3, rows(5))
+        assertEquals(4, rows(8))
+    }
+
     @Test fun verifiedTrashFeedbackNeverReportsZeroMovedAsSuccess() {
         assertEquals("В корзину перемещено: 2",
             com.mistermikhail.fgallery.ui.exactDuplicateTrashFeedback(2))
