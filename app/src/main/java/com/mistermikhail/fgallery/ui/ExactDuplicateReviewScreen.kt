@@ -72,6 +72,11 @@ internal fun visualCandidateReviewLabel(status: String?): String =
         "Результат проверки: $status · удаление недоступно"
     }
 
+/** A collapsed filter must never silently change the explicit search scope. */
+internal fun duplicateFolderScopeSummary(availableCount: Int, selected: Set<String>): String =
+    if (selected.isEmpty()) "Все папки ($availableCount)"
+    else "Выбрано папок: ${selected.size} из $availableCount"
+
 internal fun exactDuplicateTrashFeedback(moved: Int): String =
     if (moved > 0) "В корзину перемещено: $moved"
     else "Файлы изменились или проверка SHA-256 не прошла. Обновите список."
@@ -98,6 +103,7 @@ internal fun ExactDuplicateReviewScreen(
 ) {
     var confirmOpen by remember(review) { mutableStateOf(false) }
     var previewUri by remember { mutableStateOf<String?>(null) }
+    var foldersExpanded by remember { mutableStateOf(false) }
     val cards = exactDuplicateReviewCards(review)
     val scopeAvailable = duplicateReviewScopeAvailable(review, availableStorages, availableFolders)
     val prompt = if (scopeAvailable && !trashInProgress && !visualInProgress) exactDuplicateTrashPrompt(review) else null
@@ -122,14 +128,26 @@ internal fun ExactDuplicateReviewScreen(
                 )
             }
         }
-        Text("Папки (все отмечены — поиск по всем)", style = MaterialTheme.typography.titleSmall)
-        availableFolders.distinct().sorted().forEach { folder ->
-            ScopeCheckbox(folder, isDuplicateScopeChecked(review.includedFolderTargets, folder), enabled = duplicateScopeEditingEnabled(scopeAvailable, trashInProgress || visualInProgress)) { checked ->
-                confirmOpen = false
-                onScopeChanged(
-                    review.includedStorageIds,
-                    toggleDuplicateScope(availableFolders, review.includedFolderTargets, folder, checked),
-                )
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                "Папки: ${duplicateFolderScopeSummary(availableFolders.distinct().size, review.includedFolderTargets)}",
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.titleSmall,
+            )
+            OutlinedButton(onClick = { foldersExpanded = !foldersExpanded }) {
+                Text(if (foldersExpanded) "Скрыть" else "Выбрать")
+            }
+        }
+        if (foldersExpanded) {
+            Text("Без выбранных ограничений поиск выполняется по всем папкам.", style = MaterialTheme.typography.bodySmall)
+            availableFolders.distinct().sorted().forEach { folder ->
+                ScopeCheckbox(folder, isDuplicateScopeChecked(review.includedFolderTargets, folder), enabled = duplicateScopeEditingEnabled(scopeAvailable, trashInProgress || visualInProgress)) { checked ->
+                    confirmOpen = false
+                    onScopeChanged(
+                        review.includedStorageIds,
+                        toggleDuplicateScope(availableFolders, review.includedFolderTargets, folder, checked),
+                    )
+                }
             }
         }
         if (!scopeAvailable) {
