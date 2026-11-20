@@ -125,6 +125,23 @@ class ExactDuplicateReviewScreenContractTest {
         assertNull(exactDuplicateTrashPrompt(review))
     }
 
+    @Test fun manyIndependentGroupsRetainCorrectSummaryAndProtectedKeeper() {
+        val rows = (0 until 60).flatMap { group ->
+            val hash = group.toString(16).padStart(64, '0')
+            listOf(
+                row("original-$group", "phone", "Camera").copy(fullHash = hash),
+                row("copy-$group", "phone", "Camera").copy(fullHash = hash),
+            )
+        }
+        val review = planExactDuplicateReview(rows)
+        val cards = exactDuplicateReviewCards(review)
+        assertEquals(60, cards.size)
+        assertEquals(120, cards.sumOf { it.items.size })
+        assertTrue(cards.all { it.items.count { item -> item.protectedOriginal } == 1 })
+        assertTrue(cards.all { it.items.none { item -> item.manuallySelected } })
+        assertNull(exactDuplicateTrashPrompt(review))
+    }
+
     private fun row(uri: String, storage: String, folder: String) = CatalogMediaRow(
         uri = uri, mediaId = 1, name = "$uri.jpg", mimeType = "image/jpeg",
         kind = "IMAGE", dateTakenMillis = if (uri == "original") 1 else 2, width = 200, height = 200,
