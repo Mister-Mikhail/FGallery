@@ -390,4 +390,28 @@ class DuplicateTrashPreflightTest {
         ))
     }
 
+    @Test fun inaccessiblePhysicalIdentityFailsClosedWithoutReadingBytes() = runBlocking {
+        var reads = 0
+        assertFalse(preflightDuplicateTrash(
+            listOf("content://provider/copy"),
+            { reads++; true },
+            sourceIdentity = { it },
+            physicalIdentity = { throw SecurityException("path permission denied") },
+        ))
+        assertEquals(0, reads)
+    }
+
+    @Test fun revokedProviderPermissionDuringVerificationRejectsBatch() = runBlocking {
+        val checked = mutableListOf<String>()
+        assertFalse(preflightDuplicateTrash(
+            listOf("content://provider/copy1", "content://provider/copy2"),
+            { item ->
+                checked += item
+                throw SecurityException("provider permission revoked")
+            },
+            sourceIdentity = { it },
+        ))
+        assertEquals(listOf("content://provider/copy1"), checked)
+    }
+
 }
