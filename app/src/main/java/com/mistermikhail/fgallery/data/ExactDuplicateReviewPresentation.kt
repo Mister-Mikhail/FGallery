@@ -25,9 +25,10 @@ internal data class ExactDuplicateReviewCard(
 internal fun exactDuplicateReviewCards(
     review: ExactDuplicateReview,
 ): List<ExactDuplicateReviewCard> {
-    val summaries = exactDuplicateGroupSummaries(review)
+    // Index once: repeated linear searches become quadratic on large duplicate libraries.
+    val summariesByOriginal = exactDuplicateGroupSummaries(review).associateBy { it.originalUri }
     return review.groups.mapNotNull { group ->
-        val summary = summaries.firstOrNull { it.originalUri == group.firstOrNull()?.uri }
+        val summary = summariesByOriginal[group.firstOrNull()?.uri]
             ?: return@mapNotNull null
         ExactDuplicateReviewCard(
             sha256 = summary.sha256,
