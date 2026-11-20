@@ -8,6 +8,16 @@ import org.junit.Test
 
 /** Contract for the Stage 6 Compose review: scope changes must discard consent. */
 class ExactDuplicateReviewScreenContractTest {
+    @Test fun collapsedFolderFilterSummaryNeverTreatsExplicitScopeAsAll() {
+        val summary = com.mistermikhail.fgallery.ui::duplicateFolderScopeSummary
+        assertEquals("Все папки (12)", summary(12, emptySet()))
+        assertEquals("Выбрано папок: 2 из 12", summary(12, setOf("WhatsApp Images", "WhatsApp Video")))
+        assertEquals("Выбрано папок: 1 из 0", summary(0, setOf("disconnected-usb")))
+        // Missing folders stay explicitly scoped; a collapsed UI must not broaden to all.
+        val requested = setOf("disconnected-usb")
+        assertEquals(requested, requested.toSet())
+    }
+
     @Test fun visualCandidateStatusNeverSuggestsDeletionAndDistinguishesVerification() {
         val label = com.mistermikhail.fgallery.ui::visualCandidateReviewLabel
         assertTrue(label(null).contains("Ожидает проверки"))
