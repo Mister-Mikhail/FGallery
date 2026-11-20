@@ -50,6 +50,15 @@ class ExactDuplicateReviewScreenContractTest {
         assertTrue(size(Long.MAX_VALUE).contains("ГБ"))
     }
 
+    @Test fun lazyDuplicateRowKeysRemainStableAcrossCheckboxToggles() {
+        val key = com.mistermikhail.fgallery.ui::duplicateCopyRowKey
+        assertEquals("copies-abc-0-0", key("abc", 0, 0))
+        assertEquals(key("abc", 0, 1), key("abc", 0, 1))
+        assertFalse(key("abc", 0, 0) == key("abc", 0, 1))
+        assertFalse(key("abc", 0, 0) == key("def", 0, 0))
+        assertFalse(key("abc", 0, 0) == key("abc", 1, 0))
+    }
+
     @Test fun twoColumnReviewKeepsOddFinalRowAndNeverAddsThirdColumn() {
         val rows: (Int) -> Int = { com.mistermikhail.fgallery.ui.duplicateReviewRows(it) }
         assertEquals(0, rows(0))
