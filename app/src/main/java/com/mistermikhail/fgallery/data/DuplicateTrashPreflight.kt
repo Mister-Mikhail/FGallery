@@ -47,7 +47,7 @@ internal suspend fun <T> preflightDuplicateTrash(
         return false
     }
     if (rawPaths.any { it != null && (it.isBlank() || '\u0000' in it) }) return false
-    val knownPaths = try { rawPaths.map { it?.let { path -> java.io.File(path).canonicalPath } } } catch (_: java.io.IOException) { return false }
+    val knownPaths = try { rawPaths.map { it?.let { path -> java.io.File(path).canonicalPath } } } catch (_: java.io.IOException) { return false } catch (_: SecurityException) { return false }
     if (knownPaths.filterNotNull().toSet().size != knownPaths.count { it != null }) return false
     // Provider aliases may have different URIs but the same underlying path.
     // Check protected originals as well as duplicate selected copies.
@@ -56,7 +56,7 @@ internal suspend fun <T> preflightDuplicateTrash(
             if (path.isBlank() || '\u0000' in path) return false
             java.io.File(path).canonicalPath
         }.toSet()
-    } catch (_: java.io.IOException) { return false }
+    } catch (_: java.io.IOException) { return false } catch (_: SecurityException) { return false }
     if (knownPaths.any { it in protectedPaths }) return false
     // SAF providers can rebind a URI while another copy is being verified.
     // Recheck the identities after all reads, before returning a preflight
@@ -108,10 +108,10 @@ internal suspend fun <T> preflightDuplicateTrash(
     // an alias of the keeper may become actionable during a slow SAF read.
     val finalCanonicalPaths = try {
         finalPaths.map { it?.let { path -> java.io.File(path).canonicalPath } }
-    } catch (_: java.io.IOException) { return false }
+    } catch (_: java.io.IOException) { return false } catch (_: SecurityException) { return false }
     val finalProtectedPaths = try {
         protectedPhysicalIdentities.map { java.io.File(it).canonicalPath }.toSet()
-    } catch (_: java.io.IOException) { return false }
+    } catch (_: java.io.IOException) { return false } catch (_: SecurityException) { return false }
     if (finalCanonicalPaths != knownPaths || finalProtectedPaths != protectedPaths) return false
     if (finalCanonicalPaths.filterNotNull().toSet().size != finalCanonicalPaths.count { it != null } ||
         finalCanonicalPaths.any { it in finalProtectedPaths }) return false
