@@ -49,6 +49,10 @@ internal fun duplicateScopeEditingEnabled(scopeAvailable: Boolean, trashInProgre
 internal fun duplicateTrashConfirmationEnabled(scopeAvailable: Boolean, trashInProgress: Boolean, visualInProgress: Boolean, hasPrompt: Boolean): Boolean =
     scopeAvailable && !trashInProgress && !visualInProgress && hasPrompt
 
+/** Fixed two-column portrait review: one item in a final row retains half-width. */
+internal fun duplicateReviewRows(itemCount: Int): Int =
+    if (itemCount <= 0) 0 else (itemCount / 2) + (itemCount % 2)
+
 internal fun exactDuplicateTrashFeedback(moved: Int): String =
     if (moved > 0) "В корзину перемещено: $moved"
     else "Файлы изменились или проверка SHA-256 не прошла. Обновите список."
