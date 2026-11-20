@@ -365,4 +365,29 @@ class DuplicateTrashPreflightTest {
         ))
     }
 
+    @Test fun physicalPathMovesBetweenOpaqueSourcesDuringVerificationRejectsBatch() = runBlocking {
+        var rebind = false
+        val allowed = preflightDuplicateTrash(
+            listOf("content://provider/first", "content://provider/second"),
+            { rebind = true; true },
+            sourceIdentity = { it },
+            physicalIdentity = { uri ->
+                if (!rebind && uri.endsWith("first")) "/storage/copy.jpg"
+                else if (rebind && uri.endsWith("second")) "/storage/copy.jpg"
+                else null
+            },
+        )
+        // Filtering null paths would make both snapshots look like ["/storage/copy.jpg"].
+        assertFalse(allowed)
+    }
+
+    @Test fun multipleOpaqueSafSourcesRemainEligible() = runBlocking {
+        assertTrue(preflightDuplicateTrash(
+            listOf("content://saf/a", "content://saf/b"),
+            { true },
+            sourceIdentity = { it },
+            physicalIdentity = { null },
+        ))
+    }
+
 }
