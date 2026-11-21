@@ -111,6 +111,21 @@ class ExactDuplicateReviewPresentationTest {
         assertNull(exactDuplicateTrashPrompt(malformed))
     }
 
+    @Test fun repeatedKeeperUriAcrossDifferentHashGroupsBlocksTrashConsent() {
+        val first = planExactDuplicateReview(
+            listOf(row("original"), row("copy")),
+            requestedUris = setOf("copy"),
+        )
+        val second = planExactDuplicateReview(
+            listOf(row("original", "b".repeat(64)), row("other", "b".repeat(64))),
+        )
+        // A stale catalogue can combine groups that each look internally valid,
+        // but point at the same keeper URI. Never offer consent for this state.
+        val corrupt = first.copy(groups = first.groups + second.groups)
+        assertEquals(1, corrupt.selectedUris.size)
+        assertNull(exactDuplicateTrashPrompt(corrupt))
+    }
+
     @Test fun restoredReviewWithRepeatedUriCannotOfferTwoCopiesForTrash() {
         val rows = listOf(row("original"), row("copy"))
         val safe = planExactDuplicateReview(rows, requestedUris = setOf("copy"))
