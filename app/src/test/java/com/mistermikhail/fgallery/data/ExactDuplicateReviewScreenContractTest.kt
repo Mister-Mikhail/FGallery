@@ -126,6 +126,20 @@ class ExactDuplicateReviewScreenContractTest {
         assertEquals(1, count(setOf("a"), mapOf("a" to true)))
     }
 
+    @Test fun legacyScopeResetCannotAuthorizeTrashBeforeAllStorageReviewIsRebuilt() {
+        val action: (Boolean, Boolean, Boolean, Boolean, Boolean, Int, Boolean) -> Boolean =
+            { verified, scope, trash, visual, prompt, pending, reset ->
+                com.mistermikhail.fgallery.ui.duplicateTrashActionEnabled(
+                    verified, scope, trash, visual, prompt, pending, reset)
+            }
+        // A valid old-scope prompt is not consent for a widened all-storage review.
+        assertFalse(action(true, true, false, false, true, 0, true))
+        assertFalse(action(true, true, false, false, true, 1, true))
+        assertTrue(action(true, true, false, false, true, 0, false))
+        assertTrue(com.mistermikhail.fgallery.ui.duplicateLegacyScopeNeedsReset(
+            setOf("usb"), emptySet()))
+    }
+
     @Test fun pendingSelectionBlocksBothTrashButtonsUntilHostAcknowledges() {
         val enabled: (Boolean, Boolean, Boolean, Boolean, Boolean, Int) -> Boolean = { verified, scope, trash, visual, prompt, pending ->
             com.mistermikhail.fgallery.ui.duplicateTrashActionEnabled(verified, scope, trash, visual, prompt, pending)
