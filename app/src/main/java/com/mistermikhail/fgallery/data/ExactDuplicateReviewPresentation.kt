@@ -71,6 +71,11 @@ internal fun exactDuplicateTrashPrompt(
     review: ExactDuplicateReview,
 ): ExactDuplicateTrashPrompt? {
     if (review.selectedUris.isEmpty() || review.selectedUris.any { it in review.protectedUris }) return null
+    // A stale/corrupt catalogue may repeat the same URI across SHA groups.
+    // Never present consent for an ambiguous selection, even if the displayed
+    // copy count happens to match the number of selected URI strings.
+    val allUris = review.groups.flatten().map { it.uri }
+    if (allUris.size != allUris.toSet().size) return null
     val cards = exactDuplicateReviewCards(review)
     val selected = cards.sumOf { it.selectedCopyCount }
     if (selected == 0 || selected != review.selectedUris.size) return null
