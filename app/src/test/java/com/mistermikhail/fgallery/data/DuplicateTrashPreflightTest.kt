@@ -481,4 +481,48 @@ class DuplicateTrashPreflightTest {
         assertTrue(interrupted)
     }
 
+    @Test fun finalKeeperSnapshotInterruptionPropagates() = runBlocking {
+        var snapshots = 0
+        val interruptedSet = object : AbstractSet<String>() {
+            override val size: Int
+                get() {
+                    snapshots++
+                    if (snapshots > 1) throw InterruptedException("keeper changed during verification")
+                    return 1
+                }
+            override fun iterator(): Iterator<String> = listOf("content://keeper").iterator()
+        }
+        var interrupted = false
+        try {
+            preflightDuplicateTrash(listOf("content://copy"), { true },
+                sourceIdentity = { it }, protectedSourceIdentities = interruptedSet)
+        } catch (_: InterruptedException) {
+            interrupted = Thread.currentThread().isInterrupted
+        } finally {
+            Thread.interrupted()
+        }
+        assertTrue(interrupted)
+    }
+
+    @Test fun finalPhysicalKeeperSnapshotCancellationPropagates() = runBlocking {
+        var snapshots = 0
+        val cancelledSet = object : AbstractSet<String>() {
+            override val size: Int
+                get() {
+                    snapshots++
+                    if (snapshots > 1) throw java.util.concurrent.CancellationException("cancelled")
+                    return 1
+                }
+            override fun iterator(): Iterator<String> = listOf("/storage/keeper.jpg").iterator()
+        }
+        var cancelled = false
+        try {
+            preflightDuplicateTrash(listOf("content://copy"), { true },
+                sourceIdentity = { it }, protectedPhysicalIdentities = cancelledSet)
+        } catch (_: java.util.concurrent.CancellationException) {
+            cancelled = true
+        }
+        assertTrue(cancelled)
+    }
+
 }
