@@ -55,8 +55,9 @@ internal suspend fun <T> preflightDuplicateTrash(
     if (knownPaths.filterNotNull().toSet().size != knownPaths.count { it != null }) return false
     // Provider aliases may have different URIs but the same underlying path.
     // Check protected originals as well as duplicate selected copies.
+    val initialProtectedPhysicalSources = try { protectedPhysicalIdentities.toSet() } catch (_: Exception) { return false }
     val protectedPaths = try {
-        protectedPhysicalIdentities.map { path ->
+        initialProtectedPhysicalSources.map { path ->
             if (path.isBlank() || '\u0000' in path) return false
             java.io.File(path).canonicalPath
         }.toSet()
@@ -115,8 +116,10 @@ internal suspend fun <T> preflightDuplicateTrash(
     val finalCanonicalPaths = try {
         finalPaths.map { it?.let { path -> java.io.File(path).canonicalPath } }
     } catch (_: java.io.IOException) { return false } catch (_: SecurityException) { return false }
+    val finalProtectedPhysicalSources = try { protectedPhysicalIdentities.toSet() } catch (_: Exception) { return false }
+    if (finalProtectedPhysicalSources != initialProtectedPhysicalSources) return false
     val finalProtectedPaths = try {
-        protectedPhysicalIdentities.map { java.io.File(it).canonicalPath }.toSet()
+        finalProtectedPhysicalSources.map { java.io.File(it).canonicalPath }.toSet()
     } catch (_: java.io.IOException) { return false } catch (_: SecurityException) { return false }
     if (finalCanonicalPaths != knownPaths || finalProtectedPaths != protectedPaths) return false
     if (finalCanonicalPaths.filterNotNull().toSet().size != finalCanonicalPaths.count { it != null } ||
