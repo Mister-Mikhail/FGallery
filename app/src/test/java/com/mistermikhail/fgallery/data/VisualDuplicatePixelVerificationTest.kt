@@ -75,6 +75,21 @@ class VisualDuplicatePixelVerificationTest {
         assertEquals(Result.UNVERIFIED, VisualDuplicatePixelVerification.verify(detailed, retouched))
     }
 
+    @Test fun lateCropWithDistinctEdgeMidpointSurvivesRepetitiveCandidates() {
+        // The old five anchors all match the black background at hundreds of
+        // earlier offsets. Only an edge midpoint distinguishes the late crop.
+        val width = 48
+        val data = IntArray(width * width) { 0xff000000.toInt() }
+        val left = 37
+        val top = 37
+        data[(top + 4) * width + left] = 0xff12ab34.toInt()
+        val original = Pixels(width, width, data)
+        val crop = pixels(8, 8) { x, y -> data[(top + y) * width + left + x] }
+        assertEquals(Result.EXACT_CROP, VisualDuplicatePixelVerification.verify(original, crop))
+        val edited = crop.copy(argb = crop.argb.copyOf().also { it[4 * 8] = it[4 * 8] xor 1 })
+        assertEquals(Result.UNVERIFIED, VisualDuplicatePixelVerification.verify(original, edited))
+    }
+
     @Test fun invalidAndExpensiveGeometryFailsClosed() {
         val original = pixels(100, 100) { x, y -> x + y }
         val small = pixels(2, 2) { x, y -> 10000 + x + y }
