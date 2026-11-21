@@ -464,4 +464,21 @@ class DuplicateTrashPreflightTest {
         assertFalse(allowed)
     }
 
+    @Test fun protectedKeeperSnapshotInterruptionPropagates() = runBlocking {
+        val interruptedSet = object : AbstractSet<String>() {
+            override val size: Int get() = throw InterruptedException("keeper list interrupted")
+            override fun iterator(): Iterator<String> = emptyList<String>().iterator()
+        }
+        var interrupted = false
+        try {
+            preflightDuplicateTrash(listOf("copy"), { true },
+                sourceIdentity = { it }, protectedSourceIdentities = interruptedSet)
+        } catch (_: InterruptedException) {
+            interrupted = Thread.currentThread().isInterrupted
+        } finally {
+            Thread.interrupted()
+        }
+        assertTrue(interrupted)
+    }
+
 }
