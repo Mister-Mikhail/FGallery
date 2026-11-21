@@ -82,4 +82,26 @@ class VisualDuplicatePixelVerificationTest {
         assertEquals(Result.UNVERIFIED, VisualDuplicatePixelVerification.verify(Pixels(0, 1, intArrayOf()), small))
         assertEquals(Result.UNVERIFIED, VisualDuplicatePixelVerification.verify(Pixels(2, 2, intArrayOf(1)), small))
     }
+
+    @Test fun exifOrientationNormalizesRotationsAndMirrorsBeforeComparison() {
+        val original = Pixels(3, 2, intArrayOf(1, 2, 3, 4, 5, 6))
+        val expected = mapOf(
+            1 to Pixels(3, 2, intArrayOf(1, 2, 3, 4, 5, 6)),
+            2 to Pixels(3, 2, intArrayOf(3, 2, 1, 6, 5, 4)),
+            3 to Pixels(3, 2, intArrayOf(6, 5, 4, 3, 2, 1)),
+            4 to Pixels(3, 2, intArrayOf(4, 5, 6, 1, 2, 3)),
+            5 to Pixels(2, 3, intArrayOf(1, 4, 2, 5, 3, 6)),
+            6 to Pixels(2, 3, intArrayOf(4, 1, 5, 2, 6, 3)),
+            7 to Pixels(2, 3, intArrayOf(6, 3, 5, 2, 4, 1)),
+            8 to Pixels(2, 3, intArrayOf(3, 6, 2, 5, 1, 4)),
+        )
+        expected.forEach { (orientation, target) ->
+            val normalized = orientSourcePixels(original, orientation)!!
+            assertEquals(target.width, normalized.width)
+            assertEquals(target.height, normalized.height)
+            assertEquals(target.argb.toList(), normalized.argb.toList())
+            assertEquals(Result.EXACT_PIXELS, VisualDuplicatePixelVerification.verify(normalized, target))
+        }
+        assertEquals(null, orientSourcePixels(original, 9))
+    }
 }
