@@ -425,6 +425,34 @@ class DuplicateTrashPreflightTest {
         assertFalse(allowed)
     }
 
+    @Test fun protectedPhysicalKeeperSetChangedToCanonicalAliasRevokesConsent() = runBlocking {
+        val protected = mutableSetOf("/storage/DCIM/keeper.jpg")
+        assertFalse(preflightDuplicateTrash(
+            listOf("content://copy"),
+            {
+                // Both paths canonicalize to the same location, but the user's
+                // protected-source selection has changed during SHA verification.
+                protected.clear()
+                protected.add("/storage/DCIM/./keeper.jpg")
+                true
+            },
+            sourceIdentity = { it },
+            physicalIdentity = { "/storage/DCIM/copy.jpg" },
+            protectedPhysicalIdentities = protected,
+        ))
+    }
+
+    @Test fun unchangedProtectedPhysicalKeeperSetStillAllowsVerifiedCopy() = runBlocking {
+        val protected = mutableSetOf("/storage/DCIM/keeper.jpg")
+        assertTrue(preflightDuplicateTrash(
+            listOf("content://copy"),
+            { true },
+            sourceIdentity = { it },
+            physicalIdentity = { "/storage/DCIM/copy.jpg" },
+            protectedPhysicalIdentities = protected,
+        ))
+    }
+
     @Test fun unrelatedKeeperSetChangeAlsoInvalidatesConsent() = runBlocking {
         val protected = mutableSetOf("content://keeper-old")
         val allowed = preflightDuplicateTrash(
