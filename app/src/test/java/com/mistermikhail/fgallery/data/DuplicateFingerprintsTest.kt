@@ -29,6 +29,15 @@ class DuplicateFingerprintsTest {
         quickHash = quick, fullHash = full, recycled = recycled,
     )
 
+    @Test fun fingerprintWindowWrapsAtEndAndHandlesExtremeCursorValues() {
+        val candidates = listOf("a", "b", "c", "d", "e")
+        assertEquals(listOf("e", "a", "b"), fingerprintCandidateWindow(candidates, 4, 3))
+        assertEquals(listOf("c", "d", "e"), fingerprintCandidateWindow(candidates, Int.MAX_VALUE, 3))
+        assertEquals(listOf("c", "d", "e"), fingerprintCandidateWindow(candidates, Int.MIN_VALUE, 3))
+        assertTrue(fingerprintCandidateWindow(candidates, 0, 0).isEmpty())
+        assertEquals(candidates, fingerprintCandidateWindow(candidates, 0, Int.MAX_VALUE))
+    }
+
     @Test fun staleFileOrProviderGenerationMustNotReceiveFingerprint() {
         val indexedSize = 256_000L
         val indexedModified = 1_730_000_000_875L
@@ -105,6 +114,44 @@ class DuplicateFingerprintsTest {
             exactDuplicateGroups(listOf(original, copy, rawPair, unfinished, trashed)))
     }
 
+    @Test fun fullSha256IdentityDoesNotDependOnEdgeHashVersion() {
+        val digest = "a".repeat(64)
+        val original = row("file:///original", quick = "edge-v1", full = digest)
+        val copy = row("file:///copy", quick = "edge-v2", full = digest)
+        val unrelated = row("file:///unrelated", quick = "edge-v1", full = "b".repeat(64))
+        assertEquals(listOf(listOf(copy, original)),
+            exactDuplicateGroups(listOf(original, copy, unrelated)))
+    }
+
+    @Test fun equalSizedGroupsKeepStableOrderAcrossCatalogueRescans() {
+        val digestA = "a".repeat(64)
+        val digestB = "b".repeat(64)
+        val groupA = listOf(
+            row("content://a-original", quick = "edge-a", full = digestA),
+            row("content://a-copy", quick = "edge-a", full = digestA),
+        )
+        val groupB = listOf(
+            row("content://b-original", quick = "edge-b", full = digestB),
+            row("content://b-copy", quick = "edge-b", full = digestB),
+        )
+        val first = exactDuplicateGroups(groupB + groupA)
+        val rescanned = exactDuplicateGroups((groupA + groupB).reversed())
+        assertEquals(first.map { group -> group.map { it.uri } },
+            rescanned.map { group -> group.map { it.uri } })
+        assertEquals("content://a-copy", first.first().first().uri)
+    }
+
+    @Test fun completeSha256StillGroupsWhenQuickFingerprintIsMissing() {
+        val digest = "c".repeat(64)
+        val original = row("file:///original", quick = null, full = digest)
+        val copy = row("file:///copy", quick = "edge-v2", full = digest)
+        val incomplete = row("file:///incomplete", quick = "edge-v2", full = null)
+        val different = row("file:///different", quick = null, full = "d".repeat(64))
+        val groups = exactDuplicateGroups(listOf(original, copy, incomplete, different))
+        assertEquals(1, groups.size)
+        assertEquals(setOf(original.uri, copy.uri), groups.single().map { it.uri }.toSet())
+    }
+
     @Test fun metadataOnlyRefreshRetainsHashesButChangedBytesInvalidate() {
         val old = row("file:///a", quick = "edge", full = "complete")
             .copy(perceptualHash = "perceptual", exifCamera = "Canon")
@@ -144,6 +191,18 @@ class DuplicateFingerprintsTest {
         )
         assertEquals(listOf(withEdges[0], withEdges[1], withEdges[2]),
             fullHashCandidates(withEdges))
+    }
+
+    @Test fun blankQuickFingerprintIsRetriedForSizeCollision() {
+        val blank = row("content://blank", size = 200, quick = "")
+        val whitespace = row("content://whitespace", size = 200, quick = "   ")
+        val missing = row("content://missing", size = 200)
+        val valid = row("content://valid", size = 200, quick = "edge")
+        val singleton = row("content://single", size = 201, quick = "")
+        val trashed = row("content://trashed", size = 200, quick = "", recycled = true)
+        assertEquals(listOf(blank, missing, whitespace),
+            quickHashCandidates(listOf(blank, whitespace, missing, valid, singleton, trashed)))
+        assertTrue(fullHashCandidates(listOf(blank, whitespace, missing)).isEmpty())
     }
 
     @Test fun repeatedCatalogueUriCannotCreateFalseDuplicateOrHashWork() {
@@ -256,5 +315,50 @@ class DuplicateFingerprintsTest {
         }
     }
 
+
+
+    @Test fun fullFingerprintCancellationAtEofIsNotPublished() {
+        val input = ByteArrayInputStream(byteArrayOf(1, 2, 3, 4))
+        var checks = 0
+        try {
+            DuplicateFingerprints.full(input, checkActive = {
+                checks++
+                if (checks == 3) throw java.util.concurrent.CancellationException("superseded")
+            }, expectedBytes = 4)
+            org.junit.Assert.fail("A scan cancelled after EOF must not publish its hash")
+        } catch (_: java.util.concurrent.CancellationException) {
+            assertEquals(3, checks)
+        }
+    }
+
+    @Test fun fullSha256HexCaseDoesNotSplitExactByteGroup() {
+        val lowercase = "abcdef0123456789".repeat(4)
+        val upper = row("content://upper", quick = "edge-v2", full = lowercase.uppercase())
+        val lower = row("content://lower", quick = "edge-v1", full = lowercase)
+        val different = row("content://different", quick = "edge-v1", full = "f".repeat(64))
+        val groups = exactDuplicateGroups(listOf(upper, lower, different))
+        assertEquals(1, groups.size)
+        assertEquals(setOf(upper.uri, lower.uri), groups.single().map { it.uri }.toSet())
+    }
+    @Test fun blankFullHashIsRequeuedButCompletedFingerprintIsNot() {
+        val absent = row("content://absent", size = 500, quick = "edge", full = null)
+        val blank = row("content://blank", size = 500, quick = "edge", full = "")
+        val spaces = row("content://spaces", size = 500, quick = "edge", full = "   ")
+        val complete = row("content://complete", size = 500, quick = "edge",
+            full = "a".repeat(64))
+        val unrelated = row("content://unrelated", size = 500, quick = "different", full = null)
+        val candidates = fullHashCandidates(listOf(absent, blank, spaces, complete, unrelated))
+        assertEquals(setOf(absent.uri, blank.uri, spaces.uri),
+            candidates.map { it.uri }.toSet())
+    }
+
+    @Test fun quickHashHexCaseDoesNotHideFullHashCandidates() {
+        val digest = "abcdef0123456789".repeat(4)
+        val first = row("content://first", size = 500, quick = digest.uppercase(), full = null)
+        val second = row("content://second", size = 500, quick = digest, full = null)
+        val unrelated = row("content://other", size = 500, quick = "f".repeat(64), full = null)
+        assertEquals(setOf(first.uri, second.uri),
+            fullHashCandidates(listOf(first, second, unrelated)).map { it.uri }.toSet())
+    }
 
 }

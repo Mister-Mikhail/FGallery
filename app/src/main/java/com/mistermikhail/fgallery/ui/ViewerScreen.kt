@@ -821,6 +821,12 @@ internal fun TiledZoomableImage(
     // without consuming events so Telephoto retains pinch zoom and pan.
     val quarterTurnGesture = remember(item.uriKey) { QuarterTurnGesture() }
     var displayRotation by remember(item.uriKey) { mutableFloatStateOf(0f) }
+    var rotationGestureActive by remember(item.uriKey) { mutableStateOf(false) }
+    val animatedRotation by animateFloatAsState(
+        targetValue = displayRotation,
+        animationSpec = tween(durationMillis = if (rotationGestureActive) 0 else 240),
+        label = "viewerQuarterTurn",
+    )
     Box(
         modifier = Modifier.fillMaxSize()
             .pointerInput(item.uriKey, active) {
@@ -836,18 +842,26 @@ internal fun TiledZoomableImage(
                             if (!tracking) {
                                 quarterTurnGesture.begin(vector.x, vector.y)
                                 tracking = true
+                                rotationGestureActive = true
                             } else {
-                                quarterTurnGesture.move(vector.x, vector.y)
+                                displayRotation = quarterTurnGesture.quarterTurns * 90f +
+                                    quarterTurnGesture.move(vector.x, vector.y)
                             }
                         } else if (tracking) {
-                            displayRotation = quarterTurnGesture.end().toFloat()
+                            val snapped = quarterTurnGesture.end().toFloat()
+                            displayRotation = snapped + 360f * ((displayRotation - snapped) / 360f).roundToInt()
                             tracking = false
+                            rotationGestureActive = false
                         }
                     } while (event.changes.any { it.pressed })
-                    if (tracking) displayRotation = quarterTurnGesture.end().toFloat()
+                    if (tracking) {
+                        val snapped = quarterTurnGesture.end().toFloat()
+                        displayRotation = snapped + 360f * ((displayRotation - snapped) / 360f).roundToInt()
+                        rotationGestureActive = false
+                    }
                 }
             }
-            .graphicsLayer { rotationZ = displayRotation },
+            .graphicsLayer { rotationZ = animatedRotation },
         contentAlignment = Alignment.Center,
     ) {
         if (cachedPreview != null && !imageState.isImageDisplayed) {

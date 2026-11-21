@@ -51,6 +51,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -145,7 +146,8 @@ class MainActivity : ComponentActivity() {
         val incomingUri by externalViewUri
         LaunchedEffect(incomingUri) {
             val uri = incomingUri ?: return@LaunchedEffect
-            externalViewUri.value = null
+            // Keep the intent key stable while resolving the document. Clearing it here
+            // cancels this LaunchedEffect on recomposition before PDF/SVG can open.
             runCatching {
                 val metadata = withContext(Dispatchers.IO) {
                     var displayName = uri.lastPathSegment?.substringAfterLast('/') ?: "Файл"
@@ -179,6 +181,9 @@ class MainActivity : ComponentActivity() {
                 Toast.makeText(this@MainActivity,
                     "Не удалось открыть файл: ${it.localizedMessage ?: "нет доступа"}", Toast.LENGTH_LONG).show()
             }
+            // Consume only the URI processed by this effect; a newer ACTION_VIEW
+            // delivered through onNewIntent must remain pending.
+            if (externalViewUri.value == uri) externalViewUri.value = null
         }
         // Save only the stable URI key: MediaItem itself is not Bundle-saveable.
         // Keep the existing object while scanning, so a refresh cannot close the viewer.
@@ -190,6 +195,31 @@ class MainActivity : ComponentActivity() {
         }
         LaunchedEffect(selectedItem?.uriKey) {
             selectedItem?.let { savedViewerUri = it.uriKey }
+        }
+        // Stage 6 review uses a single-flight fresh-byte trash transaction.
+        var duplicateReviewOpen by remember { mutableStateOf(false) }
+        var duplicateTrashInProgress by remember { mutableStateOf(false) }
+        var duplicateRows by remember { mutableStateOf<List<com.mistermikhail.fgallery.data.CatalogMediaRow>?>(null) }
+        var duplicateLoadError by remember { mutableStateOf<String?>(null) }
+        var duplicateStorages by remember { mutableStateOf<Set<String>>(emptySet()) }
+        var duplicateFolders by remember { mutableStateOf<Set<String>>(emptySet()) }
+        var duplicateSelected by remember { mutableStateOf<Set<String>>(emptySet()) }
+        var duplicateRefreshGeneration by remember { mutableIntStateOf(0) }
+        var visualCandidatePage by remember { mutableIntStateOf(0) }
+        var visualVerificationBusy by remember { mutableStateOf(false) }
+        var visualVerificationResults by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+        LaunchedEffect(duplicateReviewOpen, duplicateRefreshGeneration) {
+            if (duplicateReviewOpen) {
+                duplicateRows = null
+                duplicateLoadError = null
+                duplicateSelected = emptySet()
+                try {
+                    duplicateRows = com.mistermikhail.fgallery.data.CatalogStore
+                        .exactDuplicateReviewRows(this@MainActivity)
+                } catch (error: Exception) {
+                    duplicateLoadError = error.localizedMessage ?: "Ошибка чтения каталога"
+                }
+            }
         }
         var cleanupMode by remember { mutableStateOf(false) }
         val zoomTestPrefs = remember { getSharedPreferences("fgallery_zoom_test", MODE_PRIVATE) }
@@ -1151,9 +1181,16 @@ class MainActivity : ComponentActivity() {
 
         BackHandler(
             enabled = current == null && pendingMoveItems.isEmpty() &&
+                selectedIds.isEmpty() && !state.recycleBinVisible && state.searchVisible,
+        ) {
+            viewModel.closeSearch()
+        }
+
+        BackHandler(
+            enabled = current == null && pendingMoveItems.isEmpty() &&
                 selectedIds.isEmpty() &&
                 !state.recycleBinVisible &&
-                state.selectedAlbum != null,
+                state.selectedAlbum != null && !state.searchVisible,
         ) {
             viewModel.closeAlbum()
         }
@@ -1195,6 +1232,119 @@ class MainActivity : ComponentActivity() {
                         }
                     },
                 )
+            } else if (duplicateReviewOpen) {
+                BackHandler { if (!duplicateTrashInProgress && !visualVerificationBusy) duplicateReviewOpen = false }
+                val rows = duplicateRows
+                if (rows == null) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text(duplicateLoadError ?: "Загрузка каталога дубликатов…")
+                    }
+                } else {
+                    val review = com.mistermikhail.fgallery.data.planExactDuplicateReview(
+                        rows, duplicateStorages, duplicateFolders, duplicateSelected
+                    )
+                    // Review the entire scoped catalogue in bounded pages. Pixel decoding
+                    // remains opt-in; a page is not a claim of an exhaustive scan.
+                    val scopedVisualRows = remember(rows, duplicateStorages, duplicateFolders) {
+                        rows.asSequence()
+                            .filter { it.kind == "IMAGE" && !it.recycled }
+                            .filter { duplicateStorages.isEmpty() || it.storageId in duplicateStorages }
+                            .filter { duplicateFolders.isEmpty() || it.folderTarget in duplicateFolders }
+                            .toList()
+                    }
+                    val visualPageCount = com.mistermikhail.fgallery.data.visualCandidatePageCount(scopedVisualRows.size)
+                    val currentVisualPage = visualCandidatePage.coerceIn(0, visualPageCount - 1)
+                    val visualRows = com.mistermikhail.fgallery.data.visualCandidatePage(scopedVisualRows, currentVisualPage)
+                    val visualCandidates = com.mistermikhail.fgallery.data.visualCandidatesAcrossPages(
+                        scopedVisualRows, currentVisualPage
+                    )
+                    com.mistermikhail.fgallery.ui.ExactDuplicateReviewScreen(
+                        review = review,
+                        visualCandidates = visualCandidates,
+                        visualPage = currentVisualPage,
+                        visualPageCount = visualPageCount,
+                        onVisualPageChanged = { visualCandidatePage = it; visualVerificationResults = emptyMap() },
+                        visualStatus = visualVerificationResults,
+                        visualInProgress = visualVerificationBusy,
+                        onVerifyVisual = { firstUri, secondUri ->
+                            if (!visualVerificationBusy && !duplicateTrashInProgress) {
+                                val first = scopedVisualRows.firstOrNull { it.uri == firstUri }
+                                val second = scopedVisualRows.firstOrNull { it.uri == secondUri }
+                                if (first != null && second != null) {
+                                    visualVerificationBusy = true
+                                    val key = "$firstUri|$secondUri"
+                                    visualVerificationResults = visualVerificationResults +
+                                        (key to "Проверяем исходные файлы…")
+                                    uiScope.launch {
+                                        try {
+                                            val result = com.mistermikhail.fgallery.data
+                                                .VisualDuplicateSourceVerification.verify(
+                                                    this@MainActivity, first, second)
+                                            visualVerificationResults = visualVerificationResults +
+                                                (key to when (result) {
+                                                    com.mistermikhail.fgallery.data.VisualDuplicatePixelVerification.Result.EXACT_PIXELS ->
+                                                        "Пиксели совпадают. Только информация."
+                                                    com.mistermikhail.fgallery.data.VisualDuplicatePixelVerification.Result.EXACT_CROP ->
+                                                        "Подтверждено точное кадрирование. Только информация."
+                                                    com.mistermikhail.fgallery.data.VisualDuplicatePixelVerification.Result.EXACT_INTEGER_RESIZE ->
+                                                        "Подтвержден точный целочисленный resize. Только информация."
+                                                    else -> "Совпадение не подтверждено."
+                                                })
+                                        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                                            throw cancelled
+                                        } catch (error: Exception) {
+                                            visualVerificationResults = visualVerificationResults +
+                                                (key to "Не удалось проверить исходные файлы.")
+                                        } finally {
+                                            visualVerificationBusy = false
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        availableStorages = rows.map { it.storageId }.distinct(),
+                        availableFolders = rows.map { it.folderTarget }.distinct(),
+                        onScopeChanged = { storages, folders ->
+                            duplicateStorages = storages
+                            duplicateFolders = folders
+                            duplicateSelected = emptySet()
+                            visualCandidatePage = 0
+                            visualVerificationResults = emptyMap()
+                        },
+                        onCopySelectionChanged = { uri, selected ->
+                            duplicateSelected = if (selected) duplicateSelected + uri else duplicateSelected - uri
+                        },
+                        onRequestTrashVerification = { confirmedReview ->
+                            // One active mutation per review. Keep the selected
+                            // snapshot stable until the transaction completes.
+                            if (!duplicateTrashInProgress) {
+                                duplicateTrashInProgress = true
+                                uiScope.launch {
+                                    try {
+                                        val moved = viewModel.trashConfirmedExactDuplicates(confirmedReview)
+                                        duplicateRefreshGeneration++
+                                        Toast.makeText(this@MainActivity,
+                                            com.mistermikhail.fgallery.ui.exactDuplicateTrashFeedback(moved),
+                                            Toast.LENGTH_LONG).show()
+                                    } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                                        throw cancelled
+                                    } catch (error: Exception) {
+                                        duplicateRefreshGeneration++
+                                        Toast.makeText(this@MainActivity,
+                                            "Проверка или перемещение остановлено: ${error.localizedMessage ?: "нет доступа"}",
+                                            Toast.LENGTH_LONG).show()
+                                    } finally {
+                                        duplicateTrashInProgress = false
+                                    }
+                                }
+                            }
+                        },
+                        trashVerificationAvailable = true,
+                        trashInProgress = duplicateTrashInProgress,
+                        onClose = { duplicateReviewOpen = false },
+                        onRefresh = { visualCandidatePage = 0; visualVerificationResults = emptyMap(); duplicateRefreshGeneration++ },
+                    )
+                }
             } else if (state.recycleBinVisible) {
                 RecycleBinScreen(
                     items = state.recycleBinItems,
@@ -1262,6 +1412,13 @@ class MainActivity : ComponentActivity() {
                     onConfirmMoveChanged = viewModel::setConfirmMove,
                     onConfirmRenameChanged = viewModel::setConfirmRename,
                     livePreviewEnabled = current == null && pendingMoveItems.isEmpty(),
+                    onOpenExactDuplicates = {
+                        selectedIds = emptySet()
+                        duplicateStorages = emptySet()
+                        duplicateFolders = emptySet()
+                        duplicateSelected = emptySet()
+                        duplicateReviewOpen = true
+                    },
                     onOpenRecycleBin = {
                         selectedIds = emptySet()
                         selectedItem = null; savedViewerUri = null

@@ -22,16 +22,22 @@ internal object ExternalMediaKind {
         "heic", "heif", "tif", "tiff", "jxl", "ico"
     )
 
+    // Recognized document/CAD formats must not fall through to an image MIME
+    // incorrectly reported by a SAF provider. Dedicated viewers are future work.
+    private val externalDocuments = setOf("cdr", "dwg", "dxf", "stl", "step", "stp", "blend", "obj", "glb", "gltf", "3mf", "ply")
+
     private val legacyVideoMimes = setOf(
         "application/x-avi", "application/avi", "application/x-msvideo",
         "video/x-msvideo", "video/msvideo", "application/x-m4v", "video/x-m4v",
-        "application/mp4", "application/x-mp4", "application/m4v"
+        "application/mp4", "application/x-mp4", "application/m4v",
+        "video/m4v", "video/x-mp4"
     )
 
     fun classify(name: String, reportedMime: String?): MediaKind? {
         val normalizedMime = reportedMime?.substringBefore(';')?.trim()?.lowercase(Locale.ROOT)
         val extension = name.trim().substringAfterLast('.', "").lowercase(Locale.ROOT)
         return when {
+            extension in externalDocuments -> null
             extension in videos -> MediaKind.VIDEO
             extension in raws -> MediaKind.RAW
             extension == "pdf" -> MediaKind.PDF

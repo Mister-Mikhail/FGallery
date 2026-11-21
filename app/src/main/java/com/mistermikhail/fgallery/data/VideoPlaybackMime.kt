@@ -8,8 +8,14 @@ import java.util.Locale
  * application/octet-stream even for supported video filenames.
  */
 internal object VideoPlaybackMime {
+    private val nonVideoDocuments = setOf(
+        "cdr", "dwg", "dxf", "stl", "step", "stp", "blend", "obj", "glb", "gltf", "3mf", "ply", "pdf", "svg"
+    )
+
     fun forFile(name: String, reportedMime: String?): String? {
         val extension = name.trim().substringAfterLast('.', "").lowercase(Locale.ROOT)
+        // Never forward a known document to Media3 even if a SAF provider lies about its MIME.
+        if (extension in nonVideoDocuments) return null
         // Prefer a recognized extension over an unreliable provider MIME.
         return when (extension) {
             "m4v", "mp4", "m4p", "mov" -> "video/mp4"
@@ -18,10 +24,12 @@ internal object VideoPlaybackMime {
             "mpeg", "mpg" -> "video/mpeg"
             "mkv", "mk3d" -> "video/x-matroska"
             "webm" -> "video/webm"
-            "3gp", "3gpp", "3g2" -> "video/3gpp"
+            "3gp", "3gpp" -> "video/3gpp"
+            "3g2" -> "video/3gpp2"
             "ts", "m2ts", "mts" -> "video/mp2t"
             else -> when (val mime = reportedMime?.substringBefore(';')?.trim()?.lowercase(Locale.ROOT)) {
-                "application/x-m4v", "video/x-m4v", "application/mp4", "application/x-mp4", "application/m4v" -> "video/mp4"
+                "application/x-m4v", "video/x-m4v", "video/m4v", "video/x-mp4",
+                "application/mp4", "application/x-mp4", "application/m4v" -> "video/mp4"
                 "application/x-avi", "application/avi", "application/x-msvideo", "video/x-msvideo", "video/avi", "video/msvideo" -> "video/avi"
                 "video/quicktime" -> "video/mp4"
                 else -> mime?.takeIf { it.startsWith("video/") }

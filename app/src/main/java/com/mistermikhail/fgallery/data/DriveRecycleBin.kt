@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
@@ -67,8 +68,28 @@ class DriveRecycleBin(private val context: Context, private val mounted: () -> L
             } }
         }
     }
-    suspend fun trash(items: List<MediaItem>): List<String> = withContext(Dispatchers.IO) {
+    suspend fun trash(items: List<MediaItem>): List<String> = trashWithPreMoveCheck(items) { true }
+
+    /**
+     * Stage 6 mutation boundary. The verifier runs under the recycle-bin mutex
+     * immediately before EACH physical move. It must re-read source bytes and
+     * check the protected original and selected copy. False aborts the batch.
+     * The callback must not recursively call the recycle bin (same mutex).
+     */
+    suspend fun trashWithPreMoveCheck(
+        items: List<MediaItem>,
+        verifyBeforeMove: suspend (MediaItem) -> Boolean,
+    ): List<String> = withContext(Dispatchers.IO) {
         lock.withLock {
+            // Fail the entire proposed batch before the first mutation if any
+            // selected file is already missing, changed or inaccessible.
+            // The per-item check below is still required because SAF/MediaStore
+            // content may change between this preflight and the actual move.
+            check(preflightDuplicateTrash(items, verifyBeforeMove, { it.uriKey }, { item ->
+                item.sourcePath.takeIf { it.isNotBlank() }
+            })) {
+                "Повторная проверка выбранных файлов не пройдена"
+            }
             items.map { item ->
                 val source = StorageAccess.file(context, item)
                 val root = mounted().firstOrNull { source != null && source.path.startsWith(it.directory!!.path + "/") }
@@ -94,6 +115,10 @@ class DriveRecycleBin(private val context: Context, private val mounted: () -> L
                         output.write(record.toString().toByteArray(Charsets.UTF_8)); output.flush()
                         if (output is java.io.FileOutputStream) output.fd.sync()
                     }
+                    check(verifyBeforeMove(item)) {
+                        "Повторная проверка SHA-256 не пройдена: ${item.name}"
+                    }
+                    kotlinx.coroutines.currentCoroutineContext().ensureActive()
                     StorageAccess.move(context, item, folder, "${token}_${item.name}").toString().also { moved -> write(record.apply { put("lastUri", moved) }) }
                 } catch (e: Exception) {
                     if (uri(record) == null) { runCatching { StorageAccess.delete(context, sidecar) }; forget(token) }

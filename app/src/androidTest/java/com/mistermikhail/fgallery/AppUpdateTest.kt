@@ -35,7 +35,7 @@ class AppUpdateTest {
     }
     @Test fun manualCheckSelectsAnApkAndCanReofferAnAutomaticallyDeclinedVersion() = runBlocking {
         var requests = 0
-        val nextVersion = AppUpdates(context).installedVersion.split('.').let { "${it[0]}.${it[1]}.${it[2].toInt() + 1}" }
+        val nextVersion = AppUpdates(context).installedVersion.substringBefore('-').split('.').let { "${it[0]}.${it[1]}.${it[2].toInt() + 1}" }
         val json = """[{"tag_name":"v$nextVersion","draft":false,"assets":[{"name":"FGallery-$nextVersion-universal.apk","browser_download_url":"https://github.com/Mister-Mikhail/FGallery/releases/download/v$nextVersion/FGallery.apk","size":100,"digest":"sha256:abcd"}]}]"""
         val updates = AppUpdates(context, { requests++; response { ByteArrayInputStream(json.toByteArray()) } })
         val candidate = updates.check(false)!!
@@ -48,7 +48,7 @@ class AppUpdateTest {
     }
     @Test fun sameVersionNameHigherQaVersionCodeIsOffered() = runBlocking {
         val installed = context.packageManager.getPackageInfo(context.packageName, PackageManager.GET_SIGNING_CERTIFICATES)
-        val name = installed.versionName.orEmpty()
+        val name = installed.versionName.orEmpty().substringBefore('-')
         val build = installed.longVersionCode + 1
         val tag = "qa-v$name-b$build"
         val json = """[{"tag_name":"$tag","draft":false,"prerelease":true,
