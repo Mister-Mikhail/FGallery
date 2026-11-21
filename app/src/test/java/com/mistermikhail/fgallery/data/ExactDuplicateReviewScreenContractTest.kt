@@ -126,6 +126,23 @@ class ExactDuplicateReviewScreenContractTest {
         assertEquals(1, count(setOf("a"), mapOf("a" to true)))
     }
 
+    @Test fun alreadyOpenTrashDialogIsInvalidatedWhenScopeResetBegins() {
+        val canShowOrSubmit: (Boolean, Boolean, Boolean, Boolean, Boolean, Int, Boolean) -> Boolean =
+            { verified, scope, trash, visual, prompt, pending, resetting ->
+                com.mistermikhail.fgallery.ui.duplicateTrashActionEnabled(
+                    verified, scope, trash, visual, prompt, pending, resetting)
+            }
+        // Confirmation may have opened for the old restricted catalogue.
+        assertTrue(canShowOrSubmit(true, true, false, false, true, 0, false))
+        // Before the new all-storage catalogue arrives, neither the dialog nor
+        // its confirm callback may submit the stale review.
+        assertFalse(canShowOrSubmit(true, true, false, false, true, 0, true))
+        assertFalse(canShowOrSubmit(true, true, false, false, true, 1, true))
+        assertFalse(canShowOrSubmit(true, true, true, false, true, 0, false))
+        assertFalse(canShowOrSubmit(true, true, false, true, true, 0, false))
+        assertTrue(canShowOrSubmit(true, true, false, false, true, 0, false))
+    }
+
     @Test fun legacyScopeResetCannotAuthorizeTrashBeforeAllStorageReviewIsRebuilt() {
         val action: (Boolean, Boolean, Boolean, Boolean, Boolean, Int, Boolean) -> Boolean =
             { verified, scope, trash, visual, prompt, pending, reset ->
