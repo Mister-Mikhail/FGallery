@@ -126,6 +126,23 @@ class ExactDuplicateReviewScreenContractTest {
         assertEquals(1, count(setOf("a"), mapOf("a" to true)))
     }
 
+    @Test fun confirmationConsentIsBoundToExactCatalogueSnapshot() {
+        val initialRows = listOf(row("original", "phone", "Camera"), row("copy", "phone", "Camera"))
+        val snapshot = planExactDuplicateReview(initialRows, requestedUris = setOf("copy"))
+        val current: (ExactDuplicateReview?, ExactDuplicateReview) -> Boolean = { old, now ->
+            com.mistermikhail.fgallery.ui.duplicateConfirmationSnapshotCurrent(old, now)
+        }
+        assertFalse(current(null, snapshot))
+        assertTrue(current(snapshot, snapshot))
+        assertFalse(current(snapshot, snapshot.copy(selectedUris = emptySet())))
+        assertFalse(current(snapshot, snapshot.copy(includedFolderTargets = setOf("Camera"))))
+        val modifiedRows = initialRows.map {
+            if (it.uri == "copy") it.copy(dateModifiedMillis = 9) else it
+        }
+        val rebuilt = planExactDuplicateReview(modifiedRows, requestedUris = setOf("copy"))
+        assertFalse(current(snapshot, rebuilt))
+    }
+
     @Test fun alreadyOpenTrashDialogIsInvalidatedWhenScopeResetBegins() {
         val canShowOrSubmit: (Boolean, Boolean, Boolean, Boolean, Boolean, Int, Boolean) -> Boolean =
             { verified, scope, trash, visual, prompt, pending, resetting ->
