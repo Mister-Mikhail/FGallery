@@ -31,7 +31,11 @@ internal suspend fun <T> preflightDuplicateTrash(
     if (identities.any { it.isBlank() || '\u0000' in it } || identities.toSet().size != items.size) return false
     // Never authorize a protected original, even when the caller accidentally
     // includes it in a manually selected batch.
-    if (identities.any { it in protectedSourceIdentities }) return false
+    // Snapshot the keeper URI set: a catalogue refresh during slow SHA reads
+    // must invalidate consent rather than silently change which originals are protected.
+    val initialProtectedSources = try { protectedSourceIdentities.toSet() } catch (_: Exception) { return false }
+    if (initialProtectedSources.any { it.isBlank() || '\\u0000' in it }) return false
+    if (identities.any { it in initialProtectedSources }) return false
     // Different content URIs may alias one physical file. Where the caller can
     // resolve a trustworthy local path, reject repeated paths before any I/O.
     // Unknown SAF paths remain null and are never conflated with one another.
@@ -94,6 +98,8 @@ internal suspend fun <T> preflightDuplicateTrash(
         return false
     }
     if (finalIdentities != identities) return false
+    val finalProtectedSources = try { protectedSourceIdentities.toSet() } catch (_: Exception) { return false }
+    if (finalProtectedSources != initialProtectedSources || identities.any { it in finalProtectedSources }) return false
     val finalPaths = try { items.map(physicalIdentity) } catch (cancelled: java.util.concurrent.CancellationException) {
         throw cancelled
     } catch (interrupted: InterruptedException) {
