@@ -24,4 +24,21 @@ class DuplicatePendingSelectionTest {
         assertEquals(setOf("copy"), duplicatePendingSelectionKeysToDiscard(
             mapOf("copy" to false), setOf("original", "copy"), emptySet()))
     }
+    @Test fun copyPromotedToProtectedKeeperCannotRetainOptimisticCheck() {
+        assertEquals(setOf("copy"), duplicatePendingSelectionKeysToDiscard(
+            mapOf("copy" to true),
+            setOf("copy", "other-copy"),
+            emptySet(),
+            setOf("copy"),
+        ))
+    }
+
+    @Test fun unrelatedPendingCopyRemainsWhileKeeperChanges() {
+        assertEquals(setOf("former-copy"), duplicatePendingSelectionKeysToDiscard(
+            mapOf("former-copy" to true, "other-copy" to true),
+            setOf("former-copy", "other-copy"),
+            emptySet(),
+            setOf("former-copy"),
+        ))
+    }
 }
