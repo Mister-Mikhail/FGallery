@@ -75,6 +75,13 @@ internal object VisualDuplicatePixelVerification {
         val threeQuarterY = small.height * 3 / 4
         val quarter = small.argb[quarterY * small.width + quarterX]
         val oppositeQuarter = small.argb[threeQuarterY * small.width + threeQuarterX]
+        // Edge midpoints are inexpensive additional discriminators for crops
+        // with repetitive corners/interior. They avoid exhausting the bounded
+        // full-compare budget before a genuine late-position crop is reached.
+        val edgeTop = small.argb[anchorX]
+        val edgeBottom = small.argb[(small.height - 1) * small.width + anchorX]
+        val edgeLeft = small.argb[anchorY * small.width]
+        val edgeRight = small.argb[anchorY * small.width + small.width - 1]
         var fullComparisons = 0
         for (top in 0..maxTop) {
             for (left in 0..maxLeft) {
@@ -83,7 +90,11 @@ internal object VisualDuplicatePixelVerification {
                     large.argb[base + anchorY * large.width + anchorX] != center ||
                     large.argb[base + (small.height - 1) * large.width + small.width - 1] != last ||
                     large.argb[base + quarterY * large.width + quarterX] != quarter ||
-                    large.argb[base + threeQuarterY * large.width + threeQuarterX] != oppositeQuarter
+                    large.argb[base + threeQuarterY * large.width + threeQuarterX] != oppositeQuarter ||
+                    large.argb[base + anchorX] != edgeTop ||
+                    large.argb[base + (small.height - 1) * large.width + anchorX] != edgeBottom ||
+                    large.argb[base + anchorY * large.width] != edgeLeft ||
+                    large.argb[base + anchorY * large.width + small.width - 1] != edgeRight
                 ) continue
                 if (++fullComparisons > 128) return false
                 var equal = true
