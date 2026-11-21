@@ -109,7 +109,12 @@ internal suspend fun <T> preflightDuplicateTrash(
         return false
     }
     if (finalIdentities != identities) return false
-    val finalProtectedSources = try { protectedSourceIdentities.toSet() } catch (_: Exception) { return false }
+    val finalProtectedSources = try { protectedSourceIdentities.toSet() } catch (cancelled: java.util.concurrent.CancellationException) {
+        throw cancelled
+    } catch (interrupted: InterruptedException) {
+        Thread.currentThread().interrupt()
+        throw interrupted
+    } catch (_: Exception) { return false }
     if (finalProtectedSources != initialProtectedSources || identities.any { it in finalProtectedSources }) return false
     val finalPaths = try { items.map(physicalIdentity) } catch (cancelled: java.util.concurrent.CancellationException) {
         throw cancelled
@@ -126,7 +131,12 @@ internal suspend fun <T> preflightDuplicateTrash(
     val finalCanonicalPaths = try {
         finalPaths.map { it?.let { path -> java.io.File(path).canonicalPath } }
     } catch (_: java.io.IOException) { return false } catch (_: SecurityException) { return false }
-    val finalProtectedPhysicalSources = try { protectedPhysicalIdentities.toSet() } catch (_: Exception) { return false }
+    val finalProtectedPhysicalSources = try { protectedPhysicalIdentities.toSet() } catch (cancelled: java.util.concurrent.CancellationException) {
+        throw cancelled
+    } catch (interrupted: InterruptedException) {
+        Thread.currentThread().interrupt()
+        throw interrupted
+    } catch (_: Exception) { return false }
     if (finalProtectedPhysicalSources != initialProtectedPhysicalSources) return false
     val finalProtectedPaths = try {
         finalProtectedPhysicalSources.map { java.io.File(it).canonicalPath }.toSet()
