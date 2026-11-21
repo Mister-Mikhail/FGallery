@@ -58,7 +58,8 @@ internal object VisualDuplicatePixelVerification {
     private fun matchesExactCrop(large: Pixels, small: Pixels): Boolean {
         // A large offset is normal for real camera crops. Scan candidate
         // positions using a small set of anchors, then compare every pixel.
-        // Bound total pixel comparisons, not candidate count. Repetitive crops\n        // may have hundreds of false positions before the true late offset.
+        // Bound total pixel comparisons, not candidate count. Repetitive crops
+        // may have hundreds of false positions before the true late offset.
         val maxTop = large.height - small.height
         val maxLeft = large.width - small.width
         val anchorX = small.width / 2
@@ -82,7 +83,8 @@ internal object VisualDuplicatePixelVerification {
         val edgeBottom = small.argb[(small.height - 1) * small.width + anchorX]
         val edgeLeft = small.argb[anchorY * small.width]
         val edgeRight = small.argb[anchorY * small.width + small.width - 1]
-        var comparedPixels = 0L\n        val maxComparedPixels = 50_000_000L
+        var comparedPixels = 0L
+        val maxComparedPixels = 50_000_000L
         for (top in 0..maxTop) {
             for (left in 0..maxLeft) {
                 val base = top * large.width + left
@@ -96,9 +98,11 @@ internal object VisualDuplicatePixelVerification {
                     large.argb[base + anchorY * large.width] != edgeLeft ||
                     large.argb[base + anchorY * large.width + small.width - 1] != edgeRight
                 ) continue
-                // Fail closed on pathological repetitive inputs without\n                // rejecting a real late crop after just 128 candidates.
+                // Fail closed on pathological repetitive inputs without
+                // rejecting a real late crop after just 128 candidates.
                 var equal = true
-                loop@ for (y in 0 until small.height) for (x in 0 until small.width) {\n                    if (++comparedPixels > maxComparedPixels) return false
+                loop@ for (y in 0 until small.height) for (x in 0 until small.width) {
+                    if (++comparedPixels > maxComparedPixels) return false
                     if (small.argb[y * small.width + x] !=
                         large.argb[base + y * large.width + x]) {
                         equal = false
