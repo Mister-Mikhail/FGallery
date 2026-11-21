@@ -36,7 +36,7 @@ internal fun planExactDuplicateReview(
     // The caller can retry after catalogue reconciliation completes.
     // A blank URI cannot be resolved safely by the mutation layer. Reject the
     // entire review rather than offering an item that preflight must refuse.
-    if (indexedRows.any { it.uri.isBlank() } ||
+    if (indexedRows.any { it.uri.isBlank() || '\u0000' in it.uri } ||
         indexedRows.map { it.uri }.toSet().size != indexedRows.size) {
         return ExactDuplicateReview(emptyList(), emptySet(), emptySet(),
             includedStorageIds.toSet(), includedFolderTargets.toSet())
@@ -60,6 +60,9 @@ internal fun planExactDuplicateReview(
     val knownPaths = try {
         rawPaths.map { java.io.File(it).canonicalPath }
     } catch (_: java.io.IOException) {
+        return ExactDuplicateReview(emptyList(), emptySet(), emptySet(),
+            includedStorageIds.toSet(), includedFolderTargets.toSet())
+    } catch (_: SecurityException) {
         return ExactDuplicateReview(emptyList(), emptySet(), emptySet(),
             includedStorageIds.toSet(), includedFolderTargets.toSet())
     }
