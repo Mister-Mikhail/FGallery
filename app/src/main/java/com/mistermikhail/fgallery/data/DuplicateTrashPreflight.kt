@@ -34,7 +34,7 @@ internal suspend fun <T> preflightDuplicateTrash(
     // Snapshot the keeper URI set: a catalogue refresh during slow SHA reads
     // must invalidate consent rather than silently change which originals are protected.
     val initialProtectedSources = try { protectedSourceIdentities.toSet() } catch (_: Exception) { return false }
-    if (initialProtectedSources.any { it.isBlank() || '\\u0000' in it }) return false
+    if (initialProtectedSources.any { it.isBlank() || '\u0000' in it }) return false
     if (identities.any { it in initialProtectedSources }) return false
     // Different content URIs may alias one physical file. Where the caller can
     // resolve a trustworthy local path, reject repeated paths before any I/O.
