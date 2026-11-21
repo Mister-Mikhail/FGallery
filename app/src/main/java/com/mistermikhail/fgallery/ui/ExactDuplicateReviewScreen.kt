@@ -125,6 +125,12 @@ internal fun duplicateDisplayedSelectionCount(
     return count
 }
 
+/** Consent belongs to the exact catalogue and selection shown when the dialog opened. */
+internal fun duplicateConfirmationSnapshotCurrent(
+    snapshot: ExactDuplicateReview?,
+    current: ExactDuplicateReview,
+): Boolean = snapshot != null && snapshot == current
+
 internal fun exactDuplicateTrashFeedback(moved: Int): String =
     if (moved > 0) "В корзину перемещено: $moved"
     else "Файлы изменились или проверка SHA-256 не прошла. Обновите список."
@@ -150,6 +156,11 @@ internal fun ExactDuplicateReviewScreen(
     visualInProgress: Boolean = false,
 ) {
     var confirmOpen by remember { mutableStateOf(false) }
+    var confirmationSnapshot by remember { mutableStateOf<ExactDuplicateReview?>(null) }
+    fun openConfirmation() {
+        confirmationSnapshot = review
+        confirmOpen = true
+    }
     var previewUri by remember { mutableStateOf<String?>(null) }
     // Selection feedback is immediate; the host still owns authoritative verification.
     val pendingSelections = remember { mutableStateMapOf<String, Boolean>() }
@@ -211,7 +222,7 @@ internal fun ExactDuplicateReviewScreen(
                 Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
                     Text("Выбрано копий: $selectedNow")
                     OutlinedButton(
-                        onClick = { confirmOpen = true },
+                        onClick = { openConfirmation() },
                         enabled = duplicateTrashActionEnabled(trashVerificationAvailable, scopeAvailable, trashInProgress,
                             visualInProgress, prompt != null, pendingSelections.size, scopeResetPending),
                     ) { Text("Проверить и переместить в корзину…") }
@@ -328,7 +339,7 @@ internal fun ExactDuplicateReviewScreen(
             } }
         }
     }
-    if (confirmOpen && duplicateTrashActionEnabled(trashVerificationAvailable, scopeAvailable, trashInProgress, visualInProgress, prompt != null, pendingSelections.size, scopeResetPending)) {
+    if (confirmOpen && duplicateConfirmationSnapshotCurrent(confirmationSnapshot, review) && duplicateTrashActionEnabled(trashVerificationAvailable, scopeAvailable, trashInProgress, visualInProgress, prompt != null, pendingSelections.size, scopeResetPending)) {
         AlertDialog(
             onDismissRequest = { confirmOpen = false },
             title = { Text("Подтверждение корзины") },
@@ -338,10 +349,11 @@ internal fun ExactDuplicateReviewScreen(
                     confirmOpen = false
                     // Recheck the current UI preconditions at click time; the host
                     // independently re-reads file bytes and SHA-256 before trash.
-                    if (duplicateTrashActionEnabled(trashVerificationAvailable, scopeAvailable,
+                    if (duplicateConfirmationSnapshotCurrent(confirmationSnapshot, review) &&
+                            duplicateTrashActionEnabled(trashVerificationAvailable, scopeAvailable,
                             trashInProgress, visualInProgress, prompt != null,
                             pendingSelections.size, scopeResetPending)) {
-                        onRequestTrashVerification(review)
+                        onRequestTrashVerification(confirmationSnapshot!!)
                     }
                 }) { Text("Проверить и переместить") }
             },
