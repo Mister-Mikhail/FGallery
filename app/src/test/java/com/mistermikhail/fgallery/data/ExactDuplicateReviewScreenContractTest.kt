@@ -111,6 +111,21 @@ class ExactDuplicateReviewScreenContractTest {
         assertTrue(cardsAfter.single().items.first().protectedOriginal)
     }
 
+    @Test fun displayedSelectionCountUsesOnlyAuthoritativeSelectionAndPendingOverrides() {
+        val count: (Set<String>, Map<String, Boolean>) -> Int = { selected, pending ->
+            com.mistermikhail.fgallery.ui.duplicateDisplayedSelectionCount(selected, pending)
+        }
+        assertEquals(0, count(emptySet(), emptyMap()))
+        assertEquals(2, count(setOf("a", "b"), emptyMap()))
+        assertEquals(3, count(setOf("a", "b"), mapOf("c" to true)))
+        assertEquals(1, count(setOf("a", "b"), mapOf("a" to false)))
+        assertEquals(2, count(setOf("a", "b"), mapOf("a" to false, "c" to true)))
+        assertEquals(2, count(setOf("a", "b"), mapOf("a" to true, "c" to false)))
+        assertEquals(0, count(setOf("a"), mapOf("a" to false)))
+        // Repeated tapping never double-counts an already authoritative selection.
+        assertEquals(1, count(setOf("a"), mapOf("a" to true)))
+    }
+
     @Test fun pendingSelectionBlocksBothTrashButtonsUntilHostAcknowledges() {
         val enabled: (Boolean, Boolean, Boolean, Boolean, Boolean, Int) -> Boolean = { verified, scope, trash, visual, prompt, pending ->
             com.mistermikhail.fgallery.ui.duplicateTrashActionEnabled(verified, scope, trash, visual, prompt, pending)
