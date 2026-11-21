@@ -328,7 +328,7 @@ internal fun ExactDuplicateReviewScreen(
             } }
         }
     }
-    if (confirmOpen && duplicateTrashActionEnabled(trashVerificationAvailable, scopeAvailable, trashInProgress, visualInProgress, prompt != null, pendingSelections.size)) {
+    if (confirmOpen && duplicateTrashActionEnabled(trashVerificationAvailable, scopeAvailable, trashInProgress, visualInProgress, prompt != null, pendingSelections.size, scopeResetPending)) {
         AlertDialog(
             onDismissRequest = { confirmOpen = false },
             title = { Text("Подтверждение корзины") },
@@ -336,8 +336,13 @@ internal fun ExactDuplicateReviewScreen(
             confirmButton = {
                 TextButton(onClick = {
                     confirmOpen = false
-                    // Host MUST re-read current catalogue and bytes via verifiedExactDuplicateUris.
-                    onRequestTrashVerification(review)
+                    // Recheck the current UI preconditions at click time; the host
+                    // independently re-reads file bytes and SHA-256 before trash.
+                    if (duplicateTrashActionEnabled(trashVerificationAvailable, scopeAvailable,
+                            trashInProgress, visualInProgress, prompt != null,
+                            pendingSelections.size, scopeResetPending)) {
+                        onRequestTrashVerification(review)
+                    }
                 }) { Text("Проверить и переместить") }
             },
             dismissButton = {
