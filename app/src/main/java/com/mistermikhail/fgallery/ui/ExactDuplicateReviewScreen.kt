@@ -88,6 +88,13 @@ internal fun duplicateFolderScopeSummary(availableCount: Int, selected: Set<Stri
 internal fun duplicateLegacyScopeNeedsReset(storages: Set<String>, folders: Set<String>): Boolean =
     storages.isNotEmpty() || folders.isNotEmpty()
 
+/** A newly protected original must never appear checked, even for one frame of pending UI state. */
+internal fun duplicateDisplayedCopyChecked(
+    protectedOriginal: Boolean,
+    authoritativeSelected: Boolean,
+    pendingSelected: Boolean?,
+): Boolean = !protectedOriginal && (pendingSelected ?: authoritativeSelected)
+
 /** Pending checkbox changes are presentation-only and must block both trash entry points. */
 internal fun duplicateTrashActionEnabled(
     verifiedAvailable: Boolean,
@@ -256,7 +263,7 @@ internal fun ExactDuplicateReviewScreen(
                             DuplicatePreview(item.uri, item.displayName) { previewUri = item.uri }
                             Row {
                                 Checkbox(
-                                    checked = pendingSelections[item.uri] ?: item.manuallySelected,
+                                    checked = duplicateDisplayedCopyChecked(item.protectedOriginal, item.manuallySelected, pendingSelections[item.uri]),
                                     enabled = !scopeResetPending && duplicateScopeEditingEnabled(scopeAvailable, trashInProgress || visualInProgress) && !item.protectedOriginal,
                                     onCheckedChange = {
                                         confirmOpen = false
