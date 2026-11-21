@@ -317,7 +317,7 @@ internal fun ExactDuplicateReviewScreen(
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = onClose, enabled = !trashInProgress && !visualInProgress) { Text("Закрыть") }
             OutlinedButton(onClick = { confirmOpen = false; onRefresh() }, enabled = !trashInProgress && !visualInProgress) { Text("Обновить") }
-            OutlinedButton(onClick = { confirmOpen = true }, enabled = duplicateTrashActionEnabled(trashVerificationAvailable, scopeAvailable,
+            OutlinedButton(onClick = { openConfirmation() }, enabled = duplicateTrashActionEnabled(trashVerificationAvailable, scopeAvailable,
                     trashInProgress, visualInProgress, prompt != null, pendingSelections.size, scopeResetPending)) {
                 Text("В корзину…")
             }
