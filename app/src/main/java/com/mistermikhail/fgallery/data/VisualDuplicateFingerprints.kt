@@ -83,8 +83,12 @@ internal fun isCameraRawImage(name: String): Boolean =
  * capture timestamp shortlist candidates; only source-pixel verification can
  * confirm a crop. Never use this predicate to authorize trash.
  */
-internal fun cropCandidateStem(name: String): String = name.substringBeforeLast('.')
-    .lowercase(java.util.Locale.ROOT).removeSuffix("-crop").removeSuffix("_crop")
+internal fun cropCandidateStem(name: String): String {
+    val stem = name.substringBeforeLast('.').lowercase(java.util.Locale.ROOT)
+    // Normalize terminal editor crop suffixes, including numbered variants.
+    // Internal words and differently numbered camera frames remain distinct.
+    return stem.replace(Regex("[-_](?:crop|cropped)(?:[-_]\\d+)?$"), "")
+}
 
 internal fun potentialCropDuplicate(a: CatalogMediaRow, b: CatalogMediaRow): Boolean {
     if (a.uri == b.uri || a.recycled || b.recycled ||
