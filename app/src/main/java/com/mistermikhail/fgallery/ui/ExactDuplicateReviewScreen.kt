@@ -108,6 +108,22 @@ internal fun duplicatePendingSelectionKeysToDiscard(
     uri !in currentUris || checked == (uri in selectedUris)
 }.keys
 
+/** O(pending taps), not O(all rendered files), on each checkbox recomposition.
+ * This is display-only; verified trash still uses review.selectedUris.
+ */
+internal fun duplicateDisplayedSelectionCount(
+    authoritativeSelectedUris: Set<String>,
+    pending: Map<String, Boolean>,
+): Int {
+    var count = authoritativeSelectedUris.size
+    pending.forEach { (uri, checked) ->
+        val wasChecked = uri in authoritativeSelectedUris
+        if (checked && !wasChecked) count++
+        if (!checked && wasChecked) count--
+    }
+    return count
+}
+
 internal fun exactDuplicateTrashFeedback(moved: Int): String =
     if (moved > 0) "В корзину перемещено: $moved"
     else "Файлы изменились или проверка SHA-256 не прошла. Обновите список."
@@ -185,9 +201,7 @@ internal fun ExactDuplicateReviewScreen(
             }, enabled = !trashInProgress && !visualInProgress) { Text("Сбросить область поиска") }
             }
         }
-        val selectedNow = cards.sumOf { card -> card.items.count { item ->
-            !item.protectedOriginal && (pendingSelections[item.uri] ?: item.manuallySelected)
-        } }
+        val selectedNow = duplicateDisplayedSelectionCount(review.selectedUris, pendingSelections)
         item(key = "selection-summary") { Text("Выбрано вручную: $selectedNow. Ничего не удаляется автоматически.") }
         if (selectedNow > 0) {
             item(key = "selection-actions") {
