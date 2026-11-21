@@ -19,6 +19,22 @@ class VisualDuplicateSourceVerificationTest {
         assertFalse(safeSourceDimensions(2, 2, 3))
     }
 
+    @Test fun combinedDecodeBudgetRejectsTwoIndividuallyValidLargeImages() {
+        assertTrue(safeSourceDimensions(3000, 3000))
+        assertFalse(safeVisualPairDimensions(3000, 3000, 3000, 3000))
+        assertTrue(safeVisualPairDimensions(2000, 2000, 2000, 2000))
+        assertTrue(safeVisualPairDimensions(3000, 2000, 3000, 2000))
+        assertFalse(safeVisualPairDimensions(3000, 2000, 3000, 2001))
+    }
+
+    @Test fun combinedDecodeBudgetFailsClosedForInvalidAndOverflowingDimensions() {
+        assertFalse(safeVisualPairDimensions(0, 100, 100, 100))
+        assertFalse(safeVisualPairDimensions(100, 100, -1, 100))
+        assertFalse(safeVisualPairDimensions(Int.MAX_VALUE, Int.MAX_VALUE, 1, 1))
+        assertFalse(safeVisualPairDimensions(1, 1, Int.MAX_VALUE, Int.MAX_VALUE))
+        assertFalse(safeVisualPairDimensions(2, 2, 2, 2, 7))
+    }
+
     private fun image(uri: String, name: String, width: Int, height: Int) = CatalogMediaRow(
         uri = uri, mediaId = 1, name = name, mimeType = "image/jpeg",
         kind = "IMAGE", dateTakenMillis = 123_000L, width = width, height = height,
