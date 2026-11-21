@@ -58,6 +58,23 @@ class VisualDuplicatePixelVerificationTest {
         assertEquals(Result.UNVERIFIED, VisualDuplicatePixelVerification.verify(original, retouched))
     }
 
+    @Test fun lateCropSurvivesManyRepetitiveCornerAndCenterMatches() {
+        // The genuine crop is near the end of the scan. Earlier positions
+        // share its corner and centre pixels but not its interior details.
+        // Previously 128 expensive false candidates exhausted the verifier.
+        val original = pixels(48, 48) { _, _ -> 0xff000000.toInt() }
+        val data = original.argb.copyOf()
+        val left = 37
+        val top = 37
+        data[(top + 2) * 48 + left + 2] = 0xff123456.toInt()
+        data[(top + 6) * 48 + left + 6] = 0xffabcdef.toInt()
+        val detailed = Pixels(48, 48, data)
+        val crop = pixels(8, 8) { x, y -> data[(top + y) * 48 + left + x] }
+        assertEquals(Result.EXACT_CROP, VisualDuplicatePixelVerification.verify(detailed, crop))
+        val retouched = crop.copy(argb = crop.argb.copyOf().also { it[2 * 8 + 2] = it[2 * 8 + 2] xor 1 })
+        assertEquals(Result.UNVERIFIED, VisualDuplicatePixelVerification.verify(detailed, retouched))
+    }
+
     @Test fun invalidAndExpensiveGeometryFailsClosed() {
         val original = pixels(100, 100) { x, y -> x + y }
         val small = pixels(2, 2) { x, y -> 10000 + x + y }
