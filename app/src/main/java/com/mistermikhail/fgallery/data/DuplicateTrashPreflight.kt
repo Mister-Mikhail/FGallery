@@ -33,7 +33,12 @@ internal suspend fun <T> preflightDuplicateTrash(
     // includes it in a manually selected batch.
     // Snapshot the keeper URI set: a catalogue refresh during slow SHA reads
     // must invalidate consent rather than silently change which originals are protected.
-    val initialProtectedSources = try { protectedSourceIdentities.toSet() } catch (_: Exception) { return false }
+    val initialProtectedSources = try { protectedSourceIdentities.toSet() } catch (cancelled: java.util.concurrent.CancellationException) {
+        throw cancelled
+    } catch (interrupted: InterruptedException) {
+        Thread.currentThread().interrupt()
+        throw interrupted
+    } catch (_: Exception) { return false }
     if (initialProtectedSources.any { it.isBlank() || '\u0000' in it }) return false
     if (identities.any { it in initialProtectedSources }) return false
     // Different content URIs may alias one physical file. Where the caller can
@@ -55,7 +60,12 @@ internal suspend fun <T> preflightDuplicateTrash(
     if (knownPaths.filterNotNull().toSet().size != knownPaths.count { it != null }) return false
     // Provider aliases may have different URIs but the same underlying path.
     // Check protected originals as well as duplicate selected copies.
-    val initialProtectedPhysicalSources = try { protectedPhysicalIdentities.toSet() } catch (_: Exception) { return false }
+    val initialProtectedPhysicalSources = try { protectedPhysicalIdentities.toSet() } catch (cancelled: java.util.concurrent.CancellationException) {
+        throw cancelled
+    } catch (interrupted: InterruptedException) {
+        Thread.currentThread().interrupt()
+        throw interrupted
+    } catch (_: Exception) { return false }
     val protectedPaths = try {
         initialProtectedPhysicalSources.map { path ->
             if (path.isBlank() || '\u0000' in path) return false
