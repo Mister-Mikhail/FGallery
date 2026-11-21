@@ -25,6 +25,11 @@ internal data class ExactDuplicateReviewCard(
 internal fun exactDuplicateReviewCards(
     review: ExactDuplicateReview,
 ): List<ExactDuplicateReviewCard> {
+    // A stale review can contain the same provider URI in different SHA groups.
+    // Hide all cards until the catalogue is reconciled: a visually selectable
+    // alias must not appear even when the separate trash prompt rejects it.
+    val allUris = review.groups.flatten().map { it.uri }
+    if (allUris.size != allUris.toSet().size) return emptyList()
     // Index once: repeated linear searches become quadratic on large duplicate libraries.
     val summariesByOriginal = exactDuplicateGroupSummaries(review).associateBy { it.originalUri }
     return review.groups.mapNotNull { group ->
