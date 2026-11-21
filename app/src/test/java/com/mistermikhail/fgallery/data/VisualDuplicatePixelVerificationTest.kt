@@ -90,6 +90,21 @@ class VisualDuplicatePixelVerificationTest {
         assertEquals(Result.UNVERIFIED, VisualDuplicatePixelVerification.verify(original, edited))
     }
 
+    @Test fun exactLateCropAfterMoreThan128FullCandidatesIsNotStarved() {
+        // All nine anchors match the uniform background at many offsets.
+        // A distinct non-anchor pixel exists only in the genuine late crop.
+        val width = 48
+        val data = IntArray(width * width) { 0xff000000.toInt() }
+        val left = 37
+        val top = 37
+        data[(top + 1) * width + left + 3] = 0xff223344.toInt()
+        val original = Pixels(width, width, data)
+        val crop = pixels(8, 8) { x, y -> data[(top + y) * width + left + x] }
+        assertEquals(Result.EXACT_CROP, VisualDuplicatePixelVerification.verify(original, crop))
+        val retouched = crop.copy(argb = crop.argb.copyOf().also { it[1 * 8 + 3] = it[1 * 8 + 3] xor 1 })
+        assertEquals(Result.UNVERIFIED, VisualDuplicatePixelVerification.verify(original, retouched))
+    }
+
     @Test fun invalidAndExpensiveGeometryFailsClosed() {
         val original = pixels(100, 100) { x, y -> x + y }
         val small = pixels(2, 2) { x, y -> 10000 + x + y }
