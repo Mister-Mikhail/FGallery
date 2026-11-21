@@ -96,7 +96,8 @@ internal fun duplicateTrashActionEnabled(
     visualInProgress: Boolean,
     hasPrompt: Boolean,
     pendingSelectionCount: Int,
-): Boolean = verifiedAvailable && pendingSelectionCount == 0 &&
+    scopeResetPending: Boolean = false,
+): Boolean = verifiedAvailable && !scopeResetPending && pendingSelectionCount == 0 &&
     duplicateTrashConfirmationEnabled(scopeAvailable, trashInProgress, visualInProgress, hasPrompt)
 
 /** Pending taps remain visible until acknowledged, but cannot outlive their files. */
@@ -169,12 +170,13 @@ internal fun ExactDuplicateReviewScreen(
             onScopeChanged(emptySet(), emptySet())
         }
     }
+    val scopeResetPending = duplicateLegacyScopeNeedsReset(review.includedStorageIds, review.includedFolderTargets)
     val scopeAvailable = duplicateReviewScopeAvailable(review, availableStorages, availableFolders)
-    val prompt = if (scopeAvailable && !trashInProgress && !visualInProgress) exactDuplicateTrashPrompt(review) else null
+    val prompt = if (scopeAvailable && !scopeResetPending && !trashInProgress && !visualInProgress) exactDuplicateTrashPrompt(review) else null
     // A disconnected SAF source invalidates an already-open confirmation.
     // Reconnection must require a fresh tap, not resurrect an old dialog.
     LaunchedEffect(scopeAvailable, prompt, pendingSelections.size) {
-        if (pendingSelections.isNotEmpty()) confirmOpen = false
+        if (pendingSelections.isNotEmpty() || scopeResetPending) confirmOpen = false
         if (duplicateConfirmationInvalidated(review, availableStorages, availableFolders)) confirmOpen = false
     }
     MaterialTheme(colorScheme = darkColorScheme(background = Color.Black, surface = Color(0xFF161616), onBackground = Color(0xFFE0E0E0), onSurface = Color(0xFFE0E0E0))) {
@@ -211,7 +213,7 @@ internal fun ExactDuplicateReviewScreen(
                     OutlinedButton(
                         onClick = { confirmOpen = true },
                         enabled = duplicateTrashActionEnabled(trashVerificationAvailable, scopeAvailable, trashInProgress,
-                            visualInProgress, prompt != null, pendingSelections.size),
+                            visualInProgress, prompt != null, pendingSelections.size, scopeResetPending),
                     ) { Text("Проверить и переместить в корзину…") }
                     if (pendingSelections.isNotEmpty()) Text("Синхронизация выделения…", style = MaterialTheme.typography.bodySmall)
                 }
@@ -243,7 +245,7 @@ internal fun ExactDuplicateReviewScreen(
                             Row {
                                 Checkbox(
                                     checked = pendingSelections[item.uri] ?: item.manuallySelected,
-                                    enabled = duplicateScopeEditingEnabled(scopeAvailable, trashInProgress || visualInProgress) && !item.protectedOriginal,
+                                    enabled = !scopeResetPending && duplicateScopeEditingEnabled(scopeAvailable, trashInProgress || visualInProgress) && !item.protectedOriginal,
                                     onCheckedChange = {
                                         confirmOpen = false
                                         pendingSelections[item.uri] = it
@@ -304,7 +306,7 @@ internal fun ExactDuplicateReviewScreen(
             OutlinedButton(onClick = onClose, enabled = !trashInProgress && !visualInProgress) { Text("Закрыть") }
             OutlinedButton(onClick = { confirmOpen = false; onRefresh() }, enabled = !trashInProgress && !visualInProgress) { Text("Обновить") }
             OutlinedButton(onClick = { confirmOpen = true }, enabled = duplicateTrashActionEnabled(trashVerificationAvailable, scopeAvailable,
-                    trashInProgress, visualInProgress, prompt != null, pendingSelections.size)) {
+                    trashInProgress, visualInProgress, prompt != null, pendingSelections.size, scopeResetPending)) {
                 Text("В корзину…")
             }
         }
