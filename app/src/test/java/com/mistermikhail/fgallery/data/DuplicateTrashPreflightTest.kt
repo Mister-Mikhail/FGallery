@@ -414,4 +414,26 @@ class DuplicateTrashPreflightTest {
         assertEquals(listOf("content://provider/copy1"), checked)
     }
 
+    @Test fun protectedKeeperSetChangedDuringHashVerificationRejectsBatch() = runBlocking {
+        val protected = mutableSetOf("content://keeper-old")
+        val allowed = preflightDuplicateTrash(
+            listOf("content://copy"),
+            { protected.clear(); protected.add("content://copy"); true },
+            sourceIdentity = { it },
+            protectedSourceIdentities = protected,
+        )
+        assertFalse(allowed)
+    }
+
+    @Test fun unrelatedKeeperSetChangeAlsoInvalidatesConsent() = runBlocking {
+        val protected = mutableSetOf("content://keeper-old")
+        val allowed = preflightDuplicateTrash(
+            listOf("content://copy"),
+            { protected.clear(); protected.add("content://keeper-new"); true },
+            sourceIdentity = { it },
+            protectedSourceIdentities = protected,
+        )
+        assertFalse(allowed)
+    }
+
 }
