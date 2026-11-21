@@ -41,4 +41,30 @@ class DuplicatePendingSelectionTest {
             setOf("former-copy"),
         ))
     }
+
+    @Test fun promotedKeeperDoesNotInflateDisplayedSelectionCount() {
+        assertEquals(1, duplicateDisplayedSelectionCount(
+            setOf("other-copy"),
+            mapOf("promoted-keeper" to true),
+            setOf("promoted-keeper", "other-copy"),
+            setOf("promoted-keeper"),
+        ))
+    }
+
+    @Test fun removedCopyDoesNotInflateDisplayedSelectionCountBeforeEffectCleanup() {
+        assertEquals(1, duplicateDisplayedSelectionCount(
+            setOf("remaining-copy"),
+            mapOf("removed-copy" to true),
+            setOf("remaining-copy"),
+        ))
+    }
+
+    @Test fun pendingUncheckStillReducesEligibleDisplayedCount() {
+        assertEquals(0, duplicateDisplayedSelectionCount(
+            setOf("copy"),
+            mapOf("copy" to false),
+            setOf("keeper", "copy"),
+            setOf("keeper"),
+        ))
+    }
 }
