@@ -112,7 +112,9 @@ class ExactDuplicateReviewScreenContractTest {
     }
 
     @Test fun protectedOriginalNeverDisplaysAsCheckedDuringPendingSelection() {
-        val checked = com.mistermikhail.fgallery.ui::duplicateDisplayedCopyChecked
+        val checked: (Boolean, Boolean, Boolean?) -> Boolean = { protected, selected, pending ->
+            com.mistermikhail.fgallery.ui.duplicateDisplayedCopyChecked(protected, selected, pending)
+        }
         assertFalse(checked(true, false, true))
         assertFalse(checked(true, true, true))
         assertFalse(checked(true, true, null))
