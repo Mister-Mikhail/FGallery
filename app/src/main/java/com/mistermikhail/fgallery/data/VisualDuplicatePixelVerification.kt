@@ -66,13 +66,24 @@ internal object VisualDuplicatePixelVerification {
         val first = small.argb[0]
         val center = small.argb[anchorY * small.width + anchorX]
         val last = small.argb.last()
+        // Extra interior anchors reject repetitive near-matches before the
+        // bounded full-pixel pass. A crop later in a large image must not be
+        // starved by earlier positions sharing only the corner/centre pixels.
+        val quarterX = small.width / 4
+        val quarterY = small.height / 4
+        val threeQuarterX = small.width * 3 / 4
+        val threeQuarterY = small.height * 3 / 4
+        val quarter = small.argb[quarterY * small.width + quarterX]
+        val oppositeQuarter = small.argb[threeQuarterY * small.width + threeQuarterX]
         var fullComparisons = 0
         for (top in 0..maxTop) {
             for (left in 0..maxLeft) {
                 val base = top * large.width + left
                 if (large.argb[base] != first ||
                     large.argb[base + anchorY * large.width + anchorX] != center ||
-                    large.argb[base + (small.height - 1) * large.width + small.width - 1] != last
+                    large.argb[base + (small.height - 1) * large.width + small.width - 1] != last ||
+                    large.argb[base + quarterY * large.width + quarterX] != quarter ||
+                    large.argb[base + threeQuarterY * large.width + threeQuarterX] != oppositeQuarter
                 ) continue
                 if (++fullComparisons > 128) return false
                 var equal = true
