@@ -119,6 +119,22 @@ class ExactDuplicateReviewPresentationTest {
         assertNull(exactDuplicateTrashPrompt(malformed))
     }
 
+    @Test fun crossGroupUriAliasHidesAllReviewCardsBeforeSelection() {
+        val first = planExactDuplicateReview(
+            listOf(row("original"), row("copy")),
+            requestedUris = setOf("copy"),
+        )
+        val second = planExactDuplicateReview(
+            listOf(row("other", "b".repeat(64)), row("copy", "b".repeat(64))),
+        )
+        val corrupt = first.copy(groups = first.groups + second.groups)
+        // Each group is individually well formed; the duplicate URI across
+        // groups makes the entire review ambiguous, not merely the trash prompt.
+        assertTrue(exactDuplicateReviewCards(corrupt).isEmpty())
+        assertNull(exactDuplicateTrashPrompt(corrupt))
+        assertEquals(1, exactDuplicateReviewCards(first).size)
+    }
+
     @Test fun repeatedKeeperUriAcrossDifferentHashGroupsBlocksTrashConsent() {
         val first = planExactDuplicateReview(
             listOf(row("original"), row("copy")),
