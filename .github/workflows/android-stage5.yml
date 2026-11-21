@@ -115,7 +115,7 @@ jobs:
     # An immutable
     # QA tag is created ONCE, explicitly, after the consolidated test pack is
     # ready; otherwise every fix after build28 fails against the old QA tag.
-    if: (github.event_name == 'workflow_dispatch' && inputs.publish_qa == true && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/fix/fgallery-m4v-saf-mime-regression'))
+    if: (github.event_name == 'workflow_dispatch' && inputs.publish_qa == true && (github.ref == 'refs/heads/fix/fgallery-m4v-saf-mime-regression'))
     needs: [r8-build, r8-device-tests]
     runs-on: ubuntu-latest
     permissions:
@@ -137,9 +137,9 @@ jobs:
           set -euo pipefail
           version=$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts)
           code=$(sed -n 's/.*versionCode = \([0-9][0-9]*\).*/\1/p' app/build.gradle.kts)
-          test "$version" = "0.4.0"
+          [[ "$version" == 0.4.0* ]]
           test -n "$code"
-          tag="qa-v$version-b$code"
+          tag="qa-v0.4.0-b$code"
           if gh release view "$tag" >/dev/null 2>&1; then
             existing_sha=$(gh api "repos/$GITHUB_REPOSITORY/commits/$tag" --jq '.sha')
             if [[ "$existing_sha" != "$SOURCE_SHA" ]]; then
@@ -156,7 +156,7 @@ jobs:
           arm64_sha=$(sha256sum "$arm64" | cut -d' ' -f1)
           universal_sha=$(sha256sum "$universal" | cut -d' ' -f1)
           {
-            echo "FGallery 0.4.0 build $code — TEST ONLY. Not a stable production release."
+            echo "FGallery $version build $code — TEST ONLY. Not a stable production release."
             echo "Exact source SHA: $SOURCE_SHA"
             echo "Signed with existing TEST certificate, SHA256: ce2293752c0a4a8c844caff57fa3bc28ee9206e927ad311dbcf3a5e71c803eb2."
             echo "R8 build, unit checks, Android 16 instrumented tests: passed. Galaxy S23 physical acceptance: pending."
