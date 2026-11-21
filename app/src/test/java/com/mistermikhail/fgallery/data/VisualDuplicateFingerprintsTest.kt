@@ -125,6 +125,23 @@ class VisualDuplicateFingerprintsTest {
         assertTrue(visualCandidatesAcrossPages(rows, 0).contains("content://original" to "content://crop"))
     }
 
+    @Test fun numberedEditorCropsAreShortlistedWithoutMatchingDHash() {
+        val original = row("content://original", "0000000000000000")
+            .copy(name = "DSC_12345.jpg")
+        for (name in listOf("DSC_12345-crop-2.jpg", "DSC_12345_crop_3.png",
+            "DSC_12345-cropped.jpg", "DSC_12345_cropped_4.jpg")) {
+            val candidate = row("content://crop-$name", "ffffffffffffffff")
+                .copy(name = name, width = 1600, height = 1200)
+            assertEquals("dsc_12345", cropCandidateStem(name))
+            assertTrue(name, potentialCropDuplicate(original, candidate))
+            assertTrue(name, visualCandidatesAcrossPages(listOf(original, candidate), 0)
+                .contains(original.uri to candidate.uri))
+        }
+        assertFalse(potentialCropDuplicate(original, original.copy(
+            uri = "content://burst", name = "DSC_12346-crop.jpg",
+            width = 1600, height = 1200)))
+    }
+
     @Test fun crossPageCropWithoutExifTimestampIsStillReviewable() {
         val rows = (0 until 251).map { index ->
             row("content://other-$index", "aaaaaaaaaaaaaaaa")
