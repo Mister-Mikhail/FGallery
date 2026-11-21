@@ -123,9 +123,15 @@ internal fun duplicatePendingSelectionKeysToDiscard(
 internal fun duplicateDisplayedSelectionCount(
     authoritativeSelectedUris: Set<String>,
     pending: Map<String, Boolean>,
+    currentUris: Set<String> = authoritativeSelectedUris + pending.keys,
+    protectedUris: Set<String> = emptySet(),
 ): Int {
-    var count = authoritativeSelectedUris.size
+    // Compose effects clear stale optimistic taps asynchronously. Never count
+    // an inaccessible row or newly protected keeper while that effect runs.
+    val eligible = currentUris - protectedUris
+    var count = authoritativeSelectedUris.count { it in eligible }
     pending.forEach { (uri, checked) ->
+        if (uri !in eligible) return@forEach
         val wasChecked = uri in authoritativeSelectedUris
         if (checked && !wasChecked) count++
         if (!checked && wasChecked) count--
@@ -222,7 +228,11 @@ internal fun ExactDuplicateReviewScreen(
             }, enabled = !trashInProgress && !visualInProgress) { Text("Сбросить область поиска") }
             }
         }
-        val selectedNow = duplicateDisplayedSelectionCount(review.selectedUris, pendingSelections)
+        val selectedNow = duplicateDisplayedSelectionCount(
+            review.selectedUris, pendingSelections,
+            review.groups.asSequence().flatten().map { it.uri }.toSet(),
+            review.protectedUris,
+        )
         item(key = "selection-summary") { Text("Выбрано вручную: $selectedNow. Ничего не удаляется автоматически.") }
         if (selectedNow > 0) {
             item(key = "selection-actions") {
