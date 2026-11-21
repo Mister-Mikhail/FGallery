@@ -105,6 +105,25 @@ class VisualDuplicatePixelVerificationTest {
         assertEquals(Result.UNVERIFIED, VisualDuplicatePixelVerification.verify(original, retouched))
     }
 
+    @Test fun cropSearchStillFindsLateMatchAfterBudgetingCandidateProbes() {
+        // A long scan with mostly failing anchors must still find a genuine
+        // crop. Candidate probes now share the full comparison work budget.
+        val width = 600
+        val height = 420
+        val data = IntArray(width * height) { 0xff000000.toInt() }
+        val left = 571
+        val top = 397
+        for (y in 0 until 20) for (x in 0 until 24) {
+            data[(top + y) * width + left + x] =
+                0xff000000.toInt() or (x * 65537 + y * 257)
+        }
+        val original = Pixels(width, height, data)
+        val crop = pixels(24, 20) { x, y -> data[(top + y) * width + left + x] }
+        assertEquals(Result.EXACT_CROP, VisualDuplicatePixelVerification.verify(original, crop))
+        val edited = crop.copy(argb = crop.argb.copyOf().also { it[23] = it[23] xor 1 })
+        assertEquals(Result.UNVERIFIED, VisualDuplicatePixelVerification.verify(original, edited))
+    }
+
     @Test fun invalidAndExpensiveGeometryFailsClosed() {
         val original = pixels(100, 100) { x, y -> x + y }
         val small = pixels(2, 2) { x, y -> 10000 + x + y }
