@@ -85,9 +85,12 @@ internal object VisualDuplicatePixelVerification {
         val edgeRight = small.argb[anchorY * small.width + small.width - 1]
         var comparedPixels = 0L
         val maxComparedPixels = 50_000_000L
+        // Anchor probes also consume CPU. Charge every examined candidate
+        // against the same budget, even when it fails before a full scan.
         for (top in 0..maxTop) {
             for (left in 0..maxLeft) {
                 val base = top * large.width + left
+                if (++comparedPixels > maxComparedPixels) return false
                 if (large.argb[base] != first ||
                     large.argb[base + anchorY * large.width + anchorX] != center ||
                     large.argb[base + (small.height - 1) * large.width + small.width - 1] != last ||
