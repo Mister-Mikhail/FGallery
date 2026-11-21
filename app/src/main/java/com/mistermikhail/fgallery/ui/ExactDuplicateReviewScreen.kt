@@ -105,8 +105,9 @@ internal fun duplicatePendingSelectionKeysToDiscard(
     pending: Map<String, Boolean>,
     currentUris: Set<String>,
     selectedUris: Set<String>,
+    protectedUris: Set<String> = emptySet(),
 ): Set<String> = pending.filter { (uri, checked) ->
-    uri !in currentUris || checked == (uri in selectedUris)
+    uri !in currentUris || uri in protectedUris || checked == (uri in selectedUris)
 }.keys
 
 /** O(pending taps), not O(all rendered files), on each checkbox recomposition.
@@ -165,11 +166,11 @@ internal fun ExactDuplicateReviewScreen(
     // Selection feedback is immediate; the host still owns authoritative verification.
     val pendingSelections = remember { mutableStateMapOf<String, Boolean>() }
     val cards = remember(review) { exactDuplicateReviewCards(review) }
-    LaunchedEffect(review.groups, review.selectedUris) {
+    LaunchedEffect(review.groups, review.selectedUris, review.protectedUris) {
         // Preserve in-flight taps across catalogue emissions, but never carry
         // selections over to files no longer present in the current review.
         val currentUris = review.groups.asSequence().flatten().map { it.uri }.toHashSet()
-        duplicatePendingSelectionKeysToDiscard(pendingSelections, currentUris, review.selectedUris)
+        duplicatePendingSelectionKeysToDiscard(pendingSelections, currentUris, review.selectedUris, review.protectedUris)
             .forEach { pendingSelections.remove(it) }
     }
     // User explicitly selected all accessible storage as the default search scope.
