@@ -143,6 +143,21 @@ class ExactDuplicateReviewScreenContractTest {
         assertFalse(current(snapshot, rebuilt))
     }
 
+    @Test fun footerAndPrimaryTrashConsentMustUseTheSameCurrentReviewSnapshot() {
+        val rows = listOf(row("original", "phone", "Camera"), row("copy", "phone", "Camera"))
+        val review = planExactDuplicateReview(rows, requestedUris = setOf("copy"))
+        val snapshot = review // Both entry points must capture this when opening consent.
+        assertTrue(com.mistermikhail.fgallery.ui.duplicateConfirmationSnapshotCurrent(snapshot, review))
+        assertTrue(exactDuplicateTrashPrompt(review) != null)
+
+        // A footer action that only sets confirmOpen without capturing a snapshot
+        // would fail this contract and leave the user with an inert button.
+        assertFalse(com.mistermikhail.fgallery.ui.duplicateConfirmationSnapshotCurrent(null, review))
+        val changed = review.copy(selectedUris = emptySet())
+        assertFalse(com.mistermikhail.fgallery.ui.duplicateConfirmationSnapshotCurrent(snapshot, changed))
+        assertNull(exactDuplicateTrashPrompt(changed))
+    }
+
     @Test fun alreadyOpenTrashDialogIsInvalidatedWhenScopeResetBegins() {
         val canShowOrSubmit: (Boolean, Boolean, Boolean, Boolean, Boolean, Int, Boolean) -> Boolean =
             { verified, scope, trash, visual, prompt, pending, resetting ->
