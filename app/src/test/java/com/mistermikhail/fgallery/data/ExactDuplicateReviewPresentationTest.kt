@@ -17,6 +17,14 @@ class ExactDuplicateReviewPresentationTest {
         recycled = false,
     )
 
+    @Test fun nulInCatalogueUriFailsClosedBeforeTrashReview() {
+        val rows = listOf(row("original"), row("copy"), row("bad\u0000uri"))
+        val review = planExactDuplicateReview(rows, requestedUris = setOf("copy"))
+        assertTrue(review.groups.isEmpty())
+        assertTrue(review.selectedUris.isEmpty())
+        assertNull(exactDuplicateTrashPrompt(review))
+    }
+
     @Test fun cardsExplainProtectedOriginalAndNeverPreselectCopies() {
         val review = planExactDuplicateReview(listOf(row("original"), row("copy")))
         val card = exactDuplicateReviewCards(review).single()
