@@ -111,6 +111,17 @@ class ExactDuplicateReviewScreenContractTest {
         assertTrue(cardsAfter.single().items.first().protectedOriginal)
     }
 
+    @Test fun protectedOriginalNeverDisplaysAsCheckedDuringPendingSelection() {
+        val checked = com.mistermikhail.fgallery.ui::duplicateDisplayedCopyChecked
+        assertFalse(checked(true, false, true))
+        assertFalse(checked(true, true, true))
+        assertFalse(checked(true, true, null))
+        assertFalse(checked(true, false, false))
+        assertTrue(checked(false, false, true))
+        assertTrue(checked(false, true, null))
+        assertFalse(checked(false, true, false))
+    }
+
     @Test fun displayedSelectionCountUsesOnlyAuthoritativeSelectionAndPendingOverrides() {
         val count: (Set<String>, Map<String, Boolean>) -> Int = { selected, pending ->
             com.mistermikhail.fgallery.ui.duplicateDisplayedSelectionCount(selected, pending)
