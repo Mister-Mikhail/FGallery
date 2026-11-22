@@ -6,6 +6,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.border
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -207,8 +211,8 @@ internal fun ExactDuplicateReviewScreen(
     MaterialTheme(colorScheme = darkColorScheme(background = Color.Black, surface = Color(0xFF161616), onBackground = Color(0xFFE0E0E0), onSurface = Color(0xFFE0E0E0))) {
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(Color.Black),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         item(key = "heading") {
             Text("Точные дубликаты", style = MaterialTheme.typography.titleLarge)
@@ -263,12 +267,12 @@ internal fun ExactDuplicateReviewScreen(
                 item(key = duplicateCopyRowKey(card.sha256, index, rowIndex)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     pair.forEach { item ->
                         Column(
                             modifier = Modifier.weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                            verticalArrangement = Arrangement.spacedBy(2.dp),
                         ) {
                             DuplicatePreview(item.uri, item.displayName) { previewUri = item.uri }
                             Row {
@@ -284,12 +288,12 @@ internal fun ExactDuplicateReviewScreen(
                                 Text(
                                     if (item.protectedOriginal) "Сохранить" else "Копия",
                                     style = MaterialTheme.typography.labelMedium,
-                                    modifier = Modifier.padding(top = 14.dp),
+                                    modifier = Modifier.padding(top = 12.dp),
                                 )
                             }
-                            Text(item.displayName, style = MaterialTheme.typography.bodyMedium)
-                            Text("${item.storageId} · ${item.folderTarget}", style = MaterialTheme.typography.bodySmall)
-                            Text(item.explanation, style = MaterialTheme.typography.bodySmall)
+                            Text(item.displayName, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            Text("${item.storageId} · ${item.folderTarget}", style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            Text(item.explanation, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         }
                     }
                     if (pair.size == 1) Spacer(modifier = Modifier.weight(1f))
@@ -314,11 +318,11 @@ internal fun ExactDuplicateReviewScreen(
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Column(modifier = Modifier.weight(1f)) {
                     DuplicatePreview(first, first.substringAfterLast('/')) { previewUri = first }
-                    Text(first.substringAfterLast('/'), style = MaterialTheme.typography.bodySmall)
+                    Text(first.substringAfterLast('/'), style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
                 Column(modifier = Modifier.weight(1f)) {
                     DuplicatePreview(second, second.substringAfterLast('/')) { previewUri = second }
-                    Text(second.substringAfterLast('/'), style = MaterialTheme.typography.bodySmall)
+                    Text(second.substringAfterLast('/'), style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
             }
             Text(visualCandidateReviewLabel(visualStatus[key]), style = MaterialTheme.typography.bodySmall)
@@ -398,6 +402,9 @@ private fun DuplicatePreview(uri: String, name: String, onOpen: () -> Unit) {
         model = Uri.parse(uri),
         contentDescription = "Открыть $name",
         contentScale = ContentScale.Fit,
-        modifier = Modifier.fillMaxWidth().aspectRatio(1f).clickable(onClick = onOpen),
+        modifier = Modifier.fillMaxWidth().height(132.dp)
+            .border(1.dp, Color(0xFF555555))
+            .background(Color(0xFF202020))
+            .clickable(onClick = onOpen),
     )
 }
