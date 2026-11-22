@@ -8,6 +8,16 @@ import org.junit.Test
 
 /** Contract for the Stage 6 Compose review: scope changes must discard consent. */
 class ExactDuplicateReviewScreenContractTest {
+    @Test fun visualCandidateLabelsDoNotMistakeOpaqueContentIdsForFilenames() {
+        val label: (String) -> String = {
+            com.mistermikhail.fgallery.ui.duplicateVisualSourceLabel(it)
+        }
+        assertEquals("black.jpg", label("content://media/external/images/black.jpg"))
+        assertTrue(label("content://media/external/images/media/1234").contains("content://media"))
+        assertFalse(label("content://media/external/images/media/1234") == "1234")
+        assertTrue(label("content://provider/document/42").contains("document/42"))
+    }
+
     @Test fun duplicateFileIdentityAlwaysShowsNameAndLocationEvenForBlackThumbnails() {
         val identity: (String, String, String) -> String = { name, storage, folder ->
             com.mistermikhail.fgallery.ui.duplicateReviewFileIdentity(name, storage, folder)
