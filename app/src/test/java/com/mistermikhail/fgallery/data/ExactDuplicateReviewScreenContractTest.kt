@@ -361,7 +361,7 @@ class ExactDuplicateReviewScreenContractTest {
         assertEquals(1, exactDuplicateTrashPrompt(safe)!!.selectedCopyCount)
         val malformed = safe.copy(selectedUris = setOf("original", "copy"))
         assertNull(exactDuplicateTrashPrompt(malformed))
-        assertEquals(1, exactDuplicateReviewCards(malformed).single().selectedCopyCount)
+        // A malformed selection invalidates the whole review presentation.\n        // No card or actionable selection may survive a protected-original violation.\n        assertTrue(exactDuplicateReviewCards(malformed).isEmpty())
     }
 
     @Test fun confirmationSnapshotCannotAuthorizeChangedCatalogueGeneration() {
