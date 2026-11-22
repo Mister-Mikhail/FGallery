@@ -31,7 +31,12 @@ internal fun exactDuplicateReviewCards(
     val allUris = review.groups.flatten().map { it.uri }
     if (allUris.size != allUris.toSet().size) return emptyList()
     // Index once: repeated linear searches become quadratic on large duplicate libraries.
-    val summariesByOriginal = exactDuplicateGroupSummaries(review).associateBy { it.originalUri }
+    val summaries = exactDuplicateGroupSummaries(review)
+    // Never display a partial catalogue when one group is malformed or stale.
+    // The user must not mistake a filtered subset for the complete scan.
+    if (summaries.size != review.groups.size) return emptyList()
+    val summariesByOriginal = summaries.associateBy { it.originalUri }
+    if (summariesByOriginal.size != summaries.size) return emptyList()
     return review.groups.mapNotNull { group ->
         val summary = summariesByOriginal[group.firstOrNull()?.uri]
             ?: return@mapNotNull null
