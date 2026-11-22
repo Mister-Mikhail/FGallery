@@ -84,6 +84,15 @@ internal fun duplicateReviewFileSize(bytes: Long): String {
     return String.format(java.util.Locale.ROOT, "%.2f ГБ", mib / 1024.0)
 }
 
+/** A content URI's final segment can be an opaque ID, not a filename. */
+internal fun duplicateVisualSourceLabel(uri: String): String {
+    val segment = uri.substringBefore('?').substringAfterLast('/').trim()
+    val decoded = Uri.decode(segment)
+    return if (decoded.isNotBlank() && decoded.contains('.') &&
+        decoded.none { it == '/' || it == '\u0000' }) decoded
+    else "Источник: " + uri.substringBefore('?').take(90)
+}
+
 /** Candidate status is informative only; never authorizes trash. */
 internal fun visualCandidateReviewLabel(status: String?): String =
     if (status.isNullOrBlank()) {
@@ -313,7 +322,7 @@ internal fun ExactDuplicateReviewScreen(
         }
         item(key = "visual-heading") {
         HorizontalDivider()
-        Text("Визуальные кандидаты (только просмотр)", style = MaterialTheme.typography.titleMedium)
+        Text("Визуальные кандидаты (только просмотр) · ${visualCandidates.size} пар", style = MaterialTheme.typography.titleMedium)
         Text("dHash лишь предлагает пары. Проверка читает исходные пиксели; результат не разрешает перемещение в корзину. Кандидаты ищутся также между страницами каталога. Каждая пара показывается на странице её первого изображения; не более 10 пар на страницу.")
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = { onVisualPageChanged(visualPage - 1) }, enabled = visualPage > 0 && !visualInProgress && !trashInProgress) { Text("Назад") }
@@ -327,12 +336,12 @@ internal fun ExactDuplicateReviewScreen(
             val key = "$first|$second"
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Column(modifier = Modifier.weight(1f)) {
-                    DuplicatePreview(first, first.substringAfterLast('/')) { previewUri = first }
-                    Text(first.substringAfterLast('/'), style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    DuplicatePreview(first, duplicateVisualSourceLabel(first)) { previewUri = first }
+                    Text(duplicateVisualSourceLabel(first), style = MaterialTheme.typography.bodySmall, maxLines = 3, overflow = TextOverflow.Ellipsis)
                 }
                 Column(modifier = Modifier.weight(1f)) {
-                    DuplicatePreview(second, second.substringAfterLast('/')) { previewUri = second }
-                    Text(second.substringAfterLast('/'), style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    DuplicatePreview(second, duplicateVisualSourceLabel(second)) { previewUri = second }
+                    Text(duplicateVisualSourceLabel(second), style = MaterialTheme.typography.bodySmall, maxLines = 3, overflow = TextOverflow.Ellipsis)
                 }
             }
             Text(visualCandidateReviewLabel(visualStatus[key]), style = MaterialTheme.typography.bodySmall)
@@ -366,7 +375,7 @@ internal fun ExactDuplicateReviewScreen(
                     contentScale = ContentScale.Fit,
                     modifier = Modifier.fillMaxWidth().height(440.dp),
                 )
-                Text(previewUri.orEmpty().substringAfterLast('/'), style = MaterialTheme.typography.bodySmall)
+                Text(previewUri.orEmpty(), style = MaterialTheme.typography.bodySmall, maxLines = 3, overflow = TextOverflow.Ellipsis)
                 OutlinedButton(onClick = { previewUri = null }) { Text("Вернуться к совпадениям") }
             } }
         }
