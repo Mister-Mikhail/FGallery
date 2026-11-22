@@ -278,7 +278,7 @@ internal fun exactDuplicateGroupSummaries(
     // A restored or hand-built UI snapshot must not show two aliases of one
     // URI as independent disposable copies. Every group must have exactly one
     // protected keeper, and a selected URI must never be the keeper elsewhere.
-    if (group.any { it.uri.isBlank() } ||
+    if (group.any { it.uri.isBlank() || '\u0000' in it.uri } ||
         group.map { it.uri }.toSet().size != group.size ||
         copies.any { it.uri in review.protectedUris } ||
         group.count { it.uri in review.protectedUris } != 1) return@mapNotNull null
