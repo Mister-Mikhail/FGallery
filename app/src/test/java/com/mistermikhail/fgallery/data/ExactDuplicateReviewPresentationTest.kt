@@ -7,6 +7,20 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ExactDuplicateReviewPresentationTest {
+    @Test fun selectedDuplicateSizeUsesReadableBinaryUnitsWithoutLosingExactBytes() {
+        assertEquals("250 байт", formatDuplicateBytes(250))
+        assertEquals("1,5 КиБ", formatDuplicateBytes(1536))
+        assertEquals("2,0 МиБ", formatDuplicateBytes(2L * 1024 * 1024))
+        assertEquals("1,0 ГиБ", formatDuplicateBytes(1024L * 1024 * 1024))
+        val review = planExactDuplicateReview(
+            listOf(row("original"), row("copy")).map { it.copy(sizeBytes = 1536) },
+            requestedUris = setOf("copy"),
+        )
+        val prompt = exactDuplicateTrashPrompt(review)!!
+        assertEquals(1536L, prompt.selectedBytes)
+        assertTrue(prompt.message.contains("1,5 КиБ (1536 байт)"))
+    }
+
     private fun row(uri: String, hash: String = "a".repeat(64)) = CatalogMediaRow(
         uri = uri, mediaId = 1, name = "$uri.jpg", mimeType = "image/jpeg",
         kind = "IMAGE", dateTakenMillis = if (uri == "original") 1 else 123, width = 100, height = 100,
