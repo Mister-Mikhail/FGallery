@@ -36,6 +36,13 @@ internal fun exactDuplicateReviewCards(
         }) return emptyList()
     val allUris = review.groups.flatten().map { it.uri }
     if (allUris.size != allUris.toSet().size) return emptyList()
+    // A restored snapshot with stale selection/keeper metadata must not show
+    // a seemingly complete, actionable review. Require a fresh scan instead.
+    val keepers = review.groups.mapNotNull { it.firstOrNull()?.uri }.toSet()
+    val eligibleCopies = review.groups.flatMap { it.drop(1) }.map { it.uri }.toSet()
+    if (review.protectedUris != keepers ||
+        !eligibleCopies.containsAll(review.selectedUris) ||
+        review.selectedUris.any { it in keepers }) return emptyList()
     // Index once: repeated linear searches become quadratic on large duplicate libraries.
     val summaries = exactDuplicateGroupSummaries(review)
     // Never display a partial catalogue when one group is malformed or stale.
