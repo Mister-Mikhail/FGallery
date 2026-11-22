@@ -42,6 +42,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.mistermikhail.fgallery.data.ExactDuplicateReview
+import com.mistermikhail.fgallery.data.ExactDuplicateReviewCard
 import com.mistermikhail.fgallery.data.exactDuplicateReviewCards
 import com.mistermikhail.fgallery.data.exactDuplicateTrashPrompt
 import com.mistermikhail.fgallery.data.duplicateReviewScopeAvailable
@@ -91,6 +92,14 @@ internal fun duplicateVisualSourceLabel(uri: String): String {
     return if (decoded.isNotBlank() && decoded.contains('.') &&
         decoded.none { it == '/' || it == '\u0000' }) decoded
     else "Источник: " + uri.substringBefore('?').take(90)
+}
+
+/** Expanded preview uses verified catalogue metadata, never opaque URI segments. */
+internal fun duplicatePreviewDetails(uri: String, cards: List<ExactDuplicateReviewCard>): String {
+    val item = cards.asSequence().flatMap { it.items.asSequence() }
+        .firstOrNull { it.uri == uri } ?: return duplicateVisualSourceLabel(uri)
+    val role = if (item.protectedOriginal) "Защищённая копия" else "Точная копия"
+    return "$role · " + duplicateReviewFileIdentity(item.displayName, item.storageId, item.folderTarget)
 }
 
 /** Candidate status is informative only; never authorizes trash. */
@@ -367,14 +376,22 @@ internal fun ExactDuplicateReviewScreen(
     }
     MaterialTheme(colorScheme = darkColorScheme(background = Color.Black, surface = Color(0xFF161616), onBackground = Color(0xFFE0E0E0), onSurface = Color(0xFFE0E0E0))) {
     if (previewUri != null) {
+        val openedUri = previewUri.orEmpty()
+        var fullPreviewFailed by remember(openedUri) { mutableStateOf(false) }
         Dialog(onDismissRequest = { previewUri = null }) {
             Surface(color = Color(0xFF161616)) { Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                AsyncImage(
-                    model = Uri.parse(previewUri),
-                    contentDescription = "Просмотр файла",
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier.fillMaxWidth().height(440.dp),
-                )
+                Box(modifier = Modifier.fillMaxWidth().height(360.dp), contentAlignment = Alignment.Center) {
+                    AsyncImage(
+                        model = Uri.parse(openedUri),
+                        contentDescription = "Просмотр файла",
+                        contentScale = ContentScale.Fit,
+                        onError = { fullPreviewFailed = true },
+                        onSuccess = { fullPreviewFailed = false },
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                    if (fullPreviewFailed) Text("Файл не удалось открыть для просмотра", color = Color(0xFFE0E0E0))
+                }
+                Text(duplicatePreviewDetails(openedUri, cards), style = MaterialTheme.typography.bodyMedium)
                 Text(previewUri.orEmpty(), style = MaterialTheme.typography.bodySmall, maxLines = 3, overflow = TextOverflow.Ellipsis)
                 OutlinedButton(onClick = { previewUri = null }) { Text("Вернуться к совпадениям") }
             } }
