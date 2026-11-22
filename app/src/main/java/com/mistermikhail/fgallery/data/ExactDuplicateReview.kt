@@ -101,8 +101,11 @@ internal fun exactDuplicateMovePairStillValid(
     val originalGroup = reviewed.groups.singleOrNull { group ->
         group.drop(1).any { it.uri == selectedUri }
     } ?: return false
-    val keeper = originalGroup.first()
-    val copy = originalGroup.single { it.uri == selectedUri }
+    // Restored or hand-crafted review state can contain the same selected URI
+    // twice. Never throw during the per-file trash preflight: fail closed.
+    val keeper = originalGroup.firstOrNull() ?: return false
+    val copy = originalGroup.singleOrNull { it.uri == selectedUri } ?: return false
+    if (keeper.uri !in reviewed.protectedUris || copy.uri in reviewed.protectedUris) return false
     if (currentRows.count { it.uri == keeper.uri } != 1 ||
         currentRows.count { it.uri == copy.uri } != 1) return false
     if (currentRows.first { it.uri == keeper.uri } != keeper ||
