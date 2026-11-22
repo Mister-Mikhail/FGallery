@@ -17,6 +17,11 @@ internal suspend fun <T> preflightDuplicateTrash(
     protectedPhysicalIdentities: Set<String> = emptySet(),
 ): Boolean {
     currentCoroutineContext().ensureActive()
+    // A Java worker can be interrupted independently of coroutine cancellation.
+    // Never begin duplicate SHA reads or authorize a batch on that worker.
+    if (Thread.currentThread().isInterrupted) {
+        throw InterruptedException("Duplicate preflight interrupted before verification")
+    }
     if (items.isEmpty()) return false
     // A duplicated source would be moved twice, possibly after its original
     // URI has disappeared. Reject it before performing any byte reads or moves.
