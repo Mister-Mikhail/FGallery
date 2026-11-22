@@ -131,7 +131,8 @@ internal fun exactDuplicateTrashPrompt(
         selectedCopyCount = selected,
         selectedBytes = selectedBytes,
         message = "Переместить $selected выбранных точных копий в корзину? " +
-            "Общий размер выбранных файлов: ${formatDuplicateBytes(selectedBytes)} ($selectedBytes байт). " +
+            "Общий размер выбранных файлов: ${formatDuplicateBytes(selectedBytes)}" +
+            (if (selectedBytes >= 1024L) " ($selectedBytes байт). " else ". ") +
             "Перемещение в корзину не освобождает место до окончательной очистки. " +
             "Оригиналы останутся на месте. Перед операцией файлы и SHA-256 " +
             "будут проверены повторно. Отмена не изменяет файлы.",
