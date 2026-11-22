@@ -18,6 +18,16 @@ class ExactDuplicateReviewScreenContractTest {
         assertTrue(identity("copy.jpg", "usb", "Pictures").contains("Pictures"))
     }
 
+    @Test fun compactLocationLabelNeverRepeatsFilenameAndHandlesMissingMetadata() {
+        val location: (String, String) -> String = { storage, folder ->
+            com.mistermikhail.fgallery.ui.duplicateReviewFileLocation(storage, folder)
+        }
+        assertEquals("phone / DCIM", location("phone", "DCIM"))
+        assertFalse(location("phone", "DCIM").contains("black.jpg"))
+        assertEquals("Неизвестный носитель / Папка неизвестна", location("", ""))
+        assertEquals("usb / Pictures", location("usb", "Pictures"))
+    }
+
     @Test fun allStorageDefaultClearsOnlyLegacyScopeAndNeverRequiresSelection() {
         val reset: (Set<String>, Set<String>) -> Boolean = { storages, folders ->
             com.mistermikhail.fgallery.ui.duplicateLegacyScopeNeedsReset(storages, folders)
