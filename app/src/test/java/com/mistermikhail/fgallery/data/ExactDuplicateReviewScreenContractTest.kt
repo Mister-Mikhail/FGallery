@@ -8,6 +8,14 @@ import org.junit.Test
 
 /** Contract for the Stage 6 Compose review: scope changes must discard consent. */
 class ExactDuplicateReviewScreenContractTest {
+    @Test fun duplicateFileIdentityAlwaysShowsNameAndLocationEvenForBlackThumbnails() {
+        val identity = com.mistermikhail.fgallery.ui::duplicateReviewFileIdentity
+        assertEquals("black.jpg · phone / DCIM", identity("black.jpg", "phone", "DCIM"))
+        assertEquals("Без имени · Неизвестный носитель / Папка неизвестна", identity("", "", ""))
+        assertTrue(identity("copy.jpg", "usb", "Pictures").contains("copy.jpg"))
+        assertTrue(identity("copy.jpg", "usb", "Pictures").contains("Pictures"))
+    }
+
     @Test fun allStorageDefaultClearsOnlyLegacyScopeAndNeverRequiresSelection() {
         val reset: (Set<String>, Set<String>) -> Boolean = { storages, folders ->
             com.mistermikhail.fgallery.ui.duplicateLegacyScopeNeedsReset(storages, folders)
