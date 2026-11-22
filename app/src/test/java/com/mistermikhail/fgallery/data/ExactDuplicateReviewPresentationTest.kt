@@ -293,6 +293,25 @@ class ExactDuplicateReviewPresentationTest {
             includedStorageIds = setOf("usb"), requestedUris = setOf("copy"))
         assertNull(exactDuplicateTrashPrompt(outOfScope))
     }
+    @Test fun restoredReviewSplitAcrossGroupsWithSameShaCannotOfferTrash() {
+        val first = planExactDuplicateReview(
+            listOf(row("original"), row("copy")),
+            requestedUris = setOf("copy"),
+        )
+        val second = planExactDuplicateReview(
+            listOf(row("other"), row("otherCopy")),
+        )
+        val split = first.copy(
+            groups = first.groups + second.groups,
+            protectedUris = first.protectedUris + second.protectedUris,
+        )
+        // Unique URIs and paths, valid individual groups, but one SHA-256
+        // must not be represented as two independent keeper decisions.
+        assertTrue(exactDuplicateReviewCards(split).isEmpty())
+        assertNull(exactDuplicateTrashPrompt(split))
+        assertEquals(1, exactDuplicateReviewCards(first).size)
+    }
+
     @Test fun restoredReviewWithPhysicalPathAliasCannotShowTrashSelection() {
         val safe = planExactDuplicateReview(
             listOf(row("original"), row("copy")),
