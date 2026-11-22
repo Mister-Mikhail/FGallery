@@ -87,7 +87,7 @@ internal fun duplicateReviewFileSize(bytes: Long): String {
 /** A content URI's final segment can be an opaque ID, not a filename. */
 internal fun duplicateVisualSourceLabel(uri: String): String {
     val segment = uri.substringBefore('?').substringAfterLast('/').trim()
-    val decoded = Uri.decode(segment)
+    val decoded = segment
     return if (decoded.isNotBlank() && decoded.contains('.') &&
         decoded.none { it == '/' || it == '\u0000' }) decoded
     else "Источник: " + uri.substringBefore('?').take(90)
