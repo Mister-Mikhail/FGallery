@@ -199,7 +199,7 @@ class ExactDuplicateReviewPresentationTest {
         // A restored snapshot can bypass the planner's input validation.
         // Never render an actionable card for a malformed provider URI.
         val malformed = safe.copy(groups = safe.groups.map { group ->
-            group.dropLast(1) + group.last().copy(uri = "copy\\u0000alias")
+            group.dropLast(1) + group.last().copy(uri = "copy\u0000alias")
         })
         assertTrue(exactDuplicateReviewCards(malformed).isEmpty())
         assertNull(exactDuplicateTrashPrompt(malformed))
