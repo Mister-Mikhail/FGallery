@@ -9,6 +9,30 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DuplicateTrashPreflightTest {
+    @Test fun interruptionDuringFinalIdentitySnapshotCannotAuthorizeBatch() = runBlocking {
+        var identityCalls = 0
+        var reads = 0
+        var interrupted = false
+        try {
+            preflightDuplicateTrash(
+                listOf("content://copy"),
+                { reads++; true },
+                sourceIdentity = {
+                    identityCalls++
+                    if (identityCalls == 2) Thread.currentThread().interrupt()
+                    it
+                },
+            )
+        } catch (_: InterruptedException) {
+            interrupted = true
+        } finally {
+            Thread.interrupted()
+        }
+        assertTrue(interrupted)
+        assertEquals(1, reads)
+        assertEquals(2, identityCalls)
+    }
+
     @Test fun preInterruptedWorkerNeverStartsDuplicateByteReads() = runBlocking {
         var reads = 0
         var interrupted = false
