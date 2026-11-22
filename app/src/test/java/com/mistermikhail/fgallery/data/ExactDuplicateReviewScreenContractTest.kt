@@ -8,6 +8,19 @@ import org.junit.Test
 
 /** Contract for the Stage 6 Compose review: scope changes must discard consent. */
 class ExactDuplicateReviewScreenContractTest {
+    @Test fun trashDialogDoesNotRepeatExactByteCount() {
+        val review = planExactDuplicateReview(
+            listOf(row("original", "phone", "DCIM"), row("copy", "phone", "DCIM")),
+            requestedUris = setOf("copy"),
+        )
+        val prompt = exactDuplicateTrashPrompt(review)!!
+        val dialog = com.mistermikhail.fgallery.ui.duplicateTrashDialogMessage(prompt)
+        assertEquals(prompt.message, dialog)
+        assertEquals(1, Regex("Общий размер выбранных файлов:").findAll(dialog).count())
+        assertTrue(dialog.contains("SHA-256"))
+        assertEquals("", com.mistermikhail.fgallery.ui.duplicateTrashDialogMessage(null))
+    }
+
     @Test fun visualCandidateLabelsDoNotMistakeOpaqueContentIdsForFilenames() {
         val label: (String) -> String = {
             com.mistermikhail.fgallery.ui.duplicateVisualSourceLabel(it)
