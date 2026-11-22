@@ -9,7 +9,9 @@ import org.junit.Test
 /** Contract for the Stage 6 Compose review: scope changes must discard consent. */
 class ExactDuplicateReviewScreenContractTest {
     @Test fun duplicateFileIdentityAlwaysShowsNameAndLocationEvenForBlackThumbnails() {
-        val identity = com.mistermikhail.fgallery.ui::duplicateReviewFileIdentity
+        val identity: (String, String, String) -> String = { name, storage, folder ->
+            com.mistermikhail.fgallery.ui.duplicateReviewFileIdentity(name, storage, folder)
+        }
         assertEquals("black.jpg · phone / DCIM", identity("black.jpg", "phone", "DCIM"))
         assertEquals("Без имени · Неизвестный носитель / Папка неизвестна", identity("", "", ""))
         assertTrue(identity("copy.jpg", "usb", "Pictures").contains("copy.jpg"))
