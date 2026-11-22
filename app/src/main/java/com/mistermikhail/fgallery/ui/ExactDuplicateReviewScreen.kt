@@ -65,6 +65,9 @@ internal fun duplicateReviewRows(itemCount: Int): Int =
     if (itemCount <= 0) 0 else (itemCount / 2) + (itemCount % 2)
 
 /** Presentation only: byte counts never determine deletion safety. */
+internal fun duplicateReviewFileIdentity(name: String, storage: String, folder: String): String =
+    "${name.ifBlank { "Без имени" }} · ${storage.ifBlank { "Неизвестный носитель" }} / ${folder.ifBlank { "Папка неизвестна" }}"
+
 internal fun duplicateReviewFileSize(bytes: Long): String {
     if (bytes < 0L) return "Размер неизвестен"
     if (bytes < 1024L) return "$bytes Б"
@@ -260,7 +263,7 @@ internal fun ExactDuplicateReviewScreen(
             HorizontalDivider()
             Text("Группа ${index + 1} · ${card.items.size} файлов · ${duplicateReviewFileSize(card.sizeBytes)} каждый",
                 style = MaterialTheme.typography.titleMedium)
-            Text("Точное совпадение: размер и полный SHA-256 идентичны", style = MaterialTheme.typography.bodySmall)
+            Text("Слева и справа — отдельные файлы. Нажмите на фото для просмотра; выбор не удаляет файл.", style = MaterialTheme.typography.bodySmall)
             Text("SHA-256: ${card.sha256.take(16)}…", style = MaterialTheme.typography.bodySmall)
             }
             card.items.chunked(2).forEachIndexed { rowIndex, pair ->
@@ -292,7 +295,7 @@ internal fun ExactDuplicateReviewScreen(
                                 )
                             }
                             Text(item.displayName, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                            Text("${item.storageId} · ${item.folderTarget}", style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            Text(duplicateReviewFileIdentity(item.displayName, item.storageId, item.folderTarget), style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
                             Text(item.explanation, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         }
                     }
