@@ -131,11 +131,25 @@ internal fun exactDuplicateTrashPrompt(
         selectedCopyCount = selected,
         selectedBytes = selectedBytes,
         message = "Переместить $selected выбранных точных копий в корзину? " +
-            "Общий размер выбранных файлов: $selectedBytes байт. " +
+            "Общий размер выбранных файлов: ${formatDuplicateBytes(selectedBytes)} ($selectedBytes байт). " +
             "Перемещение в корзину не освобождает место до окончательной очистки. " +
             "Оригиналы останутся на месте. Перед операцией файлы и SHA-256 " +
             "будут проверены повторно. Отмена не изменяет файлы.",
     )
+}
+
+/** Human-readable estimate; exact byte count remains visible for audit. */
+internal fun formatDuplicateBytes(bytes: Long): String {
+    require(bytes >= 0L)
+    val unit = when {
+        bytes >= 1024L * 1024L * 1024L -> 1024L * 1024L * 1024L to "ГиБ"
+        bytes >= 1024L * 1024L -> 1024L * 1024L to "МиБ"
+        bytes >= 1024L -> 1024L to "КиБ"
+        else -> return "$bytes байт"
+    }
+    val whole = bytes / unit.first
+    val fraction = ((bytes % unit.first) * 10L) / unit.first
+    return "$whole,$fraction ${unit.second}"
 }
 
 /**
