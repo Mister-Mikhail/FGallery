@@ -28,6 +28,12 @@ internal fun exactDuplicateReviewCards(
     // A stale review can contain the same provider URI in different SHA groups.
     // Hide all cards until the catalogue is reconciled: a visually selectable
     // alias must not appear even when the separate trash prompt rejects it.
+    // Restored UI state may carry groups from a previous storage/folder scope.
+    // Do not display selectable out-of-scope copies even before confirmation.
+    if (review.groups.flatten().any { row ->
+            (review.includedStorageIds.isNotEmpty() && row.storageId !in review.includedStorageIds) ||
+                (review.includedFolderTargets.isNotEmpty() && row.folderTarget !in review.includedFolderTargets)
+        }) return emptyList()
     val allUris = review.groups.flatten().map { it.uri }
     if (allUris.size != allUris.toSet().size) return emptyList()
     // Index once: repeated linear searches become quadratic on large duplicate libraries.
