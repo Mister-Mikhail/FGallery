@@ -19,6 +19,13 @@ class ExactDuplicateReviewPresentationTest {
         val prompt = exactDuplicateTrashPrompt(review)!!
         assertEquals(1536L, prompt.selectedBytes)
         assertTrue(prompt.message.contains("1,5 КиБ (1536 байт)"))
+        val small = planExactDuplicateReview(
+            listOf(row("original"), row("copy")),
+            requestedUris = setOf("copy"),
+        )
+        val smallPrompt = exactDuplicateTrashPrompt(small)!!
+        assertTrue(smallPrompt.message.contains("250 байт."))
+        assertFalse(smallPrompt.message.contains("250 байт (250 байт)"))
     }
 
     private fun row(uri: String, hash: String = "a".repeat(64)) = CatalogMediaRow(
