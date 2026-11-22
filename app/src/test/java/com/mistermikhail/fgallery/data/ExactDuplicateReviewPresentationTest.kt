@@ -119,6 +119,22 @@ class ExactDuplicateReviewPresentationTest {
         assertNull(exactDuplicateTrashPrompt(malformed))
     }
 
+    @Test fun malformedUnselectedGroupHidesEntireReviewInsteadOfPartialCards() {
+        val first = planExactDuplicateReview(
+            listOf(row("original"), row("copy")),
+            requestedUris = setOf("copy"),
+        )
+        val second = planExactDuplicateReview(
+            listOf(row("other", "b".repeat(64)), row("otherCopy", "b".repeat(64))),
+        )
+        val corrupt = first.copy(groups = first.groups + second.groups.map { group ->
+            group.map { it.copy(fullHash = "not-a-sha256") }
+        })
+        assertEquals(1, exactDuplicateReviewCards(first).size)
+        assertTrue(exactDuplicateReviewCards(corrupt).isEmpty())
+        assertNull(exactDuplicateTrashPrompt(corrupt))
+    }
+
     @Test fun crossGroupUriAliasHidesAllReviewCardsBeforeSelection() {
         val first = planExactDuplicateReview(
             listOf(row("original"), row("copy")),
