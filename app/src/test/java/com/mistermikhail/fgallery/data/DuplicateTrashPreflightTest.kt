@@ -9,6 +9,25 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DuplicateTrashPreflightTest {
+    @Test fun preInterruptedWorkerNeverStartsDuplicateByteReads() = runBlocking {
+        var reads = 0
+        var interrupted = false
+        Thread.currentThread().interrupt()
+        try {
+            preflightDuplicateTrash(
+                listOf("content://copy"),
+                { reads++; true },
+                sourceIdentity = { it },
+            )
+        } catch (_: InterruptedException) {
+            interrupted = true
+        } finally {
+            Thread.interrupted()
+        }
+        assertTrue(interrupted)
+        assertEquals(0, reads)
+    }
+
     @Test fun refusesEntireBatchIfLaterItemFails() = runBlocking {
         val checked = mutableListOf<String>()
         val allowed = preflightDuplicateTrash(listOf("copyA", "copyB", "copyC"), { item ->
