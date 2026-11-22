@@ -215,6 +215,28 @@ class ExactDuplicateReviewPresentationTest {
         assertNull(exactDuplicateTrashPrompt(zeroBytes))
     }
 
+    @Test fun restoredReviewCannotShowCopiesOutsideSelectedStorageOrFolder() {
+        val rows = listOf(row("original"), row("copy"))
+        val safe = planExactDuplicateReview(rows, requestedUris = setOf("copy"))
+        assertEquals(1, exactDuplicateReviewCards(safe).size)
+
+        // Restored selection metadata can disagree with the saved group rows.
+        // Neither a different volume nor a different folder may be offered.
+        val wrongStorage = safe.copy(includedStorageIds = setOf("usb"))
+        assertTrue(exactDuplicateReviewCards(wrongStorage).isEmpty())
+        assertNull(exactDuplicateTrashPrompt(wrongStorage))
+
+        val wrongFolder = safe.copy(includedFolderTargets = setOf("Pictures/"))
+        assertTrue(exactDuplicateReviewCards(wrongFolder).isEmpty())
+        assertNull(exactDuplicateTrashPrompt(wrongFolder))
+
+        val correctScope = safe.copy(
+            includedStorageIds = setOf("phone"),
+            includedFolderTargets = setOf("DCIM/"),
+        )
+        assertEquals(1, exactDuplicateReviewCards(correctScope).size)
+    }
+
     @Test fun scopedAndAmbiguousReviewsCannotProduceTrashPrompt() {
         val rows = listOf(row("original"), row("copy"))
         val ambiguous = planExactDuplicateReview(rows + rows[1].copy(dateModifiedMillis = 200),
