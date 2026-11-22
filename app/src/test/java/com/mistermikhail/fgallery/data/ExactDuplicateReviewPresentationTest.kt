@@ -237,6 +237,28 @@ class ExactDuplicateReviewPresentationTest {
         assertEquals(1, exactDuplicateReviewCards(correctScope).size)
     }
 
+    @Test fun restoredReviewRejectsStaleSelectionAndKeeperMetadata() {
+        val safe = planExactDuplicateReview(
+            listOf(row("original"), row("copy")),
+            requestedUris = setOf("copy"),
+        )
+        assertEquals(1, exactDuplicateReviewCards(safe).size)
+
+        // A selected URI removed from the saved groups cannot remain visually
+        // actionable, even if the separate trash prompt already rejects it.
+        val staleSelection = safe.copy(selectedUris = safe.selectedUris + "missing")
+        assertTrue(exactDuplicateReviewCards(staleSelection).isEmpty())
+        assertNull(exactDuplicateTrashPrompt(staleSelection))
+
+        val staleKeeper = safe.copy(protectedUris = safe.protectedUris + "missing")
+        assertTrue(exactDuplicateReviewCards(staleKeeper).isEmpty())
+        assertNull(exactDuplicateTrashPrompt(staleKeeper))
+
+        val missingKeeper = safe.copy(protectedUris = emptySet())
+        assertTrue(exactDuplicateReviewCards(missingKeeper).isEmpty())
+        assertNull(exactDuplicateTrashPrompt(missingKeeper))
+    }
+
     @Test fun scopedAndAmbiguousReviewsCannotProduceTrashPrompt() {
         val rows = listOf(row("original"), row("copy"))
         val ambiguous = planExactDuplicateReview(rows + rows[1].copy(dateModifiedMillis = 200),
