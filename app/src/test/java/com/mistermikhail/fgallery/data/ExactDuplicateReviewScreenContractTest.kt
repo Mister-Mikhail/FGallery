@@ -18,6 +18,25 @@ class ExactDuplicateReviewScreenContractTest {
         assertTrue(label("content://provider/document/42").contains("document/42"))
     }
 
+    @Test fun expandedPreviewShowsVerifiedIdentityAndNeverMistakesOpaqueUriForFilename() {
+        val original = row("original", "phone", "DCIM")
+        val copy = row("copy", "usb", "Pictures")
+        val review = planExactDuplicateReview(listOf(original, copy))
+        val cards = exactDuplicateReviewCards(review)
+        val originalDetails = com.mistermikhail.fgallery.ui.duplicatePreviewDetails("original", cards)
+        assertTrue(originalDetails.contains("Защищённая копия"))
+        assertTrue(originalDetails.contains("original.jpg"))
+        assertTrue(originalDetails.contains("DCIM"))
+        val copyDetails = com.mistermikhail.fgallery.ui.duplicatePreviewDetails("copy", cards)
+        assertTrue(copyDetails.contains("Точная копия"))
+        assertTrue(copyDetails.contains("copy.jpg"))
+        assertTrue(copyDetails.contains("Pictures"))
+        val opaque = "content://media/external/images/media/1234"
+        assertTrue(com.mistermikhail.fgallery.ui.duplicatePreviewDetails(opaque, cards).contains("content://media"))
+        assertTrue(review.selectedUris.isEmpty())
+        assertNull(exactDuplicateTrashPrompt(review))
+    }
+
     @Test fun duplicateFileIdentityAlwaysShowsNameAndLocationEvenForBlackThumbnails() {
         val identity: (String, String, String) -> String = { name, storage, folder ->
             com.mistermikhail.fgallery.ui.duplicateReviewFileIdentity(name, storage, folder)
