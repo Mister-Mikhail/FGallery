@@ -93,6 +93,9 @@ class ExactDuplicateReviewPresentationTest {
         assertEquals(1, prompt.selectedCopyCount)
         assertEquals(250L, prompt.selectedBytes)
         assertTrue(prompt.message.contains("проверены повторно"))
+        assertTrue(prompt.message.contains("250 байт"))
+        assertTrue(prompt.message.contains("не освобождает место"))
+        assertTrue(prompt.message.contains("Оригиналы останутся"))
     }
 
     @Test fun overflowedSelectedBytesCannotAuthorizeTrashPrompt() {
