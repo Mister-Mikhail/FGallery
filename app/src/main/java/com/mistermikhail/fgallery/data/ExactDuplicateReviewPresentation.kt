@@ -34,6 +34,19 @@ internal fun exactDuplicateReviewCards(
             (review.includedStorageIds.isNotEmpty() && row.storageId !in review.includedStorageIds) ||
                 (review.includedFolderTargets.isNotEmpty() && row.folderTarget !in review.includedFolderTargets)
         }) return emptyList()
+    // Restored reviews can bypass the planner's path-alias validation. Two
+    // different provider URIs may resolve to the same physical file, including
+    // the protected keeper. Never show either as a selectable spare copy.
+    val sourcePaths = review.groups.flatten().mapNotNull { it.sourcePath }
+    if (sourcePaths.any { it.isBlank() || '\u0000' in it }) return emptyList()
+    val canonicalPaths = try {
+        sourcePaths.map { java.io.File(it).canonicalPath }
+    } catch (_: java.io.IOException) {
+        return emptyList()
+    } catch (_: SecurityException) {
+        return emptyList()
+    }
+    if (canonicalPaths.size != canonicalPaths.toSet().size) return emptyList()
     val allUris = review.groups.flatten().map { it.uri }
     if (allUris.size != allUris.toSet().size) return emptyList()
     // A restored snapshot with stale selection/keeper metadata must not show
