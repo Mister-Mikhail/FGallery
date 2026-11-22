@@ -272,4 +272,19 @@ class ExactDuplicateReviewPresentationTest {
             includedStorageIds = setOf("usb"), requestedUris = setOf("copy"))
         assertNull(exactDuplicateTrashPrompt(outOfScope))
     }
+    @Test fun restoredReviewWithPhysicalPathAliasCannotShowTrashSelection() {
+        val safe = planExactDuplicateReview(
+            listOf(row("original"), row("copy")),
+            requestedUris = setOf("copy"),
+        )
+        assertEquals(1, exactDuplicateReviewCards(safe).size)
+        // Different URIs, but both resolve to the keeper's same physical path.
+        // A restored UI snapshot must not bypass the planner's alias guard.
+        val aliased = safe.copy(groups = safe.groups.map { group ->
+            group.dropLast(1) + group.last().copy(sourcePath = "/DCIM/./original.jpg")
+        })
+        assertTrue(exactDuplicateReviewCards(aliased).isEmpty())
+        assertNull(exactDuplicateTrashPrompt(aliased))
+    }
+
 }
