@@ -150,5 +150,10 @@ internal suspend fun <T> preflightDuplicateTrash(
     if (finalCanonicalPaths.filterNotNull().toSet().size != finalCanonicalPaths.count { it != null } ||
         finalCanonicalPaths.any { it in finalProtectedPaths }) return false
     currentCoroutineContext().ensureActive()
+    // Identity callbacks may be synchronous and interrupt this worker during the
+    // final snapshot. Coroutine cancellation alone does not observe that flag.
+    if (Thread.currentThread().isInterrupted) {
+        throw InterruptedException("Duplicate preflight interrupted after verification")
+    }
     return true
 }
