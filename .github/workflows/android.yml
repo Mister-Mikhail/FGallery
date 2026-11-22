@@ -51,8 +51,8 @@ jobs:
             app/build/test-results/testDebugUnitTest/
 
   build:
-    # Stage 6 PR uses focused-jvm; do not build a full debug APK on every commit.
-    if: github.head_ref != 'feature/fgallery-0.4.0-integration' && github.head_ref != 'fix/fgallery-m4v-saf-mime-regression'
+    # Stage 6 final QA gate: build the exact PR HEAD, including all JVM tests.
+    if: github.head_ref != 'feature/fgallery-0.4.0-integration'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -94,8 +94,8 @@ jobs:
           path: app/build/outputs/apk/debug/app-universal-debug.apk
 
   device-tests:
-    # Android 16 is a QA release gate, not a per-commit Stage 6 check.
-    if: github.head_ref != 'feature/fgallery-0.4.0-integration' && github.head_ref != 'fix/fgallery-m4v-saf-mime-regression'
+    # Stage 6 final QA gate: Android 16 instrumentation on the exact PR HEAD.
+    if: github.head_ref != 'feature/fgallery-0.4.0-integration'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
