@@ -61,6 +61,11 @@ internal fun exactDuplicateReviewCards(
     // Never display a partial catalogue when one group is malformed or stale.
     // The user must not mistake a filtered subset for the complete scan.
     if (summaries.size != review.groups.size) return emptyList()
+    // A single full SHA-256 digest represents one exact-byte group. A restored
+    // snapshot split into multiple groups could protect multiple arbitrary
+    // keepers and mislead the user about which copies are safe to select.
+    // Fail closed and require a fresh catalogue scan instead.
+    if (summaries.map { it.sha256.lowercase(java.util.Locale.ROOT) }.toSet().size != summaries.size) return emptyList()
     val summariesByOriginal = summaries.associateBy { it.originalUri }
     if (summariesByOriginal.size != summaries.size) return emptyList()
     return review.groups.mapNotNull { group ->
