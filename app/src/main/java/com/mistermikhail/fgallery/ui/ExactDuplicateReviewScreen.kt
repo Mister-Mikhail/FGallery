@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.border
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -401,13 +403,29 @@ private fun ScopeCheckbox(label: String, checked: Boolean, enabled: Boolean, onC
 /** Opening a preview never changes the duplicate selection or authorizes trash. */
 @Composable
 private fun DuplicatePreview(uri: String, name: String, onOpen: () -> Unit) {
-    AsyncImage(
-        model = Uri.parse(uri),
-        contentDescription = "Открыть $name",
-        contentScale = ContentScale.Fit,
+    var previewFailed by remember(uri) { mutableStateOf(false) }
+    Box(
         modifier = Modifier.fillMaxWidth().height(132.dp)
-            .border(1.dp, Color(0xFF555555))
+            .border(1.dp, Color(0xFF666666))
             .background(Color(0xFF202020))
             .clickable(onClick = onOpen),
-    )
+        contentAlignment = Alignment.Center,
+    ) {
+        AsyncImage(
+            model = Uri.parse(uri),
+            contentDescription = "Открыть $name",
+            contentScale = ContentScale.Fit,
+            onError = { previewFailed = true },
+            onSuccess = { previewFailed = false },
+            modifier = Modifier.fillMaxSize(),
+        )
+        if (previewFailed) {
+            Text(
+                "Нет превью — откройте файл",
+                style = MaterialTheme.typography.labelSmall,
+                color = Color(0xFFE0E0E0),
+                modifier = Modifier.padding(8.dp),
+            )
+        }
+    }
 }
