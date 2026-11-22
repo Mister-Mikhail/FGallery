@@ -49,6 +49,21 @@ class ExactDuplicateReviewTest {
         assertTrue(!exactDuplicateMovePairStillValid(reviewed, remaining, "original"))
     }
 
+    @Test fun perMoveGateRejectsRepeatedSelectedUriInRestoredReviewWithoutThrowing() {
+        val original = item("original")
+        val copy = item("copy")
+        val safe = planExactDuplicateReview(
+            listOf(original, copy), requestedUris = setOf("copy"),
+        )
+        assertTrue(exactDuplicateMovePairStillValid(safe, listOf(original, copy), "copy"))
+        // A stale saved group may repeat one copy even though the current
+        // catalogue has already reconciled to a single URI.
+        val repeated = safe.copy(groups = listOf(listOf(original, copy, copy)))
+        assertTrue(!exactDuplicateMovePairStillValid(repeated, listOf(original, copy), "copy"))
+        val unprotectedKeeper = safe.copy(protectedUris = emptySet())
+        assertTrue(!exactDuplicateMovePairStillValid(unprotectedKeeper, listOf(original, copy), "copy"))
+    }
+
     @Test fun perMoveGateRejectsChangedKeeperCopyAndDuplicateUri() {
         val original = item("original")
         val copy = item("copy")
