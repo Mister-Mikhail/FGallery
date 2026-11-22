@@ -170,6 +170,10 @@ internal fun duplicateDisplayedSelectionCount(
     return count
 }
 
+/** The prompt already includes the exact byte count; do not append it twice. */
+internal fun duplicateTrashDialogMessage(prompt: com.mistermikhail.fgallery.data.ExactDuplicateTrashPrompt?): String =
+    prompt?.message.orEmpty()
+
 /** Consent belongs to the exact catalogue and selection shown when the dialog opened. */
 internal fun duplicateConfirmationSnapshotCurrent(
     snapshot: ExactDuplicateReview?,
@@ -401,7 +405,7 @@ internal fun ExactDuplicateReviewScreen(
         AlertDialog(
             onDismissRequest = { confirmOpen = false },
             title = { Text("Подтверждение корзины") },
-            text = { Text(prompt?.message.orEmpty()) },
+            text = { Text(duplicateTrashDialogMessage(prompt)) },
             confirmButton = {
                 TextButton(onClick = {
                     confirmOpen = false
