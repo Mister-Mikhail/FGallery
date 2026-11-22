@@ -70,6 +70,10 @@ internal fun duplicateReviewRows(itemCount: Int): Int =
 internal fun duplicateReviewFileIdentity(name: String, storage: String, folder: String): String =
     "${name.ifBlank { "Без имени" }} · ${storage.ifBlank { "Неизвестный носитель" }} / ${folder.ifBlank { "Папка неизвестна" }}"
 
+/** Short location line displayed below the file name, without duplicating it. */
+internal fun duplicateReviewFileLocation(storage: String, folder: String): String =
+    "${storage.ifBlank { "Неизвестный носитель" }} / ${folder.ifBlank { "Папка неизвестна" }}"
+
 internal fun duplicateReviewFileSize(bytes: Long): String {
     if (bytes < 0L) return "Размер неизвестен"
     if (bytes < 1024L) return "$bytes Б"
@@ -296,8 +300,9 @@ internal fun ExactDuplicateReviewScreen(
                                     modifier = Modifier.padding(top = 12.dp),
                                 )
                             }
-                            Text(item.displayName, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                            Text(duplicateReviewFileIdentity(item.displayName, item.storageId, item.folderTarget), style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            Text(item.displayName.ifBlank { "Без имени" }, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            Text(duplicateReviewFileLocation(item.storageId, item.folderTarget), style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            Text(duplicateReviewFileSize(card.sizeBytes), style = MaterialTheme.typography.bodySmall)
                             Text(item.explanation, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         }
                     }
