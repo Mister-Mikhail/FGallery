@@ -274,7 +274,13 @@ internal data class ExactDuplicateGroupSummary(
 
 internal fun exactDuplicateGroupSummaries(
     review: ExactDuplicateReview,
-): List<ExactDuplicateGroupSummary> = review.groups.mapNotNull { group ->
+): List<ExactDuplicateGroupSummary> {
+    // A restored snapshot can repeat one URI across distinct groups. Showing
+    // either card would make a single file appear independently disposable.
+    // Fail closed for the whole review rather than silently dropping one card.
+    val uris = review.groups.flatten().map { it.uri }
+    if (uris.size != uris.toSet().size) return emptyList()
+    return review.groups.mapNotNull { group ->
     val original = group.firstOrNull() ?: return@mapNotNull null
     if (group.size < 2 || original.uri !in review.protectedUris) return@mapNotNull null
     // Recycled rows cannot be offered as live copies, even when a caller
@@ -316,6 +322,8 @@ internal fun exactDuplicateGroupSummaries(
         reclaimableBytes = reclaimableBytes,
         sha256 = digest,
     )
+}
+
 }
 
 /**
