@@ -37,9 +37,9 @@ internal object VisualDuplicateSourceVerification {
         runCatching {
             val uri = Uri.parse(uriString)
             val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            context.contentResolver.openInputStream(uri)?.use {
-                BitmapFactory.decodeStream(it, null, bounds)
-            } ?: return null
+            val boundsStream = context.contentResolver.openInputStream(uri) ?: return null
+            // A bounds-only decode fills Options and returns no Bitmap on success.
+            boundsStream.use { BitmapFactory.decodeStream(it, null, bounds) }
             if (!safeSourceDimensions(bounds.outWidth, bounds.outHeight, minOf(MAX_PIXELS, maxPixels))) return null
             val orientation = context.contentResolver.openInputStream(uri)?.use {
                 ExifInterface(it).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)

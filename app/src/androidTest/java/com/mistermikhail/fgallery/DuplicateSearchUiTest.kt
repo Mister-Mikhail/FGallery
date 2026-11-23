@@ -109,7 +109,7 @@ class DuplicateSearchUiTest {
     @Test fun svgUsesTheSharedViewerAndVisualTabHasNoTrashActions() {
         val directory = Files.createTempDirectory(context.cacheDir.toPath(), "duplicate-svg-").toFile()
         try {
-            val svg = """<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" fill="orange"/></svg>"""
+            val svg = """<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><rect width="64" height="64" fill="orange"/></svg>"""
             val keeper = File(directory, "keeper.svg").apply { writeText(svg) }
             val copy = File(directory, "copy.svg").apply { writeText(svg) }
             val exact = listOf(fileRow(keeper, 1), fileRow(copy, 2))
@@ -123,6 +123,9 @@ class DuplicateSearchUiTest {
             rule.onNodeWithTag("duplicate-preview-${exact[0].uri}").performClick()
             waitForTag("svg-page")
             rule.onNodeWithTag("viewer-root").assertIsDisplayed()
+            val vector = rule.onNodeWithTag("svg-page").captureToImage().toPixelMap()
+            val center = vector[vector.width / 2, vector.height / 2]
+            assertTrue("SVG fixture is rendered in the viewer", center.red > .9f && center.green > .4f && center.blue < .1f)
             screenshot("shared-svg-viewer")
             rule.onNodeWithContentDescription("К результатам").performClick()
             rule.onNodeWithTag("duplicate-copy-grid").assertIsDisplayed()
@@ -134,8 +137,9 @@ class DuplicateSearchUiTest {
             rule.onNodeWithText("Не проверено").assertIsDisplayed()
             rule.onNodeWithText("Проверить исходные пиксели").performClick()
             rule.waitUntil(10_000) {
-                rule.onAllNodes(hasText("Подтверждено · пиксели совпадают"))
-                    .fetchSemanticsNodes().isNotEmpty()
+                rule.onAllNodes(
+                    hasText("Подтверждено · пиксели совпадают") or hasText("Не подтверждено", substring = true)
+                ).fetchSemanticsNodes().isNotEmpty()
             }
             rule.onNodeWithText("Подтверждено · пиксели совпадают").assertIsDisplayed()
             rule.onNodeWithText("В корзину…").assertDoesNotExist()
