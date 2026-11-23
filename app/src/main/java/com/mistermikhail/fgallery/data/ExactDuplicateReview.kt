@@ -280,6 +280,10 @@ internal fun exactDuplicateGroupSummaries(
     // Fail closed for the whole review rather than silently dropping one card.
     val uris = review.groups.flatten().map { it.uri }
     if (uris.size != uris.toSet().size) return emptyList()
+    // A full digest identifies exactly one byte-identical group. Restored
+    // snapshots must not split the same SHA-256 into separate keeper choices.
+    val digests = review.groups.mapNotNull { it.firstOrNull()?.fullHash?.lowercase(java.util.Locale.ROOT) }
+    if (digests.size != review.groups.size || digests.size != digests.toSet().size) return emptyList()
     return review.groups.mapNotNull { group ->
     val original = group.firstOrNull() ?: return@mapNotNull null
     if (group.size < 2 || original.uri !in review.protectedUris) return@mapNotNull null
