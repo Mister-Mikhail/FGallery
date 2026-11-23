@@ -144,7 +144,7 @@ internal class DuplicateSearchController(
 
     fun setSelected(uri: String, checked: Boolean) {
         val current = _state.value
-        if (current.trashInProgress || current.preparingConfirmation ||
+        if (current.trashInProgress || current.preparingConfirmation || current.preview != null ||
             current.tab != DuplicateTab.EXACT || current.catalogue?.selectableUris?.contains(uri) != true
         ) return
         val selected = if (checked) current.selected + uri else current.selected - uri
@@ -160,7 +160,7 @@ internal class DuplicateSearchController(
 
     fun openPreview(uri: String) {
         val current = _state.value
-        if (current.trashInProgress) return
+        if (current.trashInProgress || current.preparingConfirmation || current.confirmation != null) return
         val media = current.catalogue?.rows?.get(uri)?.toDuplicateMediaItem()
         _state.value = current.copy(
             preview = media,
@@ -226,7 +226,7 @@ internal class DuplicateSearchController(
     fun requestConfirmation() {
         val current = _state.value
         val catalogue = current.catalogue ?: return
-        if (current.tab != DuplicateTab.EXACT || current.selected.isEmpty() ||
+        if (current.tab != DuplicateTab.EXACT || current.preview != null || current.selected.isEmpty() ||
             current.preparingConfirmation || current.trashInProgress || !catalogue.valid
         ) return
         val review = catalogue.review.copy(selectedUris = current.selected)
@@ -250,7 +250,8 @@ internal class DuplicateSearchController(
     fun confirmTrash(consent: DuplicateConfirmation) {
         val current = _state.value
         if (current.confirmation !== consent || current.catalogue !== consent.catalogue ||
-            current.selected != consent.review.selectedUris || current.trashInProgress
+            current.selected != consent.review.selectedUris || current.trashInProgress ||
+            current.preview != null || current.tab != DuplicateTab.EXACT
         ) return
         _state.value = current.copy(confirmation = null, trashInProgress = true)
         scope.launch {

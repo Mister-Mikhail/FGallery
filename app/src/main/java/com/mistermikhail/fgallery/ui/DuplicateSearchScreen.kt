@@ -54,6 +54,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.hideFromAccessibility
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -98,7 +99,9 @@ internal fun DuplicateSearchScreen(
         Surface(Modifier.fillMaxSize(), color = Color.Black, contentColor = duplicateColors.onBackground) {
             Box(Modifier.fillMaxSize()) {
                 Scaffold(
-                    modifier = Modifier.testTag("duplicate-search"),
+                    modifier = Modifier.testTag("duplicate-search").semantics {
+                        if (preview != null) hideFromAccessibility()
+                    },
                     containerColor = Color.Black,
                     contentColor = duplicateColors.onBackground,
                     topBar = {

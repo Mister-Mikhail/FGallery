@@ -1,6 +1,7 @@
 package com.mistermikhail.fgallery
 
 import android.graphics.Bitmap
+import android.graphics.Color as AndroidColor
 import android.net.Uri
 import android.os.SystemClock
 import androidx.compose.material3.LocalContentColor
@@ -34,7 +35,7 @@ import com.mistermikhail.fgallery.data.DriveRecycleBin
 import com.mistermikhail.fgallery.data.DuplicateSearchInput
 import com.mistermikhail.fgallery.data.ExactDuplicateReview
 import com.mistermikhail.fgallery.data.StorageRoot
-import com.mistermikhail.fgallery.data.VisualDuplicatePixelVerification
+import com.mistermikhail.fgallery.data.VisualDuplicateSourceVerification
 import com.mistermikhail.fgallery.data.verifyCurrentExactDuplicateSelection
 import com.mistermikhail.fgallery.ui.DuplicateSearchController
 import com.mistermikhail.fgallery.ui.DuplicateSearchScreen
@@ -45,6 +46,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.nio.file.Files
 import java.security.MessageDigest
@@ -88,12 +90,16 @@ class DuplicateSearchUiTest {
         rule.onNodeWithText("Выбрано 1").assertIsDisplayed()
         val panel = rule.onNodeWithTag("duplicate-action-bar")
         val panelBounds = panel.getUnclippedBoundsInRoot()
-        rule.onNodeWithTag("duplicate-copy-grid").performScrollToIndex(20)
+        val grid = rule.onNodeWithTag("duplicate-copy-grid")
+        grid.performScrollToIndex(5)
+        rule.onNodeWithTag("duplicate-select-${rows[5].uri}").performClick()
+        rule.onNodeWithText("Выбрано 2").assertIsDisplayed()
+        grid.performScrollToIndex(20)
         assertEquals(panelBounds, panel.getUnclippedBoundsInRoot())
         rule.onNodeWithText("В корзину…").assertIsDisplayed()
         rule.onNodeWithText("Снять выбор").assertIsDisplayed()
         screenshot("exact-selection-large-font")
-        rule.onNodeWithTag("duplicate-copy-grid").performScrollToIndex(0)
+        grid.performScrollToIndex(0)
         checkbox.assertIsOn()
         rule.onNodeWithText("Снять выбор").performClick()
         panel.assertDoesNotExist()
@@ -106,8 +112,10 @@ class DuplicateSearchUiTest {
             val keeper = File(directory, "keeper.svg").apply { writeText(svg) }
             val copy = File(directory, "copy.svg").apply { writeText(svg) }
             val exact = listOf(fileRow(keeper, 1), fileRow(copy, 2))
-            val visual = generatedRows(2).mapIndexed { index, entry ->
-                entry.copy(name = "visual-$index.jpg", fullHash = null, perceptualHash = "0123456789abcdef")
+            val jpeg = jpegFixture()
+            val visual = (0..1).map { index ->
+                val file = File(directory, "visual-$index.jpg").apply { writeBytes(jpeg) }
+                fileRow(file, index + 1L).copy(fullHash = null, perceptualHash = "0123456789abcdef")
             }
             showSearch(exact + visual)
             openFirstGroup(exact)
@@ -185,29 +193,40 @@ class DuplicateSearchUiTest {
     @Test fun twelveHundredFileNavigationTiming() = recordNavigationTiming(1200)
 
     private fun recordNavigationTiming(count: Int) {
-        val rows = generatedRows(count)
-        val start = SystemClock.elapsedRealtime()
-        showSearch(rows)
-        openFirstGroup(rows)
-        val opened = SystemClock.elapsedRealtime()
-        val grid = rule.onNodeWithTag("duplicate-copy-grid")
-        grid.performScrollToIndex(count - 2)
-        grid.performScrollToIndex(0)
-        val scrolled = SystemClock.elapsedRealtime()
-        val checkbox = rule.onNodeWithTag("duplicate-select-${rows[1].uri}")
-        repeat(20) { checkbox.performClick() }
-        checkbox.assertIsOff()
-        val toggled = SystemClock.elapsedRealtime()
-        rule.onNodeWithContentDescription("Назад").performClick()
-        openFirstGroup(rows)
-        checkbox.assertIsOff()
-        val reopened = SystemClock.elapsedRealtime()
-        val metrics = listOf(opened - start, scrolled - opened, toggled - scrolled, reopened - toggled)
-        File(artifactDirectory(), "performance-$count.csv").writeText(
-            "files,open_ms,scroll_to_end_and_back_ms,toggle_20_ms,return_to_group_ms\n" +
-                (listOf(count.toLong()) + metrics).joinToString(",") + "\n"
-        )
-        assertTrue("UI interactions exceeded the fixture timeout: $metrics", metrics.drop(1).all { it < 15_000 })
+        val directory = Files.createTempDirectory(context.cacheDir.toPath(), "duplicate-benchmark-").toFile()
+        try {
+            val jpeg = jpegFixture()
+            val digest = fullDigest(jpeg)
+            val rows = (0 until count).map { index ->
+                val file = File(directory, "Sample-${index.toString().padStart(4, '0')}.jpg")
+                file.writeBytes(jpeg)
+                row(file, index + 1L, jpeg.size.toLong(), digest)
+            }
+            val start = SystemClock.elapsedRealtime()
+            showSearch(rows)
+            openFirstGroup(rows)
+            val opened = SystemClock.elapsedRealtime()
+            val grid = rule.onNodeWithTag("duplicate-copy-grid")
+            grid.performScrollToIndex(count - 2)
+            grid.performScrollToIndex(0)
+            val scrolled = SystemClock.elapsedRealtime()
+            val checkbox = rule.onNodeWithTag("duplicate-select-${rows[1].uri}")
+            repeat(20) { checkbox.performClick() }
+            checkbox.assertIsOff()
+            val toggled = SystemClock.elapsedRealtime()
+            rule.onNodeWithContentDescription("Назад").performClick()
+            openFirstGroup(rows)
+            checkbox.assertIsOff()
+            val reopened = SystemClock.elapsedRealtime()
+            val metrics = listOf(opened - start, scrolled - opened, toggled - scrolled, reopened - toggled)
+            File(artifactDirectory(), "performance-$count.csv").writeText(
+                "files,open_ms,scroll_to_end_and_back_ms,toggle_20_ms,return_to_group_ms\n" +
+                    (listOf(count.toLong()) + metrics).joinToString(",") + "\n"
+            )
+            assertTrue("UI interactions exceeded the fixture timeout: $metrics", metrics.drop(1).all { it < 15_000 })
+        } finally {
+            directory.deleteRecursively()
+        }
     }
 
     private fun showSearch(
@@ -222,7 +241,7 @@ class DuplicateSearchUiTest {
                 DuplicateSearchController(
                     scope,
                     load = { _, _ -> DuplicateSearchInput(load()) },
-                    verifyVisual = { _, _ -> VisualDuplicatePixelVerification.Result.EXACT_PIXELS },
+                    verifyVisual = { first, second -> VisualDuplicateSourceVerification.verify(context, first, second) },
                     trash = trash,
                 )
             }
@@ -262,11 +281,27 @@ class DuplicateSearchUiTest {
         row(file, index + 1L, 96, "a".repeat(64))
     }
 
-    private fun fileRow(file: File, order: Long): CatalogMediaRow {
-        val digest = MessageDigest.getInstance("SHA-256").digest(file.readBytes())
-            .joinToString("") { "%02x".format(it) }
-        return row(file, order, file.length(), digest)
+    private fun jpegFixture(): ByteArray {
+        val bitmap = Bitmap.createBitmap(128, 128, Bitmap.Config.ARGB_8888)
+        return try {
+            bitmap.setPixels(
+                IntArray(128 * 128) { i -> AndroidColor.rgb(i % 128, i / 128, (i * 7) % 256) },
+                0, 128, 0, 0, 128, 128,
+            )
+            ByteArrayOutputStream().use {
+                check(bitmap.compress(Bitmap.CompressFormat.JPEG, 85, it))
+                it.toByteArray()
+            }
+        } finally {
+            bitmap.recycle()
+        }
     }
+
+    private fun fullDigest(data: ByteArray): String =
+        MessageDigest.getInstance("SHA-256").digest(data).joinToString("") { "%02x".format(it) }
+
+    private fun fileRow(file: File, order: Long): CatalogMediaRow =
+        row(file, order, file.length(), fullDigest(file.readBytes()))
 
     private fun row(file: File, order: Long, size: Long, hash: String) = CatalogMediaRow(
         uri = Uri.fromFile(file).toString(), mediaId = order, name = file.name,
