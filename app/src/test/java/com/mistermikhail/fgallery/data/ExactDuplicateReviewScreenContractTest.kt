@@ -172,6 +172,11 @@ class ExactDuplicateReviewScreenContractTest {
         assertFalse(key("abc", 0, 0) == key("abc", 1, 0))
     }
 
+    @Test fun duplicatePreviewTilesStayCompactWithMetadataOutsideImage() {
+        assertEquals(112, com.mistermikhail.fgallery.ui.DUPLICATE_PREVIEW_HEIGHT_DP)
+        assertTrue(com.mistermikhail.fgallery.ui.DUPLICATE_PREVIEW_HEIGHT_DP < 132)
+    }
+
     @Test fun twoColumnReviewKeepsOddFinalRowAndNeverAddsThirdColumn() {
         val rows: (Int) -> Int = { com.mistermikhail.fgallery.ui.duplicateReviewRows(it) }
         assertEquals(0, rows(0))
