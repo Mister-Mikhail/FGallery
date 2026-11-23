@@ -144,6 +144,22 @@ class ExactDuplicateReviewTest {
         assertEquals(setOf("copy"), review.selectedUris)
     }
 
+    @Test fun recycledRestoredRowCannotAppearInGroupSummary() {
+        val original = item("original")
+        val copy = item("copy")
+        val review = planExactDuplicateReview(listOf(original, copy),
+            requestedUris = setOf("copy"))
+        assertEquals(1, exactDuplicateGroupSummaries(review).size)
+        // A restored review can bypass the planner and contain a trashed
+        // copy or keeper. Neither is an actionable live duplicate group.
+        assertTrue(exactDuplicateGroupSummaries(review.copy(
+            groups = listOf(listOf(original, copy.copy(recycled = true)))
+        )).isEmpty())
+        assertTrue(exactDuplicateGroupSummaries(review.copy(
+            groups = listOf(listOf(original.copy(recycled = true), copy))
+        )).isEmpty())
+    }
+
     @Test fun noImplicitSelectionAndOriginalIsProtected() {
         val a = item("a")
         val b = item("b")
