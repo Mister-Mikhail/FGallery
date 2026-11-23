@@ -284,6 +284,14 @@ internal fun exactDuplicateGroupSummaries(
     // snapshots must not split the same SHA-256 into separate keeper choices.
     val digests = review.groups.mapNotNull { it.firstOrNull()?.fullHash?.lowercase(java.util.Locale.ROOT) }
     if (digests.size != review.groups.size || digests.size != digests.toSet().size) return emptyList()
+    // A restored snapshot must not contain a selected keeper or an unrelated
+    // URI. Such selection is not actionable even when the visible groups are
+    // otherwise valid; reject the whole review instead of displaying a
+    // misleading count or enabling a stale confirmation.
+    val keeperUris = review.groups.mapNotNull { it.firstOrNull()?.uri }.toSet()
+    val copyUris = review.groups.flatMap { it.drop(1) }.map { it.uri }.toSet()
+    if (review.protectedUris != keeperUris || !copyUris.containsAll(review.selectedUris) ||
+        review.selectedUris.any { it in keeperUris }) return emptyList()
     val summaries = review.groups.mapNotNull { group ->
     val original = group.firstOrNull() ?: return@mapNotNull null
     if (group.size < 2 || original.uri !in review.protectedUris) return@mapNotNull null
