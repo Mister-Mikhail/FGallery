@@ -102,6 +102,14 @@ internal fun duplicatePreviewDetails(uri: String, cards: List<ExactDuplicateRevi
     return "$role · " + duplicateReviewFileIdentity(item.displayName, item.storageId, item.folderTarget)
 }
 
+/** A rejected restored catalogue is not evidence that the scan found zero copies. */
+internal fun duplicateExactResultsMessage(groupCount: Int, visibleCardCount: Int): String =
+    if (groupCount > 0 && visibleCardCount == 0) {
+        "Результаты устарели или повреждены. Выбор копий заблокирован. Обновите поиск перед продолжением."
+    } else {
+        "Точных совпадений в доступной памяти не найдено"
+    }
+
 /** Candidate status is informative only; never authorizes trash. */
 internal fun visualCandidateReviewLabel(status: String?): String =
     if (status.isNullOrBlank()) {
@@ -285,7 +293,7 @@ internal fun ExactDuplicateReviewScreen(
             }
         }
         item(key = "result-count") { Text("Найдено: ${cards.size} групп · ${cards.sumOf { it.items.size }} файлов", style = MaterialTheme.typography.titleMedium) }
-        if (cards.isEmpty()) item(key = "no-exact") { Text("Точных совпадений в доступной памяти не найдено") }
+        if (cards.isEmpty()) item(key = "no-exact") { Text(duplicateExactResultsMessage(review.groups.size, cards.size)) }
         cards.forEachIndexed { index, card ->
             item(key = "group-${card.sha256}-$index") {
             HorizontalDivider()
