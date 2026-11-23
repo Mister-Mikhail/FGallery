@@ -241,15 +241,10 @@ internal fun ExactDuplicateReviewScreen(
         duplicatePendingSelectionKeysToDiscard(pendingSelections, visibleUris, review.selectedUris, review.protectedUris)
             .forEach { pendingSelections.remove(it) }
     }
-    // User explicitly selected all accessible storage as the default search scope.
-    // Reset legacy filters once; never widen scope while a trash transaction is active.
-    LaunchedEffect(review.includedStorageIds, review.includedFolderTargets, trashInProgress, visualInProgress) {
-        if (!trashInProgress && !visualInProgress &&
-            duplicateLegacyScopeNeedsReset(review.includedStorageIds, review.includedFolderTargets)) {
-            confirmOpen = false
-            onScopeChanged(emptySet(), emptySet())
-        }
-    }
+    // Empty filters are the default all-storage search. A restored explicit
+    // filter, especially for disconnected SAF/USB storage, must NEVER be
+    // silently widened by a composition effect. Require a user tap to reset.
+
     val scopeResetPending = duplicateLegacyScopeNeedsReset(review.includedStorageIds, review.includedFolderTargets)
     val scopeAvailable = duplicateReviewScopeAvailable(review, availableStorages, availableFolders)
     val prompt = if (scopeAvailable && !scopeResetPending && !trashInProgress && !visualInProgress) exactDuplicateTrashPrompt(review) else null
@@ -271,6 +266,15 @@ internal fun ExactDuplicateReviewScreen(
         item(key = "description") {
         Text("Сравниваются полные SHA-256. Похожие фотографии и RAW+JPEG не считаются точными копиями.")
         Text("Поиск по всей доступной памяти устройства. Выбор папок временно отключён.", style = MaterialTheme.typography.bodySmall)
+        }
+        if (scopeResetPending && scopeAvailable) {
+            item(key = "legacy-scope-warning") {
+                Text("Сохранена прежняя область поиска. Для поиска по всей памяти подтвердите сброс фильтров.")
+                OutlinedButton(
+                    onClick = { confirmOpen = false; onScopeChanged(emptySet(), emptySet()) },
+                    enabled = !trashInProgress && !visualInProgress,
+                ) { Text("Искать по всей памяти") }
+            }
         }
         if (!scopeAvailable) {
             item(key = "scope-warning") {
