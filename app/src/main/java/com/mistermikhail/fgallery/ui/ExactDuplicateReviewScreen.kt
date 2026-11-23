@@ -103,6 +103,14 @@ internal fun duplicatePreviewDetails(uri: String, cards: List<ExactDuplicateRevi
 }
 
 /** A rejected restored catalogue is not evidence that the scan found zero copies. */
+/** Never present a rejected nonempty catalogue as a successful zero-match scan. */
+internal fun duplicateExactResultCountLabel(groupCount: Int, visibleCardCount: Int, visibleFileCount: Int): String =
+    if (groupCount > 0 && visibleCardCount == 0) {
+        "Результаты требуют обновления · группы скрыты для безопасности"
+    } else {
+        "Найдено: $visibleCardCount групп · $visibleFileCount файлов"
+    }
+
 internal fun duplicateExactResultsMessage(groupCount: Int, visibleCardCount: Int): String =
     if (groupCount > 0 && visibleCardCount == 0) {
         "Результаты устарели или повреждены. Выбор копий заблокирован. Обновите поиск перед продолжением."
@@ -296,7 +304,7 @@ internal fun ExactDuplicateReviewScreen(
             }
             }
         }
-        item(key = "result-count") { Text("Найдено: ${cards.size} групп · ${cards.sumOf { it.items.size }} файлов", style = MaterialTheme.typography.titleMedium) }
+        item(key = "result-count") { Text(duplicateExactResultCountLabel(review.groups.size, cards.size, cards.sumOf { it.items.size }), style = MaterialTheme.typography.titleMedium) }
         if (cards.isEmpty()) item(key = "no-exact") { Text(duplicateExactResultsMessage(review.groups.size, cards.size)) }
         cards.forEachIndexed { index, card ->
             item(key = "group-${card.sha256}-$index") {
