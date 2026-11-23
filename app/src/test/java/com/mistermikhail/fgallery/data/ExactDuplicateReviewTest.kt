@@ -689,4 +689,20 @@ class ExactDuplicateReviewTest {
         assertTrue(exactDuplicateGroupSummaries(split).isEmpty())
         assertTrue(exactDuplicateTrashPrompt(split) == null)
     }
+    @Test fun restoredReviewRejectsSelectionOutsideCopiesOrCorruptKeeperSet() {
+        val original = item("original")
+        val copy = item("copy")
+        val review = planExactDuplicateReview(listOf(original, copy), requestedUris = setOf("copy"))
+        assertEquals(1, exactDuplicateGroupSummaries(review).size)
+        assertTrue(exactDuplicateGroupSummaries(review.copy(
+            selectedUris = setOf("copy", "unrelated")
+        )).isEmpty())
+        assertTrue(exactDuplicateGroupSummaries(review.copy(
+            selectedUris = setOf("original")
+        )).isEmpty())
+        assertTrue(exactDuplicateGroupSummaries(review.copy(
+            protectedUris = setOf("copy")
+        )).isEmpty())
+    }
+
 }
