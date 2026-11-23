@@ -14,6 +14,7 @@ internal data class ExactDuplicateReview(
     val protectedUris: Set<String>,
     val includedStorageIds: Set<String>,
     val includedFolderTargets: Set<String>,
+    val catalogueValid: Boolean = true,
 ) {
     val selectedCount: Int get() = selectedUris.size
 }
@@ -39,7 +40,7 @@ internal fun planExactDuplicateReview(
     if (indexedRows.any { it.uri.isBlank() || '\u0000' in it.uri } ||
         indexedRows.map { it.uri }.toSet().size != indexedRows.size) {
         return ExactDuplicateReview(emptyList(), emptySet(), emptySet(),
-            includedStorageIds.toSet(), includedFolderTargets.toSet())
+            includedStorageIds.toSet(), includedFolderTargets.toSet(), catalogueValid = false)
     }
     // Different provider URIs can refer to the same physical file. Never offer
     // an alias of the protected original as a disposable duplicate. A known
@@ -52,7 +53,7 @@ internal fun planExactDuplicateReview(
     // malformed provider metadata never reaches a review action.
     if (rawPaths.any { it.isBlank() || '\u0000' in it }) {
         return ExactDuplicateReview(emptyList(), emptySet(), emptySet(),
-            includedStorageIds.toSet(), includedFolderTargets.toSet())
+            includedStorageIds.toSet(), includedFolderTargets.toSet(), catalogueValid = false)
     }
     // Keep review identity consistent with the mutation preflight: symlinked
     // local paths must not present the protected original as a second copy.
@@ -61,14 +62,14 @@ internal fun planExactDuplicateReview(
         rawPaths.map { java.io.File(it).canonicalPath }
     } catch (_: java.io.IOException) {
         return ExactDuplicateReview(emptyList(), emptySet(), emptySet(),
-            includedStorageIds.toSet(), includedFolderTargets.toSet())
+            includedStorageIds.toSet(), includedFolderTargets.toSet(), catalogueValid = false)
     } catch (_: SecurityException) {
         return ExactDuplicateReview(emptyList(), emptySet(), emptySet(),
-            includedStorageIds.toSet(), includedFolderTargets.toSet())
+            includedStorageIds.toSet(), includedFolderTargets.toSet(), catalogueValid = false)
     }
     if (knownPaths.toSet().size != knownPaths.size) {
         return ExactDuplicateReview(emptyList(), emptySet(), emptySet(),
-            includedStorageIds.toSet(), includedFolderTargets.toSet())
+            includedStorageIds.toSet(), includedFolderTargets.toSet(), catalogueValid = false)
     }
     // Reject malformed or legacy fingerprints before presenting actionable copies.
     // A full SHA-256 is exactly 64 hexadecimal characters; a short label must

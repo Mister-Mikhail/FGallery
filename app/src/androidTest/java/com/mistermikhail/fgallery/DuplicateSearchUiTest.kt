@@ -1,0 +1,280 @@
+package com.mistermikhail.fgallery
+
+import android.graphics.Bitmap
+import android.net.Uri
+import android.os.SystemClock
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.toPixelMap
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsOff
+import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToIndex
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
+import androidx.test.platform.app.InstrumentationRegistry
+import com.mistermikhail.fgallery.data.CatalogMediaRow
+import com.mistermikhail.fgallery.data.DriveRecycleBin
+import com.mistermikhail.fgallery.data.DuplicateSearchInput
+import com.mistermikhail.fgallery.data.ExactDuplicateReview
+import com.mistermikhail.fgallery.data.StorageRoot
+import com.mistermikhail.fgallery.data.VisualDuplicatePixelVerification
+import com.mistermikhail.fgallery.data.verifyCurrentExactDuplicateSelection
+import com.mistermikhail.fgallery.ui.DuplicateSearchController
+import com.mistermikhail.fgallery.ui.DuplicateSearchScreen
+import com.mistermikhail.fgallery.ui.toDuplicateMediaItem
+import kotlinx.coroutines.runBlocking
+import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Rule
+import org.junit.Test
+import java.io.File
+import java.nio.file.Files
+import java.security.MessageDigest
+
+class DuplicateSearchUiTest {
+    @get:Rule val rule = createComposeRule()
+    private val context = InstrumentationRegistry.getInstrumentation().targetContext
+
+    @Test fun readableTextTwoColumnsAndPinnedActionsAtLargeFontScale() {
+        val rows = generatedRows(24)
+        showSearch(rows, fontScale = 1.5f)
+        openFirstGroup(rows)
+        val keeper = rule.onNodeWithTag("duplicate-card-${rows[0].uri}")
+        val copy = rule.onNodeWithTag("duplicate-card-${rows[1].uri}")
+        val keeperBounds = keeper.getUnclippedBoundsInRoot()
+        val copyBounds = copy.getUnclippedBoundsInRoot()
+        assertEquals(keeperBounds.top, copyBounds.top)
+        assertTrue("Exactly two separate columns", keeperBounds.right < copyBounds.left)
+        val keeperWidth = keeperBounds.right - keeperBounds.left
+        val copyWidth = copyBounds.right - copyBounds.left
+        assertTrue(kotlin.math.abs(keeperWidth.value - copyWidth.value) <= 1.dp.value)
+        rule.onNodeWithTag("duplicate-select-${rows[0].uri}").assertDoesNotExist()
+        val title = rule.onNodeWithText(rows[1].name).assertIsDisplayed()
+        val pixels = title.captureToImage().toPixelMap()
+        assertTrue("Card text must contribute light pixels over the dark card",
+            (0 until pixels.width).any { x ->
+                (0 until pixels.height).any { y ->
+                    val pixel = pixels[x, y]
+                    pixel.red > .7f && pixel.green > .7f && pixel.blue > .7f
+                }
+            })
+        rule.onAllNodes(hasText("96 байт"))[0].assertIsDisplayed()
+        rule.waitUntil(10_000) {
+            rule.onAllNodes(hasTestTag("duplicate-preview-fallback-${rows[1].uri}"), useUnmergedTree = true)
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        rule.onNodeWithTag("duplicate-preview-fallback-${rows[1].uri}", useUnmergedTree = true)
+            .assertIsDisplayed()
+        val checkbox = rule.onNodeWithTag("duplicate-select-${rows[1].uri}")
+        checkbox.assertIsOff().performClick()
+        rule.onNodeWithText("Выбрано 1").assertIsDisplayed()
+        val panel = rule.onNodeWithTag("duplicate-action-bar")
+        val panelBounds = panel.getUnclippedBoundsInRoot()
+        rule.onNodeWithTag("duplicate-copy-grid").performScrollToIndex(20)
+        assertEquals(panelBounds, panel.getUnclippedBoundsInRoot())
+        rule.onNodeWithText("В корзину…").assertIsDisplayed()
+        rule.onNodeWithText("Снять выбор").assertIsDisplayed()
+        screenshot("exact-selection-large-font")
+        rule.onNodeWithTag("duplicate-copy-grid").performScrollToIndex(0)
+        checkbox.assertIsOn()
+        rule.onNodeWithText("Снять выбор").performClick()
+        panel.assertDoesNotExist()
+    }
+
+    @Test fun svgUsesTheSharedViewerAndVisualTabHasNoTrashActions() {
+        val directory = Files.createTempDirectory(context.cacheDir.toPath(), "duplicate-svg-").toFile()
+        try {
+            val svg = """<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" fill="orange"/></svg>"""
+            val keeper = File(directory, "keeper.svg").apply { writeText(svg) }
+            val copy = File(directory, "copy.svg").apply { writeText(svg) }
+            val exact = listOf(fileRow(keeper, 1), fileRow(copy, 2))
+            val visual = generatedRows(2).mapIndexed { index, entry ->
+                entry.copy(name = "visual-$index.jpg", fullHash = null, perceptualHash = "0123456789abcdef")
+            }
+            showSearch(exact + visual)
+            openFirstGroup(exact)
+            rule.onNodeWithTag("duplicate-preview-${exact[0].uri}").performClick()
+            waitForTag("svg-page")
+            rule.onNodeWithTag("viewer-root").assertIsDisplayed()
+            screenshot("shared-svg-viewer")
+            rule.onNodeWithContentDescription("К результатам").performClick()
+            rule.onNodeWithTag("duplicate-copy-grid").assertIsDisplayed()
+            rule.onNodeWithContentDescription("Назад").performClick()
+            rule.onNodeWithText("Похожие изображения", substring = false).performClick()
+            rule.waitUntil(10_000) {
+                rule.onAllNodes(hasText("Проверить исходные пиксели")).fetchSemanticsNodes().isNotEmpty()
+            }
+            rule.onNodeWithText("Не проверено").assertIsDisplayed()
+            rule.onNodeWithText("Проверить исходные пиксели").performClick()
+            rule.waitUntil(10_000) {
+                rule.onAllNodes(hasText("Подтверждено · пиксели совпадают"))
+                    .fetchSemanticsNodes().isNotEmpty()
+            }
+            rule.onNodeWithText("Подтверждено · пиксели совпадают").assertIsDisplayed()
+            rule.onNodeWithText("В корзину…").assertDoesNotExist()
+            screenshot("visual-candidates-read-only")
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test fun cancelLeavesFixturesIntactAndConfirmedCopyCanBeRestored() {
+        val directory = Files.createTempDirectory(context.cacheDir.toPath(), "duplicate-bin-").toFile()
+        val payload = ByteArray(1500) { it.toByte() }
+        val keeper = File(directory, "keeper.jpg").apply { writeBytes(payload) }
+        val copy = File(directory, "copy.jpg").apply { writeBytes(payload) }
+        val rows = listOf(fileRow(keeper, 1), fileRow(copy, 2))
+        val root = StorageRoot("duplicate-fixture", "Fixture", directory.path, directory)
+        val bin = DriveRecycleBin(context, { listOf(root) }, { emptyList() })
+        fun binFiles() = runBlocking { bin.load().filter { it.folderTarget.startsWith(directory.path + "/") } }
+        try {
+            showSearch(rows, load = { rows.filter { File(it.sourcePath).exists() } }) { review ->
+                val verified = verifyCurrentExactDuplicateSelection(context, review, rows, explicitlyConfirmed = true)
+                check(verified == setOf(rows[1].uri))
+                bin.trashWithPreMoveCheck(listOf(rows[1].toDuplicateMediaItem()!!)) { item ->
+                    item.uriKey in verifyCurrentExactDuplicateSelection(context, review, rows, explicitlyConfirmed = true)
+                }.size
+            }
+            openFirstGroup(rows)
+            rule.onNodeWithTag("duplicate-select-${rows[1].uri}").performClick()
+            rule.onNodeWithText("В корзину…").performClick()
+            rule.waitUntil(10_000) { rule.onAllNodes(hasText("Отмена")).fetchSemanticsNodes().isNotEmpty() }
+            rule.onNodeWithText("1500 байт", substring = true).assertIsDisplayed()
+            rule.onNodeWithText("Отмена").performClick()
+            assertTrue(binFiles().isEmpty())
+            assertArrayEquals(payload, keeper.readBytes())
+            assertArrayEquals(payload, copy.readBytes())
+            rule.onNodeWithText("В корзину…").performClick()
+            rule.waitUntil(10_000) {
+                rule.onAllNodes(hasText("Проверить и переместить")).fetchSemanticsNodes().isNotEmpty()
+            }
+            rule.onNodeWithText("Проверить и переместить").performClick()
+            rule.waitUntil(10_000) { !copy.isFile }
+            assertArrayEquals(payload, keeper.readBytes())
+            val item = binFiles().single()
+            runBlocking { bin.restore(listOf(item)) }
+            assertArrayEquals(payload, copy.readBytes())
+            assertTrue(binFiles().isEmpty())
+        } finally {
+            val remaining = binFiles()
+            runBlocking { bin.restore(remaining) }
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test fun hundredFileNavigationTiming() = recordNavigationTiming(100)
+
+    @Test fun twelveHundredFileNavigationTiming() = recordNavigationTiming(1200)
+
+    private fun recordNavigationTiming(count: Int) {
+        val rows = generatedRows(count)
+        val start = SystemClock.elapsedRealtime()
+        showSearch(rows)
+        openFirstGroup(rows)
+        val opened = SystemClock.elapsedRealtime()
+        val grid = rule.onNodeWithTag("duplicate-copy-grid")
+        grid.performScrollToIndex(count - 2)
+        grid.performScrollToIndex(0)
+        val scrolled = SystemClock.elapsedRealtime()
+        val checkbox = rule.onNodeWithTag("duplicate-select-${rows[1].uri}")
+        repeat(20) { checkbox.performClick() }
+        checkbox.assertIsOff()
+        val toggled = SystemClock.elapsedRealtime()
+        rule.onNodeWithContentDescription("Назад").performClick()
+        openFirstGroup(rows)
+        checkbox.assertIsOff()
+        val reopened = SystemClock.elapsedRealtime()
+        val metrics = listOf(opened - start, scrolled - opened, toggled - scrolled, reopened - toggled)
+        File(artifactDirectory(), "performance-$count.csv").writeText(
+            "files,open_ms,scroll_to_end_and_back_ms,toggle_20_ms,return_to_group_ms\n" +
+                (listOf(count.toLong()) + metrics).joinToString(",") + "\n"
+        )
+        assertTrue("UI interactions exceeded the fixture timeout: $metrics", metrics.drop(1).all { it < 15_000 })
+    }
+
+    private fun showSearch(
+        rows: List<CatalogMediaRow>,
+        fontScale: Float = 1f,
+        load: suspend () -> List<CatalogMediaRow> = { rows },
+        trash: suspend (ExactDuplicateReview) -> Int = { error("Unexpected mutation") },
+    ) {
+        rule.setContent {
+            val scope = rememberCoroutineScope()
+            val controller = remember {
+                DuplicateSearchController(
+                    scope,
+                    load = { _, _ -> DuplicateSearchInput(load()) },
+                    verifyVisual = { _, _ -> VisualDuplicatePixelVerification.Result.EXACT_PIXELS },
+                    trash = trash,
+                )
+            }
+            val density = LocalDensity.current.density
+            CompositionLocalProvider(
+                LocalDensity provides Density(density, fontScale),
+                LocalContentColor provides Color.Black,
+            ) {
+                LaunchedEffect(controller) { controller.refresh(force = false) }
+                DuplicateSearchScreen(controller, onClose = {}, onRequestAccess = {})
+            }
+        }
+    }
+
+    private fun openFirstGroup(rows: List<CatalogMediaRow>) {
+        waitForTag("duplicate-groups")
+        rule.onNodeWithText(rows[0].name).performClick()
+        rule.onNodeWithTag("duplicate-copy-grid").assertIsDisplayed()
+    }
+
+    private fun waitForTag(tag: String) {
+        rule.waitUntil(10_000) { rule.onAllNodes(hasTestTag(tag)).fetchSemanticsNodes().isNotEmpty() }
+    }
+
+    private fun screenshot(name: String) {
+        val bitmap = rule.onRoot().captureToImage().asAndroidBitmap()
+        File(artifactDirectory(), "$name.png").outputStream().use {
+            check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it))
+        }
+    }
+
+    private fun artifactDirectory() = requireNotNull(context.getExternalFilesDir("duplicate-qa"))
+
+    private fun generatedRows(count: Int) = (0 until count).map { index ->
+        val name = "Sample-" + index.toString().padStart(4, '0') + ".jpg"
+        val file = File(context.cacheDir, "missing-fixtures/$name")
+        row(file, index + 1L, 96, "a".repeat(64))
+    }
+
+    private fun fileRow(file: File, order: Long): CatalogMediaRow {
+        val digest = MessageDigest.getInstance("SHA-256").digest(file.readBytes())
+            .joinToString("") { "%02x".format(it) }
+        return row(file, order, file.length(), digest)
+    }
+
+    private fun row(file: File, order: Long, size: Long, hash: String) = CatalogMediaRow(
+        uri = Uri.fromFile(file).toString(), mediaId = order, name = file.name,
+        mimeType = if (file.extension == "svg") "image/svg+xml" else "image/jpeg",
+        kind = if (file.extension == "svg") "SVG" else "IMAGE",
+        dateTakenMillis = order, width = 128, height = 128, durationMillis = 0,
+        album = "Fixtures", relativePath = "Fixtures", sizeBytes = size, dateModifiedMillis = file.lastModified(),
+        storageId = "duplicate-fixture", storageName = "Тестовый носитель",
+        folderTarget = file.parent.orEmpty(), sourcePath = file.path, fullHash = hash,
+    )
+}

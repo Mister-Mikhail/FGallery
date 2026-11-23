@@ -196,29 +196,13 @@ class MainActivity : ComponentActivity() {
         LaunchedEffect(selectedItem?.uriKey) {
             selectedItem?.let { savedViewerUri = it.uriKey }
         }
-        // Stage 6 review uses a single-flight fresh-byte trash transaction.
-        var duplicateReviewOpen by remember { mutableStateOf(false) }
-        var duplicateTrashInProgress by remember { mutableStateOf(false) }
-        var duplicateRows by remember { mutableStateOf<List<com.mistermikhail.fgallery.data.CatalogMediaRow>?>(null) }
-        var duplicateLoadError by remember { mutableStateOf<String?>(null) }
-        var duplicateStorages by remember { mutableStateOf<Set<String>>(emptySet()) }
-        var duplicateFolders by remember { mutableStateOf<Set<String>>(emptySet()) }
-        var duplicateSelected by remember { mutableStateOf<Set<String>>(emptySet()) }
-        var duplicateRefreshGeneration by remember { mutableIntStateOf(0) }
-        var visualCandidatePage by remember { mutableIntStateOf(0) }
-        var visualVerificationBusy by remember { mutableStateOf(false) }
-        var visualVerificationResults by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
-        LaunchedEffect(duplicateReviewOpen, duplicateRefreshGeneration) {
-            if (duplicateReviewOpen) {
-                duplicateRows = null
-                duplicateLoadError = null
-                duplicateSelected = emptySet()
-                try {
-                    duplicateRows = com.mistermikhail.fgallery.data.CatalogStore
-                        .exactDuplicateReviewRows(this@MainActivity)
-                } catch (error: Exception) {
-                    duplicateLoadError = error.localizedMessage ?: "Ошибка чтения каталога"
-                }
+        var duplicateReviewOpen by rememberSaveable { mutableStateOf(false) }
+        LaunchedEffect(duplicateReviewOpen) {
+            if (duplicateReviewOpen) viewModel.openDuplicateSearch()
+        }
+        LaunchedEffect(state.hasPermission) {
+            if (duplicateReviewOpen && viewModel.duplicateSearch.state.value.catalogue != null) {
+                viewModel.duplicateSearch.refresh(force = false)
             }
         }
         var cleanupMode by remember { mutableStateOf(false) }
@@ -1068,9 +1052,20 @@ class MainActivity : ComponentActivity() {
 
         DisposableEffect(Unit) {
             var refreshSignal: kotlinx.coroutines.Job? = null
-            fun changed() { refreshSignal?.cancel(); refreshSignal = uiScope.launch { kotlinx.coroutines.delay(120); folderRevision++; viewModel.refresh() } }
+            var storageChanged = false
+            fun changed(volume: Boolean = false) {
+                storageChanged = storageChanged || volume
+                refreshSignal?.cancel()
+                refreshSignal = uiScope.launch {
+                    kotlinx.coroutines.delay(120)
+                    folderRevision++
+                    viewModel.refresh()
+                    if (storageChanged) viewModel.onDuplicateStorageChanged()
+                    storageChanged = false
+                }
+            }
             val receiver = object : android.content.BroadcastReceiver() {
-                override fun onReceive(context: android.content.Context?, intent: Intent?) { changed() }
+                override fun onReceive(context: android.content.Context?, intent: Intent?) { changed(volume = true) }
             }
             val filter = android.content.IntentFilter().apply {
                 addAction(Intent.ACTION_MEDIA_MOUNTED); addAction(Intent.ACTION_MEDIA_UNMOUNTED)
@@ -1079,7 +1074,7 @@ class MainActivity : ComponentActivity() {
             }
             androidx.core.content.ContextCompat.registerReceiver(this@MainActivity, receiver, filter, androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED)
             val usbReceiver = object : android.content.BroadcastReceiver() {
-                override fun onReceive(context: android.content.Context?, intent: Intent?) { changed() }
+                override fun onReceive(context: android.content.Context?, intent: Intent?) { changed(volume = true) }
             }
             val usbFilter = android.content.IntentFilter().apply {
                 addAction(android.hardware.usb.UsbManager.ACTION_USB_DEVICE_ATTACHED)
@@ -1088,7 +1083,7 @@ class MainActivity : ComponentActivity() {
             androidx.core.content.ContextCompat.registerReceiver(this@MainActivity, usbReceiver, usbFilter, androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED)
             val manager = getSystemService(android.os.storage.StorageManager::class.java)
             val callback = if (Build.VERSION.SDK_INT >= 30) object : android.os.storage.StorageManager.StorageVolumeCallback() {
-                override fun onStateChanged(volume: android.os.storage.StorageVolume) { changed() }
+                override fun onStateChanged(volume: android.os.storage.StorageVolume) { changed(volume = true) }
             } else null
             if (Build.VERSION.SDK_INT >= 30 && callback != null) manager.registerStorageVolumeCallback(mainExecutor, callback)
             val observer = object : android.database.ContentObserver(android.os.Handler(android.os.Looper.getMainLooper())) {
@@ -1233,118 +1228,14 @@ class MainActivity : ComponentActivity() {
                     },
                 )
             } else if (duplicateReviewOpen) {
-                BackHandler { if (!duplicateTrashInProgress && !visualVerificationBusy) duplicateReviewOpen = false }
-                val rows = duplicateRows
-                if (rows == null) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text(duplicateLoadError ?: "Загрузка каталога дубликатов…")
-                    }
-                } else {
-                    val review = com.mistermikhail.fgallery.data.planExactDuplicateReview(
-                        rows, duplicateStorages, duplicateFolders, duplicateSelected
-                    )
-                    // Review the entire scoped catalogue in bounded pages. Pixel decoding
-                    // remains opt-in; a page is not a claim of an exhaustive scan.
-                    val scopedVisualRows = remember(rows, duplicateStorages, duplicateFolders) {
-                        rows.asSequence()
-                            .filter { it.kind == "IMAGE" && !it.recycled }
-                            .filter { duplicateStorages.isEmpty() || it.storageId in duplicateStorages }
-                            .filter { duplicateFolders.isEmpty() || it.folderTarget in duplicateFolders }
-                            .toList()
-                    }
-                    val visualPageCount = com.mistermikhail.fgallery.data.visualCandidatePageCount(scopedVisualRows.size)
-                    val currentVisualPage = visualCandidatePage.coerceIn(0, visualPageCount - 1)
-                    val visualRows = com.mistermikhail.fgallery.data.visualCandidatePage(scopedVisualRows, currentVisualPage)
-                    val visualCandidates = com.mistermikhail.fgallery.data.visualCandidatesAcrossPages(
-                        scopedVisualRows, currentVisualPage
-                    )
-                    com.mistermikhail.fgallery.ui.ExactDuplicateReviewScreen(
-                        review = review,
-                        visualCandidates = visualCandidates,
-                        visualPage = currentVisualPage,
-                        visualPageCount = visualPageCount,
-                        onVisualPageChanged = { visualCandidatePage = it; visualVerificationResults = emptyMap() },
-                        visualStatus = visualVerificationResults,
-                        visualInProgress = visualVerificationBusy,
-                        onVerifyVisual = { firstUri, secondUri ->
-                            if (!visualVerificationBusy && !duplicateTrashInProgress) {
-                                val first = scopedVisualRows.firstOrNull { it.uri == firstUri }
-                                val second = scopedVisualRows.firstOrNull { it.uri == secondUri }
-                                if (first != null && second != null) {
-                                    visualVerificationBusy = true
-                                    val key = "$firstUri|$secondUri"
-                                    visualVerificationResults = visualVerificationResults +
-                                        (key to "Проверяем исходные файлы…")
-                                    uiScope.launch {
-                                        try {
-                                            val result = com.mistermikhail.fgallery.data
-                                                .VisualDuplicateSourceVerification.verify(
-                                                    this@MainActivity, first, second)
-                                            visualVerificationResults = visualVerificationResults +
-                                                (key to when (result) {
-                                                    com.mistermikhail.fgallery.data.VisualDuplicatePixelVerification.Result.EXACT_PIXELS ->
-                                                        "Пиксели совпадают. Только информация."
-                                                    com.mistermikhail.fgallery.data.VisualDuplicatePixelVerification.Result.EXACT_CROP ->
-                                                        "Подтверждено точное кадрирование. Только информация."
-                                                    com.mistermikhail.fgallery.data.VisualDuplicatePixelVerification.Result.EXACT_INTEGER_RESIZE ->
-                                                        "Подтвержден точный целочисленный resize. Только информация."
-                                                    else -> "Совпадение не подтверждено."
-                                                })
-                                        } catch (cancelled: kotlinx.coroutines.CancellationException) {
-                                            throw cancelled
-                                        } catch (error: Exception) {
-                                            visualVerificationResults = visualVerificationResults +
-                                                (key to "Не удалось проверить исходные файлы.")
-                                        } finally {
-                                            visualVerificationBusy = false
-                                        }
-                                    }
-                                }
-                            }
-                        },
-                        availableStorages = rows.map { it.storageId }.distinct(),
-                        availableFolders = rows.map { it.folderTarget }.distinct(),
-                        onScopeChanged = { storages, folders ->
-                            duplicateStorages = storages
-                            duplicateFolders = folders
-                            duplicateSelected = emptySet()
-                            visualCandidatePage = 0
-                            visualVerificationResults = emptyMap()
-                        },
-                        onCopySelectionChanged = { uri, selected ->
-                            duplicateSelected = if (selected) duplicateSelected + uri else duplicateSelected - uri
-                        },
-                        onRequestTrashVerification = { confirmedReview ->
-                            // One active mutation per review. Keep the selected
-                            // snapshot stable until the transaction completes.
-                            if (!duplicateTrashInProgress) {
-                                duplicateTrashInProgress = true
-                                uiScope.launch {
-                                    try {
-                                        val moved = viewModel.trashConfirmedExactDuplicates(confirmedReview)
-                                        duplicateRefreshGeneration++
-                                        Toast.makeText(this@MainActivity,
-                                            com.mistermikhail.fgallery.ui.exactDuplicateTrashFeedback(moved),
-                                            Toast.LENGTH_LONG).show()
-                                    } catch (cancelled: kotlinx.coroutines.CancellationException) {
-                                        throw cancelled
-                                    } catch (error: Exception) {
-                                        duplicateRefreshGeneration++
-                                        Toast.makeText(this@MainActivity,
-                                            "Проверка или перемещение остановлено: ${error.localizedMessage ?: "нет доступа"}",
-                                            Toast.LENGTH_LONG).show()
-                                    } finally {
-                                        duplicateTrashInProgress = false
-                                    }
-                                }
-                            }
-                        },
-                        trashVerificationAvailable = true,
-                        trashInProgress = duplicateTrashInProgress,
-                        onClose = { duplicateReviewOpen = false },
-                        onRefresh = { visualCandidatePage = 0; visualVerificationResults = emptyMap(); duplicateRefreshGeneration++ },
-                    )
-                }
+                com.mistermikhail.fgallery.ui.DuplicateSearchScreen(
+                    controller = viewModel.duplicateSearch,
+                    onClose = {
+                        viewModel.closeDuplicateSearch()
+                        duplicateReviewOpen = false
+                    },
+                    onRequestAccess = ::requestMediaAccess,
+                )
             } else if (state.recycleBinVisible) {
                 RecycleBinScreen(
                     items = state.recycleBinItems,
@@ -1414,9 +1305,6 @@ class MainActivity : ComponentActivity() {
                     livePreviewEnabled = current == null && pendingMoveItems.isEmpty(),
                     onOpenExactDuplicates = {
                         selectedIds = emptySet()
-                        duplicateStorages = emptySet()
-                        duplicateFolders = emptySet()
-                        duplicateSelected = emptySet()
                         duplicateReviewOpen = true
                     },
                     onOpenRecycleBin = {

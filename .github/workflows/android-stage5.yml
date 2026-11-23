@@ -6,10 +6,12 @@ on:
       - main
       - feature/fgallery-0.4.0-integration
       - fix/fgallery-m4v-saf-mime-regression
+      - feature/stage6-duplicate-search-issue22
   pull_request:
     branches:
       - main
       - feature/fgallery-0.4.0-integration
+      - fix/fgallery-m4v-saf-mime-regression
     # Stage 6 pushes run full R8/Android16 CI; PR event remains a duplicate fast-only check.
     paths-ignore:
       - 'docs/**'
@@ -27,11 +29,12 @@ concurrency:
 
 jobs:
   r8-build:
-    # Run on PR events too: connector-authored pushes may not emit push workflows.
-    if: github.event_name == 'push' || github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    if: github.event_name != 'pull_request' || github.base_ref != 'fix/fgallery-m4v-saf-mime-regression' || github.head_ref == 'feature/stage6-duplicate-search-issue22'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref == 'feature/stage6-duplicate-search-issue22' && github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
@@ -57,11 +60,15 @@ jobs:
             test "$certificate" = "ce2293752c0a4a8c844caff57fa3bc28ee9206e927ad311dbcf3a5e71c803eb2"
             du -h "$apk"
           done
+          cd app/build/outputs/apk/release
+          sha256sum app-arm64-v8a-release.apk | tee app-arm64-v8a-release.apk.sha256
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: FGallery-0.4.0-R8-arm64
-          path: app/build/outputs/apk/release/app-arm64-v8a-release.apk
+          path: |
+            app/build/outputs/apk/release/app-arm64-v8a-release.apk
+            app/build/outputs/apk/release/app-arm64-v8a-release.apk.sha256
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -74,11 +81,12 @@ jobs:
           path: app/build/outputs/mapping/release/mapping.txt
 
   r8-device-tests:
-    # Run on PR events too: connector-authored pushes may not emit push workflows.
-    if: github.event_name == 'push' || github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    if: github.event_name != 'pull_request' || github.base_ref != 'fix/fgallery-m4v-saf-mime-regression' || github.head_ref == 'feature/stage6-duplicate-search-issue22'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref == 'feature/stage6-duplicate-search-issue22' && github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
@@ -102,12 +110,14 @@ jobs:
           arch: x86_64
           profile: pixel_2
           disable-animations: true
-          script: gradle :app:connectedMinifiedTestAndroidTest
+          script: bash .github/scripts/duplicate-qa-device-tests.sh
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: FGallery-0.4.0-R8-instrumentation
-          path: app/build/reports/androidTests/connected/
+          path: |
+            app/build/reports/androidTests/connected/
+            artifacts/duplicate-qa/
 
   publish-qa:
     # Explicit QA-only publication after both QA jobs pass; PR marker permits connector-authored commits.

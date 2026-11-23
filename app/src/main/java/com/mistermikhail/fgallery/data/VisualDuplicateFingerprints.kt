@@ -189,6 +189,11 @@ internal fun visualCandidatesAcrossPages(
         for (j in candidates.sorted()) {
             if (j <= i) continue
             val second = items[j]
+            // Copies already identified by full SHA-256 belong to the exact tab.
+            val digest = first.fullHash
+            if (digest?.length == 64 && first.sizeBytes == second.sizeBytes &&
+                digest.equals(second.fullHash, ignoreCase = true)
+            ) continue
             if (potentialVisualDuplicate(first, second)) {
                 result.add(first.uri to second.uri)
                 if (result.size == maxPairs) return result

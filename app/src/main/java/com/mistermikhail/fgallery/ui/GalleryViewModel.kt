@@ -6,6 +6,9 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import com.mistermikhail.fgallery.data.LibrarySnapshot
 import com.mistermikhail.fgallery.data.CatalogStore
+import com.mistermikhail.fgallery.data.CatalogMediaRow
+import com.mistermikhail.fgallery.data.DuplicateSearchInput
+import com.mistermikhail.fgallery.data.VisualDuplicateSourceVerification
 import com.mistermikhail.fgallery.data.DriveLibrary
 import com.mistermikhail.fgallery.data.DriveRecycleBin
 import com.mistermikhail.fgallery.data.DocumentLibrary
@@ -22,6 +25,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.withContext
 
 /** Album date is the latest timestamp of a contained file, not the folder mtime. */
@@ -79,6 +83,81 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
     private var albumWarmJob: kotlinx.coroutines.Job? = null
     private var refreshJob: kotlinx.coroutines.Job? = null
     private var fingerprintJob: kotlinx.coroutines.Job? = null
+    @Volatile private var duplicateSearchActive = false
+    @Volatile private var lastCatalogueScanSucceeded: Boolean? = null
+
+    internal val duplicateSearch by lazy {
+        DuplicateSearchController(
+            scope = viewModelScope,
+            load = ::loadDuplicateSearch,
+            verifyVisual = { first, second ->
+                VisualDuplicateSourceVerification.verify(getApplication(), first, second)
+            },
+            trash = ::trashConfirmedExactDuplicates,
+            prepareVisual = ::prepareDuplicateVisualRows,
+        )
+    }
+
+    internal fun openDuplicateSearch() {
+        if (duplicateSearchActive) return
+        duplicateSearchActive = true
+        duplicateSearch.refresh(force = false)
+    }
+
+    internal fun closeDuplicateSearch() {
+        duplicateSearch.close()
+        duplicateSearchActive = false
+    }
+
+    private suspend fun loadDuplicateSearch(
+        force: Boolean,
+        progress: (String) -> Unit,
+    ): DuplicateSearchInput {
+        progress("Сканируем доступные носители…")
+        if (force || refreshJob == null) refresh(forceFull = force)
+        while (true) {
+            val current = refreshJob ?: break
+            current.join()
+            if (refreshJob === current) break
+        }
+        check(lastCatalogueScanSucceeded == true) { "Не удалось обновить каталог носителей. Повторите поиск." }
+        fingerprintJob?.cancelAndJoin()
+        val context = getApplication<Application>()
+        val input = CatalogStore.duplicateSearchInput(context, _uiState.value.hasPermission)
+        if (input.pendingFingerprints == 0) return input
+        progress("Файлов в очереди проверки: ${input.pendingFingerprints}")
+        var batches = 0
+        while (CatalogStore.indexExactDuplicateCandidates(
+                context, canWork = { true }, quickBudget = 48, fullBudget = 8,
+            )
+        ) {
+            batches++
+            if (batches % 4 == 0) progress("Проверяем точные копии · обработано пакетов: $batches")
+        }
+        return CatalogStore.duplicateSearchInput(context, _uiState.value.hasPermission)
+    }
+
+    internal fun onDuplicateStorageChanged() {
+        if (duplicateSearchActive) duplicateSearch.refresh(force = false)
+    }
+
+    private suspend fun prepareDuplicateVisualRows(rows: List<CatalogMediaRow>) =
+        withContext(Dispatchers.IO) {
+            val context = getApplication<Application>()
+            var cursor = ""
+            while (true) {
+                cursor = CatalogStore.indexVisualCandidateHashes(context, canWork = { true }, afterUri = cursor)
+                    ?: break
+            }
+            val current = CatalogStore.exactDuplicateReviewRows(context).associateBy { it.uri }
+            rows.map { row ->
+                val updated = current[row.uri]
+                if (updated != null && row.sizeBytes == updated.sizeBytes &&
+                    row.dateModifiedMillis == updated.dateModifiedMillis && row.quickHash == updated.quickHash
+                ) row.copy(perceptualHash = updated.perceptualHash) else row
+            }
+        }
+
     private val repository = MediaRepository(application)
     private val settingsRepository = AppSettingsRepository(application)
     private val _uiState = MutableStateFlow(LibrarySnapshot.memory?.let {
@@ -343,8 +422,9 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
                 true
             } catch (e: kotlinx.coroutines.CancellationException) { throw e }
               catch (_: Exception) { false }
+            lastCatalogueScanSucceeded = roomStored
             if (roomStored && fullSafetyScan) CatalogStore.recordFullScan(getApplication())
-            if (roomStored) {
+            if (roomStored && !duplicateSearchActive) {
                 // Fingerprint only potential exact-copy candidates, with small
                 // per-refresh budgets. Never compete with scrolling or viewing.
                 fingerprintJob = viewModelScope.launch(Dispatchers.IO) {
@@ -539,11 +619,6 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
         var completed = 0
         try {
             for (uri in confirmed.sorted()) {
-                val originalGroup = reviewed.groups.firstOrNull { group ->
-                    group.drop(1).any { it.uri == uri }
-                } ?: error("Не найдена защищённая исходная копия")
-                val keeperSnapshot = originalGroup.first()
-                val copySnapshot = originalGroup.first { it.uri == uri }
                 val current = CatalogStore.exactDuplicateReviewRows(context)
                 check(com.mistermikhail.fgallery.data.exactDuplicateMovePairStillValid(
                     reviewed, current, uri,
@@ -586,6 +661,10 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
                     LibrarySnapshot.removeItems(removed)
                 }
             }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            throw DuplicateTrashInterrupted(completed, failure)
         } finally {
             refresh()
         }

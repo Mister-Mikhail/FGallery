@@ -24,6 +24,13 @@ internal fun eligibleExactDuplicateReviewRows(
     !it.recycled && it.storageId !in disconnectedStorageIds
 }
 
+internal data class DuplicateSearchInput(
+    val rows: List<CatalogMediaRow>,
+    val disconnectedStorages: List<String> = emptyList(),
+    val pendingFingerprints: Int = 0,
+    val requiresAccess: Boolean = false,
+)
+
 internal object CatalogStore {
     private const val PREFS = "fgallery_catalog_status"
     private const val PERMISSION_KEY = "permission_at_last_scan"
@@ -93,6 +100,22 @@ internal object CatalogStore {
                 .filterNot { it.connected }
                 .mapTo(hashSetOf()) { it.storageId }
             eligibleExactDuplicateReviewRows(dao.allMedia(), disconnected)
+        }
+
+    suspend fun duplicateSearchInput(context: Context, hasMediaPermission: Boolean): DuplicateSearchInput =
+        withContext(Dispatchers.IO) {
+            val dao = CatalogDatabase.get(context).catalog()
+            val offline = dao.allVolumes().filterNot { it.connected }
+            val offlineIds = offline.mapTo(hashSetOf()) { it.storageId }
+            val rows = eligibleExactDuplicateReviewRows(dao.allMedia(), offlineIds)
+            val pending = dao.pendingQuickHashCandidates().count { it.storageId !in offlineIds } +
+                dao.pendingFullHashCandidates().count { it.storageId !in offlineIds }
+            DuplicateSearchInput(
+                rows = rows,
+                disconnectedStorages = offline.map { it.displayName }.distinct().sorted(),
+                pendingFingerprints = pending,
+                requiresAccess = !hasMediaPermission && !StorageFolders.hasFileAccess() && rows.isEmpty(),
+            )
         }
 
     suspend fun priorFolders(context: Context): List<CatalogFolderRow> = withContext(Dispatchers.IO) {

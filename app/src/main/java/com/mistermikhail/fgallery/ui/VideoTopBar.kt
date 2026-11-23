@@ -25,6 +25,7 @@ internal fun VideoTopBar(
     onTrash: () -> Unit,
     onRestore: () -> Unit,
     recycleBinMode: Boolean,
+    readOnly: Boolean = false,
 ) {
     Box(Modifier.fillMaxWidth().safeDrawingPadding().padding(horizontal = 4.dp)) {
         IconButton(onClick = onBack, modifier = Modifier.align(Alignment.CenterStart)) {
@@ -39,13 +40,13 @@ internal fun VideoTopBar(
                     onMenuExpandedChange(false)
                     callback()
                 }
-                DropdownMenuItem(text = { Text("Отправить") }, onClick = { action(onShare) })
-                if (!recycleBinMode) DropdownMenuItem(text = { Text("Кадрировать видео") }, onClick = { action(onCrop) })
-                if (!recycleBinMode) DropdownMenuItem(text = { Text("Переименовать") }, onClick = { action(onRename) })
-                if (!recycleBinMode) DropdownMenuItem(text = { Text("Переместить") }, onClick = { action(onMove) })
+                if (!readOnly) DropdownMenuItem(text = { Text("Отправить") }, onClick = { action(onShare) })
+                if (!readOnly && !recycleBinMode) DropdownMenuItem(text = { Text("Кадрировать видео") }, onClick = { action(onCrop) })
+                if (!readOnly && !recycleBinMode) DropdownMenuItem(text = { Text("Переименовать") }, onClick = { action(onRename) })
+                if (!readOnly && !recycleBinMode) DropdownMenuItem(text = { Text("Переместить") }, onClick = { action(onMove) })
                 DropdownMenuItem(text = { Text("Сведения") }, onClick = { action(onDetails) })
-                if (recycleBinMode) DropdownMenuItem(text = { Text("Восстановить") }, onClick = { action(onRestore) })
-                else DropdownMenuItem(text = { Text("В корзину") }, onClick = { action(onTrash) })
+                if (!readOnly && recycleBinMode) DropdownMenuItem(text = { Text("Восстановить") }, onClick = { action(onRestore) })
+                else if (!readOnly) DropdownMenuItem(text = { Text("В корзину") }, onClick = { action(onTrash) })
             }
         }
     }

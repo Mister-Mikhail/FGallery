@@ -125,6 +125,7 @@ fun ViewerScreen(
     deletingItemUri: String? = null,
     recycleBinMode: Boolean = false,
     zoomSecondPower: Float = .85f,
+    readOnly: Boolean = false,
 ) {
     val initialPage = items.indexOfFirst { it.uriKey == initialItem.uriKey }.coerceAtLeast(0)
     val pagerState = rememberPagerState(
@@ -194,7 +195,7 @@ fun ViewerScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(if (cleanupMode && !recycleBinMode) Color(0xFF38100A) else Color.Black)
+            .background(if (cleanupMode && !recycleBinMode && !readOnly) Color(0xFF38100A) else Color.Black)
             .semantics { this[ViewerCurrentUri] = currentItem?.uriKey.orEmpty() }
             .testTag("viewer-root"),
     ) {
@@ -217,7 +218,7 @@ fun ViewerScreen(
                     },
                     onSingleTap = ::toggleChrome,
                     onDoubleTap = {
-                        if (cleanupMode && !recycleBinMode) onTrash(item)
+                        if (cleanupMode && !recycleBinMode && !readOnly) onTrash(item)
                     },
                     topBar = {
                         VideoTopBar(
@@ -232,18 +233,19 @@ fun ViewerScreen(
                             onTrash = { onTrash(item) },
                             onRestore = { onRestore(item) },
                             recycleBinMode = recycleBinMode,
+                            readOnly = readOnly,
                         )
                     },
                 )
             } else if (item.kind == MediaKind.PDF) {
-                PdfViewer(item, ::toggleChrome, onDoubleTap = if (cleanupMode && !recycleBinMode) ({ onTrash(item) }) else null, zoomSecondPower = zoomSecondPower)
+                PdfViewer(item, ::toggleChrome, onDoubleTap = if (cleanupMode && !recycleBinMode && !readOnly) ({ onTrash(item) }) else null, zoomSecondPower = zoomSecondPower)
             } else if (item.kind == MediaKind.SVG) {
-                SvgViewer(item, ::toggleChrome, onDoubleTap = if (cleanupMode && !recycleBinMode) ({ onTrash(item) }) else null, zoomSecondPower = zoomSecondPower)
+                SvgViewer(item, ::toggleChrome, onDoubleTap = if (cleanupMode && !recycleBinMode && !readOnly) ({ onTrash(item) }) else null, zoomSecondPower = zoomSecondPower)
             } else {
                 TiledZoomableImage(
                     item = item,
                     onSingleTap = ::toggleChrome,
-                    cleanupMode = cleanupMode && !recycleBinMode,
+                    cleanupMode = cleanupMode && !recycleBinMode && !readOnly,
                     onTrash = { onTrash(item) },
                     active = activePage,
                     zoomSecondPower = zoomSecondPower,
@@ -293,21 +295,21 @@ fun ViewerScreen(
                                 .align(Alignment.CenterEnd)
                                 .padding(end = 4.dp),
                         ) {
-                            IconButton(onClick = { onShare(currentItem) }) {
+                            if (!readOnly) IconButton(onClick = { onShare(currentItem) }) {
                                 Icon(
                                     Icons.Outlined.Share,
                                     contentDescription = "Отправить",
                                     tint = Color.White,
                                 )
                             }
-                            if (!recycleBinMode && currentItem.kind != MediaKind.PDF && currentItem.kind != MediaKind.SVG) IconButton(onClick = { onCrop(currentItem) }) {
+                            if (!readOnly && !recycleBinMode && currentItem.kind != MediaKind.PDF && currentItem.kind != MediaKind.SVG) IconButton(onClick = { onCrop(currentItem) }) {
                                 Icon(
                                     Icons.Outlined.Crop,
                                     contentDescription = "Кадрировать",
                                     tint = Color.White,
                                 )
                             }
-                            if (!recycleBinMode) IconButton(
+                            if (!readOnly && !recycleBinMode) IconButton(
                                 onClick = {
                                     renameTarget = currentItem
                                                                     },
@@ -318,7 +320,7 @@ fun ViewerScreen(
                                     tint = Color.White,
                                 )
                             }
-                            if (!recycleBinMode) IconButton(
+                            if (!readOnly && !recycleBinMode) IconButton(
                                 onClick = { onMove(currentItem) },
                             ) {
                                 Icon(
@@ -327,7 +329,7 @@ fun ViewerScreen(
                                     tint = Color.White,
                                 )
                             }
-                            if (!recycleBinMode && currentItem.kind == MediaKind.RAW) {
+                            if (!readOnly && !recycleBinMode && currentItem.kind == MediaKind.RAW) {
                                 Box {
                                     IconButton(onClick = { rawMenuExpanded = true }) {
                                         Icon(Icons.Outlined.Menu, contentDescription = "Действия с RAW", tint = Color.White)
@@ -353,10 +355,10 @@ fun ViewerScreen(
                                     tint = Color.White,
                                 )
                             }
-                            if (recycleBinMode) IconButton(onClick = { onRestore(currentItem) }) {
+                            if (!readOnly && recycleBinMode) IconButton(onClick = { onRestore(currentItem) }) {
                                 Icon(Icons.Outlined.RestoreFromTrash, contentDescription = "Восстановить", tint = Color.White)
                             }
-                            if (!recycleBinMode) IconButton(onClick = { onTrash(currentItem) }) {
+                            if (!readOnly && !recycleBinMode) IconButton(onClick = { onTrash(currentItem) }) {
                                 Icon(
                                     Icons.Outlined.DeleteOutline,
                                     contentDescription = "В корзину",

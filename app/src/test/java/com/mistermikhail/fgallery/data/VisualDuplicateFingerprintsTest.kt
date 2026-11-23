@@ -29,6 +29,15 @@ class VisualDuplicateFingerprintsTest {
         (0xff shl 24) or (r.coerceIn(0,255) shl 16) or
             (g.coerceIn(0,255) shl 8) or b.coerceIn(0,255)
 
+    @Test fun knownExactCopiesStayOutOfTheVisualCandidatePage() {
+        val first = row("first", "0123456789abcdef").copy(fullHash = "a".repeat(64))
+        val copy = first.copy(uri = "copy")
+        val similar = first.copy(uri = "similar", fullHash = "b".repeat(64))
+        val pairs = visualCandidatesAcrossPages(listOf(first, copy, similar), 0)
+        assertFalse(pairs.contains("first" to "copy"))
+        assertTrue(pairs.contains("first" to "similar"))
+    }
+
     @Test fun hashIsStableFixedLengthAndChecksInput() {
         val pixels = sample { x, y -> rgb(x * 20, y * 20, 40) }
         val hash = VisualDuplicateFingerprints.differenceHash(pixels)
