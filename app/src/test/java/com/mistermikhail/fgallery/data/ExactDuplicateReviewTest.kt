@@ -144,6 +144,18 @@ class ExactDuplicateReviewTest {
         assertEquals(setOf("copy"), review.selectedUris)
     }
 
+    @Test fun restoredGroupsCannotShowTheSameCopyTwice() {
+        val original = item("original")
+        val copy = item("copy")
+        val review = planExactDuplicateReview(listOf(original, copy),
+            requestedUris = setOf("copy"))
+        assertEquals(1, exactDuplicateGroupSummaries(review).size)
+        // A corrupt saved snapshot can repeat a URI in separate groups.
+        // Neither card is safe to offer for manual trash selection.
+        val repeated = review.copy(groups = review.groups + review.groups)
+        assertTrue(exactDuplicateGroupSummaries(repeated).isEmpty())
+    }
+
     @Test fun recycledRestoredRowCannotAppearInGroupSummary() {
         val original = item("original")
         val copy = item("copy")
