@@ -689,6 +689,25 @@ class ExactDuplicateReviewTest {
         assertTrue(exactDuplicateGroupSummaries(split).isEmpty())
         assertTrue(exactDuplicateTrashPrompt(split) == null)
     }
+    @Test fun summaryLayerRejectsRestoredRowsOutsideSelectedScope() {
+        val rows = listOf(item("original"), item("copy"))
+        val review = planExactDuplicateReview(
+            rows, includedStorageIds = setOf("phone"),
+            includedFolderTargets = setOf("DCIM/"), requestedUris = setOf("copy"),
+        )
+        assertEquals(1, exactDuplicateGroupSummaries(review).size)
+        val movedStorage = review.copy(groups = listOf(
+            listOf(rows[0], rows[1].copy(storageId = "usb"))
+        ))
+        assertTrue(exactDuplicateGroupSummaries(movedStorage).isEmpty())
+        val movedFolder = review.copy(groups = listOf(
+            listOf(rows[0], rows[1].copy(folderTarget = "Other/"))
+        ))
+        assertTrue(exactDuplicateGroupSummaries(movedFolder).isEmpty())
+        assertTrue(exactDuplicateTrashPrompt(movedStorage) == null)
+        assertTrue(exactDuplicateTrashPrompt(movedFolder) == null)
+    }
+
     @Test fun restoredReviewRejectsSelectionOutsideCopiesOrCorruptKeeperSet() {
         val original = item("original")
         val copy = item("copy")
