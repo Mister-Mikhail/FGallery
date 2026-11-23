@@ -8,6 +8,15 @@ import org.junit.Test
 
 /** Contract for the Stage 6 Compose review: scope changes must discard consent. */
 class ExactDuplicateReviewScreenContractTest {
+    @Test fun rejectedRestoredCatalogueNeverMasqueradesAsEmptyScan() {
+        val message = com.mistermikhail.fgallery.ui::duplicateExactResultsMessage
+        assertTrue(message(1, 0).contains("заблокирован"))
+        assertTrue(message(2, 0).contains("Обновите поиск"))
+        assertFalse(message(1, 0).contains("не найдено"))
+        assertTrue(message(0, 0).contains("не найдено"))
+        assertTrue(message(1, 1).contains("не найдено"))
+    }
+
     @Test fun trashDialogDoesNotRepeatExactByteCount() {
         val review = planExactDuplicateReview(
             listOf(row("original", "phone", "DCIM"), row("copy", "phone", "DCIM")),
