@@ -5,12 +5,11 @@ result=0
 gradle :app:connectedMinifiedTestAndroidTest || result=$?
 
 destination=artifacts/duplicate-qa
-source_dir=/sdcard/Android/data/com.mistermikhail.fgallery/files/duplicate-qa
+source_dir=/data/local/tmp/fgallery-duplicate-qa
 mkdir -p "$destination"
-if ! adb pull "$source_dir/." "$destination/"; then
-    adb exec-out run-as com.mistermikhail.fgallery tar -C "$source_dir" -cf - . |
-        tar -C "$destination" -xf - || true
-fi
+for file in exact-selection-large-font.png shared-svg-viewer.png visual-candidates-read-only.png     performance-100.csv performance-1200.csv; do
+    adb pull "$source_dir/$file" "$destination/$file" || true
+done
 
 adb logcat -d -b events -s am_anr > "$destination/anr.log"
 if grep -q 'am_anr:.*com\.mistermikhail\.fgallery' "$destination/anr.log"; then

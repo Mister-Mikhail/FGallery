@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.Color as AndroidColor
 import android.net.Uri
 import android.os.SystemClock
+import android.os.ParcelFileDescriptor
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -219,10 +220,9 @@ class DuplicateSearchUiTest {
             checkbox.assertIsOff()
             val reopened = SystemClock.elapsedRealtime()
             val metrics = listOf(opened - start, scrolled - opened, toggled - scrolled, reopened - toggled)
-            File(artifactDirectory(), "performance-$count.csv").writeText(
-                "files,open_ms,scroll_to_end_and_back_ms,toggle_20_ms,return_to_group_ms\n" +
-                    (listOf(count.toLong()) + metrics).joinToString(",") + "\n"
-            )
+            val csv = "files,open_ms,scroll_to_end_and_back_ms,toggle_20_ms,return_to_group_ms\n" +
+                (listOf(count.toLong()) + metrics).joinToString(",") + "\n"
+            logArtifact("performance-$count.csv", csv.toByteArray())
             assertTrue("UI interactions exceeded the fixture timeout: $metrics", metrics.drop(1).all { it < 15_000 })
         } finally {
             directory.deleteRecursively()
@@ -268,12 +268,31 @@ class DuplicateSearchUiTest {
 
     private fun screenshot(name: String) {
         val bitmap = rule.onRoot().captureToImage().asAndroidBitmap()
-        File(artifactDirectory(), "$name.png").outputStream().use {
+        val bytes = ByteArrayOutputStream().use {
             check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it))
+            it.toByteArray()
         }
+        logArtifact("$name.png", bytes)
     }
 
-    private fun artifactDirectory() = requireNotNull(context.getExternalFilesDir("duplicate-qa"))
+    private fun logArtifact(name: String, bytes: ByteArray) {
+        require(name.matches(Regex("[a-z0-9-]+[.](png|csv)")))
+        // The Gradle runner may uninstall the app before collecting artifacts.
+        // A shell-owned scratch directory remains available to adb pull.
+        val directory = "/data/local/tmp/fgallery-duplicate-qa"
+        val shell = InstrumentationRegistry.getInstrumentation().uiAutomation
+        ParcelFileDescriptor.AutoCloseInputStream(shell.executeShellCommand("mkdir -p $directory"))
+            .use { it.readBytes() }
+        val path = "$directory/$name"
+        val pipes = shell.executeShellCommandRw("dd of=$path")
+        ParcelFileDescriptor.AutoCloseInputStream(pipes[0]).use { result ->
+            ParcelFileDescriptor.AutoCloseOutputStream(pipes[1]).use { it.write(bytes) }
+            result.readBytes()
+        }
+        val size = ParcelFileDescriptor.AutoCloseInputStream(shell.executeShellCommand("wc -c $path"))
+            .use { it.bufferedReader().readText().trim().substringBefore(' ').toLongOrNull() }
+        check(size == bytes.size.toLong()) { "Could not write $name" }
+    }
 
     private fun generatedRows(count: Int) = (0 until count).map { index ->
         val name = "Sample-" + index.toString().padStart(4, '0') + ".jpg"
