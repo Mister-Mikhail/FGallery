@@ -284,7 +284,7 @@ internal fun exactDuplicateGroupSummaries(
     // snapshots must not split the same SHA-256 into separate keeper choices.
     val digests = review.groups.mapNotNull { it.firstOrNull()?.fullHash?.lowercase(java.util.Locale.ROOT) }
     if (digests.size != review.groups.size || digests.size != digests.toSet().size) return emptyList()
-    return review.groups.mapNotNull { group ->
+    val summaries = review.groups.mapNotNull { group ->
     val original = group.firstOrNull() ?: return@mapNotNull null
     if (group.size < 2 || original.uri !in review.protectedUris) return@mapNotNull null
     // Recycled rows cannot be offered as live copies, even when a caller
@@ -327,7 +327,9 @@ internal fun exactDuplicateGroupSummaries(
         sha256 = digest,
     )
 }
-
+    // Never return a valid-looking subset of a damaged restored catalogue.
+    // Every group must pass validation before any review summary is exposed.
+    return summaries.takeIf { it.size == review.groups.size } ?: emptyList()
 }
 
 /**
