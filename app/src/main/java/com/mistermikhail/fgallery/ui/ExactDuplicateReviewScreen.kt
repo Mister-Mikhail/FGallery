@@ -315,14 +315,14 @@ internal fun ExactDuplicateReviewScreen(
             HorizontalDivider()
             Text("Группа ${index + 1} · ${card.items.size} файлов · ${duplicateReviewFileSize(card.sizeBytes)} каждый",
                 style = MaterialTheme.typography.titleMedium)
-            Text("Слева и справа — отдельные файлы. Нажмите на фото для просмотра; выбор не удаляет файл.", style = MaterialTheme.typography.bodySmall)
+            Text("Нажмите на превью для просмотра. Отметьте только ненужные копии.", style = MaterialTheme.typography.bodySmall)
             Text("SHA-256: ${card.sha256.take(16)}…", style = MaterialTheme.typography.bodySmall)
             }
             card.items.chunked(2).forEachIndexed { rowIndex, pair ->
                 item(key = duplicateCopyRowKey(card.sha256, index, rowIndex)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     pair.forEach { item ->
                         Column(
@@ -464,7 +464,7 @@ private fun ScopeCheckbox(label: String, checked: Boolean, enabled: Boolean, onC
 private fun DuplicatePreview(uri: String, name: String, onOpen: () -> Unit) {
     var previewFailed by remember(uri) { mutableStateOf(false) }
     Box(
-        modifier = Modifier.fillMaxWidth().height(132.dp)
+        modifier = Modifier.fillMaxWidth().height(112.dp)
             .border(1.dp, Color(0xFF666666))
             .background(Color(0xFF202020))
             .clickable(onClick = onOpen),
