@@ -140,12 +140,12 @@ class AppUpdates(
         }
 
         internal fun isNewerVersion(candidate: String, installed: String): Boolean {
-            fun parts(value: String): List<Long>? {
-                val text = value.removePrefix("v").takeIf { it.matches(Regex("\\d+\\.\\d+\\.\\d+")) } ?: return null
+            fun parts(value: String, installedVersion: Boolean = false): List<Long>? {
+                val text = value.removePrefix("v").let { if (installedVersion) it.substringBefore("-") else it }.takeIf { it.matches(Regex("\\d+\\.\\d+\\.\\d+")) } ?: return null
                 return text.split('.').map { it.toLongOrNull() ?: return null }
             }
             val next = parts(candidate) ?: return false
-            val current = parts(installed) ?: return false
+            val current = parts(installed, installedVersion = true) ?: return false
             return next.zip(current).firstOrNull { it.first != it.second }?.let { it.first > it.second } ?: false
         }
     }

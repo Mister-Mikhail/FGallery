@@ -3,9 +3,13 @@ package com.mistermikhail.fgallery.ui
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -36,6 +40,7 @@ import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.DriveFileMove
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.GridOn
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Search
@@ -129,6 +134,7 @@ fun GalleryScreen(
     onConfirmMoveChanged: (Boolean) -> Unit,
     onConfirmRenameChanged: (Boolean) -> Unit,
     onOpenRecycleBin: () -> Unit,
+    onOpenExactDuplicates: () -> Unit,
     livePreviewEnabled: Boolean,
     cleanupMode: Boolean,
     onCleanupModeChanged: (Boolean) -> Unit,
@@ -151,7 +157,8 @@ fun GalleryScreen(
     val uniformGridState = rememberLazyGridState()
     var activeLiveVideoId by remember { mutableStateOf<Long?>(null) }
 
-    val inAlbum = state.selectedAlbum != null
+    val searchingFiles = state.searchVisible && state.query.isNotBlank()
+    val inAlbum = state.selectedAlbum != null || searchingFiles
     val visibleItems = state.visibleItems
     val albums = state.albums
     val visibleMosaicRows = remember(visibleItems) {
@@ -416,6 +423,10 @@ fun GalleryScreen(
                                         onClick = { apply(onOpenRecycleBin) },
                                     )
                                     DropdownMenuItem(
+                                        text = { Text("Точные дубликаты") },
+                                        onClick = { apply(onOpenExactDuplicates) },
+                                    )
+                                    DropdownMenuItem(
                                         text = { Text("Обновить") },
                                         onClick = { apply(onRefresh) },
                                     )
@@ -449,7 +460,7 @@ fun GalleryScreen(
                         onValueChange = onQueryChanged,
                         singleLine = true,
                         placeholder = {
-                            Text(if (inAlbum) "Поиск в альбоме" else "Поиск альбома")
+                            Text(if (state.selectedAlbum != null) "Поиск в альбоме" else "Поиск файлов и альбомов")
                         },
                         modifier = Modifier
                             .fillMaxWidth()
@@ -468,8 +479,67 @@ fun GalleryScreen(
                 }
             }
             state.isLoading && state.allItems.isEmpty() -> MessageState("Загрузка…", innerPadding)
+            searchingFiles && albums.isEmpty() && visibleItems.isEmpty() -> MessageState("Ничего не найдено", innerPadding)
             !inAlbum && albums.isEmpty() -> MessageState("Альбомы не найдены", innerPadding)
-            inAlbum && visibleItems.isEmpty() -> MessageState("Медиа не найдено", innerPadding)
+            inAlbum && !searchingFiles && visibleItems.isEmpty() -> MessageState("Медиа не найдено", innerPadding)
+
+            searchingFiles && state.selectedAlbum == null -> Column(
+                modifier = Modifier.fillMaxSize().padding(innerPadding),
+            ) {
+                if (albums.isNotEmpty()) {
+                    Text(
+                        "Папки",
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        style = MaterialTheme.typography.titleSmall,
+                    )
+                    Column(
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp)
+                            .verticalScroll(rememberScrollState()),
+                    ) {
+                        albums.forEach { album ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth()
+                                .clickable { onOpenAlbum(album.key) }
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(Icons.Outlined.Folder, contentDescription = null)
+                            Spacer(Modifier.width(12.dp))
+                            Text(album.name, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text("${album.count}", style = MaterialTheme.typography.labelSmall)
+                        }
+                        }
+                    }
+                }
+                if (visibleItems.isNotEmpty()) {
+                    Text(
+                        "Файлы",
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        style = MaterialTheme.typography.titleSmall,
+                    )
+                    if (state.gridMode == GridMode.MOSAIC) MosaicGrid(
+                        rows = visibleMosaicRows,
+                        state = mosaicListState,
+                        modifier = Modifier.fillMaxWidth().weight(1f),
+                        onOpenMedia = onOpenMedia,
+                        cleanupMode = cleanupMode,
+                        selectedIds = selectedIds,
+                        onToggleSelection = onToggleSelection,
+                        onLongPressSelection = onLongPressSelection,
+                        activeLiveVideoId = effectiveLiveVideoId,
+                    ) else UniformGrid(
+                        items = visibleItems,
+                        state = uniformGridState,
+                        modifier = Modifier.fillMaxWidth().weight(1f),
+                        onOpenMedia = onOpenMedia,
+                        cleanupMode = cleanupMode,
+                        selectedIds = selectedIds,
+                        onToggleSelection = onToggleSelection,
+                        onLongPressSelection = onLongPressSelection,
+                        activeLiveVideoId = effectiveLiveVideoId,
+                    )
+                }
+            }
 
             !inAlbum -> AlbumsGrid(
                 albums = albums,

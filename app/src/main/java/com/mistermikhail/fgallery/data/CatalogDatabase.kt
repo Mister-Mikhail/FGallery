@@ -116,7 +116,7 @@ internal interface CatalogDao {
               WHERE recycled = 0 AND sizeBytes > 0
               GROUP BY sizeBytes HAVING COUNT(*) > 1) collisions
           ON m.sizeBytes = collisions.sizeBytes
-        WHERE m.recycled = 0 AND m.quickHash IS NULL
+        WHERE m.recycled = 0 AND (m.quickHash IS NULL OR TRIM(m.quickHash) = '')
         ORDER BY m.sizeBytes, m.uri
     """)
     suspend fun pendingQuickHashCandidates(): List<CatalogMediaRow>
@@ -124,12 +124,12 @@ internal interface CatalogDao {
     /** Matching nonempty edge digests are candidates, never proof of equality. */
     @Query("""
         SELECT m.* FROM catalog_media m
-        JOIN (SELECT sizeBytes, quickHash FROM catalog_media
+        JOIN (SELECT sizeBytes, LOWER(quickHash) AS normalizedQuickHash FROM catalog_media
               WHERE recycled = 0 AND sizeBytes > 0
-                AND quickHash IS NOT NULL AND quickHash != ''
-              GROUP BY sizeBytes, quickHash HAVING COUNT(*) > 1) collisions
-          ON m.sizeBytes = collisions.sizeBytes AND m.quickHash = collisions.quickHash
-        WHERE m.recycled = 0 AND m.fullHash IS NULL
+                AND quickHash IS NOT NULL AND TRIM(quickHash) != ''
+              GROUP BY sizeBytes, LOWER(quickHash) HAVING COUNT(*) > 1) collisions
+          ON m.sizeBytes = collisions.sizeBytes AND LOWER(m.quickHash) = collisions.normalizedQuickHash
+        WHERE m.recycled = 0 AND (m.fullHash IS NULL OR TRIM(m.fullHash) = '')
         ORDER BY m.sizeBytes, m.uri
     """)
     suspend fun pendingFullHashCandidates(): List<CatalogMediaRow>

@@ -87,6 +87,9 @@ internal object DuplicateFingerprints {
             }
             digest.update(buffer, 0, read)
         }
+        // Cancellation can arrive after the final read returned EOF. Never
+        // publish a completed fingerprint from a superseded scan.
+        checkActive()
         if (expectedBytes != null && total != expectedBytes) {
             throw EOFException("Provider file changed during fingerprinting")
         }
@@ -127,7 +130,8 @@ internal fun <T> fingerprintCandidateWindow(
     if (candidates.isEmpty() || maxAttempts <= 0) return emptyList()
     val offset = Math.floorMod(start, candidates.size)
     return List(minOf(candidates.size, maxAttempts)) {
-        candidates[(offset + it) % candidates.size]
+        // Avoid Int overflow when a very large catalogue wraps near its end.
+        candidates[((offset.toLong() + it.toLong()) % candidates.size).toInt()]
     }
 }
 
@@ -142,11 +146,15 @@ internal fun exactDuplicateGroups(rows: List<CatalogMediaRow>): List<List<Catalo
         // Repeated catalogue rows are one physical item, never two copies.
         .distinctBy { it.uri }
         .filterNot { it.recycled }
-        .filter { it.sizeBytes > 0L && !it.quickHash.isNullOrBlank() && !it.fullHash.isNullOrBlank() }
-        .groupBy { Triple(it.sizeBytes, it.quickHash, it.fullHash) }
+        .filter { it.sizeBytes > 0L && !it.fullHash.isNullOrBlank() }
+        // A completed full digest remains valid even when an older catalogue
+        // has lost its quick hash. Edge hashes are only a scheduling optimization. A persisted full
+        // SHA-256 is the exact-copy identity even if edge-hash versions differ.
+        .groupBy { it.sizeBytes to it.fullHash!!.lowercase(java.util.Locale.ROOT) }
         .values.filter { it.size > 1 }
         .map { it.sortedWith(exactCopyKeepPriority) }
-        .sortedByDescending { it.size }
+        .sortedWith(compareByDescending<List<CatalogMediaRow>> { it.size }
+            .thenBy { it.first().uri })
 
 /**
  * Preferred file to KEEP within a verified exact-byte group. This only orders
@@ -186,14 +194,16 @@ internal fun quickHashCandidates(rows: List<CatalogMediaRow>): List<CatalogMedia
     rows.asSequence().distinctBy { it.uri }.filter { !it.recycled && it.sizeBytes > 0L }
         .groupBy { it.sizeBytes }.values.asSequence()
         .filter { it.size > 1 }.flatten()
-        .filter { it.quickHash == null }
+        .filter { it.quickHash.isNullOrBlank() }
         .sortedWith(compareBy<CatalogMediaRow> { it.sizeBytes }.thenBy { it.uri })
         .toList()
 
 internal fun fullHashCandidates(rows: List<CatalogMediaRow>): List<CatalogMediaRow> =
     rows.asSequence().distinctBy { it.uri }.filter { !it.recycled && it.sizeBytes > 0L && !it.quickHash.isNullOrBlank() }
-        .groupBy { it.sizeBytes to it.quickHash }.values.asSequence()
+        // Quick hashes are hexadecimal digests: case is not part of their identity.
+        // A legacy uppercase digest must not prevent full SHA-256 verification.
+        .groupBy { it.sizeBytes to it.quickHash!!.lowercase(java.util.Locale.ROOT) }.values.asSequence()
         .filter { it.size > 1 }.flatten()
-        .filter { it.fullHash == null }
+        .filter { it.fullHash.isNullOrBlank() }
         .sortedWith(compareBy<CatalogMediaRow> { it.sizeBytes }.thenBy { it.uri })
         .toList()

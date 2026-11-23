@@ -265,6 +265,11 @@ class CatalogDatabaseTest {
                 row(6, 300), row(7, 100, recycled = true),
                 row(8, 400, ""), row(9, 400, ""),
                 row(10, 500, "other"), row(11, 500, "different"),
+                // Empty and whitespace-only quick digests need recomputation.
+                row(12, 600, " "), row(13, 600, null),
+                // Quick digest case does not affect candidate grouping.
+                row(14, 700, "ABCD"), row(15, 700, "abcd", " "),
+                row(16, 700, "abcd", "complete"),
             )
             val dao = db.catalog()
             dao.upsertMedia(rows)

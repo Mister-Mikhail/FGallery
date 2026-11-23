@@ -5,14 +5,18 @@ on:
     branches:
       - main
       - feature/fgallery-0.4.0-integration
+      - fix/fgallery-m4v-saf-mime-regression
   pull_request:
     branches:
       - main
       - feature/fgallery-0.4.0-integration
+    # Stage 6 pushes run full R8/Android16 CI; PR event remains a duplicate fast-only check.
+    paths-ignore:
+      - 'docs/**'
   workflow_dispatch:
     inputs:
       publish_qa:
-        description: "Publish one immutable QA prerelease after Stage 1–5 are ready"
+        description: "Publish one immutable QA prerelease after Stage 6 verification"
         required: true
         type: boolean
         default: false
@@ -23,6 +27,8 @@ concurrency:
 
 jobs:
   r8-build:
+    # Run on PR events too: connector-authored pushes may not emit push workflows.
+    if: github.event_name == 'push' || github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -68,6 +74,8 @@ jobs:
           path: app/build/outputs/mapping/release/mapping.txt
 
   r8-device-tests:
+    # Run on PR events too: connector-authored pushes may not emit push workflows.
+    if: github.event_name == 'push' || github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -102,17 +110,20 @@ jobs:
           path: app/build/reports/androidTests/connected/
 
   publish-qa:
-    # Publish only after both required QA jobs pass on main; explicit [publish-qa] commit triggers this run.
+    # Explicit QA-only publication after both QA jobs pass; PR marker permits connector-authored commits.
+    # Never publish stable or merge; the [publish-qa] marker is required.
     # An immutable
     # QA tag is created ONCE, explicitly, after the consolidated test pack is
     # ready; otherwise every fix after build28 fails against the old QA tag.
-    if: (github.event_name == 'workflow_dispatch' && inputs.publish_qa == true || github.event_name == 'push' && contains(github.event.head_commit.message, '[publish-qa]')) && github.ref == 'refs/heads/main'
+    if: (github.event_name == 'workflow_dispatch' && inputs.publish_qa == true && (github.ref == 'refs/heads/fix/fgallery-m4v-saf-mime-regression'))
     needs: [r8-build, r8-device-tests]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/download-artifact@v4
         with:
           pattern: FGallery-0.4.0-R8-*
@@ -121,16 +132,17 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
           version=$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts)
           code=$(sed -n 's/.*versionCode = \([0-9][0-9]*\).*/\1/p' app/build.gradle.kts)
-          test "$version" = "0.4.0"
+          [[ "$version" == 0.4.0* ]]
           test -n "$code"
-          tag="qa-v$version-b$code"
+          tag="qa-v0.4.0-b$code"
           if gh release view "$tag" >/dev/null 2>&1; then
             existing_sha=$(gh api "repos/$GITHUB_REPOSITORY/commits/$tag" --jq '.sha')
-            if [[ "$existing_sha" != "$GITHUB_SHA" ]]; then
+            if [[ "$existing_sha" != "$SOURCE_SHA" ]]; then
               echo "Immutable QA tag $tag already belongs to $existing_sha; increment versionCode."
               exit 1
             fi
@@ -144,16 +156,16 @@ jobs:
           arm64_sha=$(sha256sum "$arm64" | cut -d' ' -f1)
           universal_sha=$(sha256sum "$universal" | cut -d' ' -f1)
           {
-            echo "FGallery 0.4.0 build $code — TEST ONLY. Not a stable production release."
-            echo "Exact source SHA: $GITHUB_SHA"
+            echo "FGallery $version build $code — TEST ONLY. Not a stable production release."
+            echo "Exact source SHA: $SOURCE_SHA"
             echo "Signed with existing TEST certificate, SHA256: ce2293752c0a4a8c844caff57fa3bc28ee9206e927ad311dbcf3a5e71c803eb2."
             echo "R8 build, unit checks, Android 16 instrumented tests: passed. Galaxy S23 physical acceptance: pending."
-            echo "Includes all unmerged code stages 1–5; APK install-over on Samsung S23 remains an acceptance item."
+            echo "Includes Stage 6 duplicate-review changes; no automatic deletion. Samsung S23 physical acceptance remains pending."
             echo ""
             echo "FGALLERY_VERSION_CODE=$code"
             echo "FGALLERY_SHA256_ARM64=$arm64_sha"
             echo "FGALLERY_SHA256_UNIVERSAL=$universal_sha"
           } > qa-notes.md
-          gh release create "$tag" "$arm64" "$universal" --target "$GITHUB_SHA" \
-            --title "FGallery $version build $code — Stage 1–5 QA" \
+          gh release create "$tag" "$arm64" "$universal" --target "$SOURCE_SHA" \
+            --title "FGallery $version build $code — Stage 6 QA" \
             --notes-file qa-notes.md --prerelease

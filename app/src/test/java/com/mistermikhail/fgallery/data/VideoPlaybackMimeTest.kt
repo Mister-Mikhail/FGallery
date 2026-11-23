@@ -30,6 +30,7 @@ class VideoPlaybackMimeTest {
             "clip.mkv" to "video/x-matroska",
             "clip.WEBM" to "video/webm",
             "clip.3gp" to "video/3gpp",
+            "clip.3g2" to "video/3gpp2",
             "clip.m2ts" to "video/mp2t",
             "clip.mts" to "video/mp2t",
         )
@@ -50,6 +51,30 @@ class VideoPlaybackMimeTest {
             assertEquals(name, mime, VideoPlaybackMime.forFile(name, "image/jpeg"))
             assertEquals(name, MediaKind.VIDEO, ExternalMediaKind.classify(name, "image/jpeg"))
         }
+    }
+
+    @Test fun extensionlessSafAppleMp4AliasesNormalizeToMedia3Mp4() {
+        for (mime in listOf("video/m4v", "video/x-mp4", "application/x-m4v")) {
+            val reported = " ${mime.uppercase(java.util.Locale.ROOT)} ; charset=binary "
+            assertEquals(mime, MediaKind.VIDEO, ExternalMediaKind.classify("content", reported))
+            assertEquals(mime, "video/mp4", VideoPlaybackMime.forFile("content", reported))
+        }
+    }
+
+    @Test fun cadAndThreeDDocumentsDoNotMasqueradeAsImagesOrRaw() {
+        for (ext in listOf("CDR", "dwg", "DXF", "STL", "step", "stp", "blend", "obj", "glb", "gltf", "3mf", "ply")) {
+            assertEquals(ext, null, ExternalMediaKind.classify("drawing.$ext", "image/jpeg"))
+            assertEquals(ext, null, ExternalMediaKind.classify("drawing.$ext", "image/x-raw"))
+            assertEquals(ext, null, ExternalMediaKind.classify("drawing.$ext", "application/octet-stream"))
+        }
+    }
+
+    @Test fun documentsNeverReachVideoPlayerWhenSafReportsVideoMime() {
+        for (ext in listOf("cdr", "DWG", "dxf", "STL", "step", "stp", "blend", "obj", "glb", "gltf", "3mf", "ply", "pdf", "svg")) {
+            assertEquals(ext, null, VideoPlaybackMime.forFile("document.$ext", "video/mp4"))
+            assertEquals(ext, null, VideoPlaybackMime.forFile("document.$ext", "video/x-msvideo"))
+        }
+        assertEquals("video/mp4", VideoPlaybackMime.forFile("clip.m4v", "video/mp4"))
     }
 
     @Test fun unknownFormatsDoNotMasqueradeAsVideo() {
