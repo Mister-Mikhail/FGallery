@@ -670,4 +670,23 @@ class ExactDuplicateReviewTest {
         assertTrue(review.selectedUris.isEmpty())
     }
 
+
+    @Test fun summaryLayerRejectsSameShaSplitAcrossSeparateKeeperGroups() {
+        val first = planExactDuplicateReview(
+            listOf(item("a-original"), item("b-copy")),
+            requestedUris = setOf("b-copy"),
+        )
+        val second = planExactDuplicateReview(
+            listOf(item("c-original"), item("d-copy")),
+        )
+        assertEquals(1, exactDuplicateGroupSummaries(first).size)
+        val split = first.copy(
+            groups = first.groups + second.groups,
+            protectedUris = first.protectedUris + second.protectedUris,
+        )
+        // Distinct URIs and paths, but the same full digest cannot represent
+        // two independent keeper decisions, even below the presentation layer.
+        assertTrue(exactDuplicateGroupSummaries(split).isEmpty())
+        assertTrue(exactDuplicateTrashPrompt(split) == null)
+    }
 }
