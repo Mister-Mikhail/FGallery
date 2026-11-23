@@ -8,6 +8,16 @@ import org.junit.Test
 
 /** Contract for the Stage 6 Compose review: scope changes must discard consent. */
 class ExactDuplicateReviewScreenContractTest {
+    @Test fun rejectedCatalogueCountCannotClaimZeroMatches() {
+        val label: (Int, Int, Int) -> String = { groups, cards, files ->
+            com.mistermikhail.fgallery.ui.duplicateExactResultCountLabel(groups, cards, files)
+        }
+        assertTrue(label(2, 0, 0).contains("требуют обновления"))
+        assertFalse(label(2, 0, 0).contains("Найдено: 0"))
+        assertEquals("Найдено: 0 групп · 0 файлов", label(0, 0, 0))
+        assertEquals("Найдено: 1 групп · 2 файлов", label(1, 1, 2))
+    }
+
     @Test fun rejectedRestoredCatalogueNeverMasqueradesAsEmptyScan() {
         val message: (Int, Int) -> String = { groups, cards ->
             com.mistermikhail.fgallery.ui.duplicateExactResultsMessage(groups, cards)
