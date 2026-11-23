@@ -278,6 +278,12 @@ internal fun exactDuplicateGroupSummaries(
     // A restored snapshot can repeat one URI across distinct groups. Showing
     // either card would make a single file appear independently disposable.
     // Fail closed for the whole review rather than silently dropping one card.
+    // Restored reviews must not display actionable copies from a different
+    // storage or folder scope, even when the caller bypasses the UI layer.
+    if (review.groups.flatten().any { row ->
+            (review.includedStorageIds.isNotEmpty() && row.storageId !in review.includedStorageIds) ||
+                (review.includedFolderTargets.isNotEmpty() && row.folderTarget !in review.includedFolderTargets)
+        }) return emptyList()
     val uris = review.groups.flatten().map { it.uri }
     if (uris.size != uris.toSet().size) return emptyList()
     // A full digest identifies exactly one byte-identical group. Restored
