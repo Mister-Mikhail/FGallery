@@ -25,7 +25,10 @@ internal data class ExactDuplicateReviewCard(
 internal fun exactDuplicateReviewCards(
     review: ExactDuplicateReview,
 ): List<ExactDuplicateReviewCard> {
-    // Recycled files are not eligible for a fresh duplicate-to-trash review.\n    // A restored UI snapshot may bypass the planner's recycled-row filter;\n    // never render an already trashed item as a selectable live copy.\n    if (review.groups.flatten().any { it.recycled }) return emptyList()\n    // A stale review can contain the same provider URI in different SHA groups.
+    // Recycled files are not eligible for a fresh duplicate-to-trash review.
+    // A restored UI snapshot may bypass the planner's recycled-row filter;
+    // never render an already trashed item as a selectable live copy.\n    if (review.groups.flatten().any { it.recycled }) return emptyList()
+    // A stale review can contain the same provider URI in different SHA groups.
     // Hide all cards until the catalogue is reconciled: a visually selectable
     // alias must not appear even when the separate trash prompt rejects it.
     // Restored UI state may carry groups from a previous storage/folder scope.
