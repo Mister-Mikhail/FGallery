@@ -277,6 +277,9 @@ internal fun exactDuplicateGroupSummaries(
 ): List<ExactDuplicateGroupSummary> = review.groups.mapNotNull { group ->
     val original = group.firstOrNull() ?: return@mapNotNull null
     if (group.size < 2 || original.uri !in review.protectedUris) return@mapNotNull null
+    // Recycled rows cannot be offered as live copies, even when a caller
+    // bypasses the presentation layer with a restored review snapshot.
+    if (group.any { it.recycled }) return@mapNotNull null
     val copies = group.drop(1)
     // A restored or hand-built UI snapshot must not show two aliases of one
     // URI as independent disposable copies. Every group must have exactly one
