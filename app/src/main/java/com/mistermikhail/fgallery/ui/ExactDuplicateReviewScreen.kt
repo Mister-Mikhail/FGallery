@@ -146,6 +146,10 @@ internal fun duplicateTrashActionEnabled(
 ): Boolean = verifiedAvailable && !scopeResetPending && pendingSelectionCount == 0 &&
     duplicateTrashConfirmationEnabled(scopeAvailable, trashInProgress, visualInProgress, hasPrompt)
 
+/** Only validated cards may contribute to visible selection or optimistic taps. */
+internal fun duplicateVisibleReviewUris(cards: List<ExactDuplicateReviewCard>): Set<String> =
+    cards.asSequence().flatMap { it.items.asSequence() }.map { it.uri }.toSet()
+
 /** Pending taps remain visible until acknowledged, but cannot outlive their files. */
 internal fun duplicatePendingSelectionKeysToDiscard(
     pending: Map<String, Boolean>,
@@ -222,11 +226,11 @@ internal fun ExactDuplicateReviewScreen(
     // Selection feedback is immediate; the host still owns authoritative verification.
     val pendingSelections = remember { mutableStateMapOf<String, Boolean>() }
     val cards = remember(review) { exactDuplicateReviewCards(review) }
-    LaunchedEffect(review.groups, review.selectedUris, review.protectedUris) {
+    val visibleUris = remember(cards) { duplicateVisibleReviewUris(cards) }
+    LaunchedEffect(visibleUris, review.selectedUris, review.protectedUris) {
         // Preserve in-flight taps across catalogue emissions, but never carry
         // selections over to files no longer present in the current review.
-        val currentUris = review.groups.asSequence().flatten().map { it.uri }.toHashSet()
-        duplicatePendingSelectionKeysToDiscard(pendingSelections, currentUris, review.selectedUris, review.protectedUris)
+        duplicatePendingSelectionKeysToDiscard(pendingSelections, visibleUris, review.selectedUris, review.protectedUris)
             .forEach { pendingSelections.remove(it) }
     }
     // User explicitly selected all accessible storage as the default search scope.
@@ -273,7 +277,7 @@ internal fun ExactDuplicateReviewScreen(
         }
         val selectedNow = duplicateDisplayedSelectionCount(
             review.selectedUris, pendingSelections,
-            review.groups.asSequence().flatten().map { it.uri }.toSet(),
+            visibleUris,
             review.protectedUris,
         )
         item(key = "selection-summary") { Text("Выбрано вручную: $selectedNow. Ничего не удаляется автоматически.") }
