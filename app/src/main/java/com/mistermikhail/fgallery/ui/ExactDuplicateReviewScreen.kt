@@ -63,6 +63,9 @@ internal fun duplicateTrashConfirmationEnabled(scopeAvailable: Boolean, trashInP
 internal fun duplicateCopyRowKey(sha256: String, groupIndex: Int, rowIndex: Int): String =
     "copies-$sha256-$groupIndex-$rowIndex"
 
+/** Compact preview tile height; file metadata remains visible below it. */
+internal const val DUPLICATE_PREVIEW_HEIGHT_DP = 112
+
 /** Fixed two-column portrait review: one item in a final row retains half-width. */
 internal fun duplicateReviewRows(itemCount: Int): Int =
     if (itemCount <= 0) 0 else (itemCount / 2) + (itemCount % 2)
@@ -464,7 +467,7 @@ private fun ScopeCheckbox(label: String, checked: Boolean, enabled: Boolean, onC
 private fun DuplicatePreview(uri: String, name: String, onOpen: () -> Unit) {
     var previewFailed by remember(uri) { mutableStateOf(false) }
     Box(
-        modifier = Modifier.fillMaxWidth().height(112.dp)
+        modifier = Modifier.fillMaxWidth().height(DUPLICATE_PREVIEW_HEIGHT_DP.dp)
             .border(1.dp, Color(0xFF666666))
             .background(Color(0xFF202020))
             .clickable(onClick = onOpen),
