@@ -340,4 +340,26 @@ class ExactDuplicateReviewPresentationTest {
         assertNull(exactDuplicateTrashPrompt(aliased))
     }
 
+
+    @Test fun malformedSecondGroupCannotExposePartialSummaryCatalogue() {
+        val first = planExactDuplicateReview(
+            listOf(row("original"), row("copy")),
+            requestedUris = setOf("copy"),
+        )
+        val second = planExactDuplicateReview(
+            listOf(row("other", "b".repeat(64)), row("otherCopy", "b".repeat(64))),
+        )
+        assertEquals(1, exactDuplicateGroupSummaries(first).size)
+        val damaged = first.copy(
+            groups = first.groups + second.groups.map { group ->
+                group.map { it.copy(sizeBytes = 0L) }
+            },
+            protectedUris = first.protectedUris + second.protectedUris,
+        )
+        // A valid first group must not leak out as an apparently complete
+        // review when a later group is malformed.
+        assertTrue(exactDuplicateGroupSummaries(damaged).isEmpty())
+        assertTrue(exactDuplicateReviewCards(damaged).isEmpty())
+        assertNull(exactDuplicateTrashPrompt(damaged))
+    }
 }
