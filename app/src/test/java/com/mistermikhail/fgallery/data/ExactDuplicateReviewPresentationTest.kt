@@ -312,6 +312,19 @@ class ExactDuplicateReviewPresentationTest {
         assertEquals(1, exactDuplicateReviewCards(first).size)
     }
 
+    @Test fun restoredReviewWithAlreadyRecycledCopyCannotOfferTrash() {
+        val safe = planExactDuplicateReview(
+            listOf(row("original"), row("copy")),
+            requestedUris = setOf("copy"),
+        )
+        assertEquals(1, exactDuplicateReviewCards(safe).size)
+        val stale = safe.copy(groups = safe.groups.map { group ->
+            group.map { if (it.uri == "copy") it.copy(recycled = true) else it }
+        })
+        assertTrue(exactDuplicateReviewCards(stale).isEmpty())
+        assertNull(exactDuplicateTrashPrompt(stale))
+    }
+
     @Test fun restoredReviewWithPhysicalPathAliasCannotShowTrashSelection() {
         val safe = planExactDuplicateReview(
             listOf(row("original"), row("copy")),
