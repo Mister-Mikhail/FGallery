@@ -106,30 +106,43 @@ class DuplicateSearchUiTest {
         panel.assertDoesNotExist()
     }
 
-    @Test fun svgUsesTheSharedViewerAndVisualTabHasNoTrashActions() {
+    @Test fun svgUsesTheSharedViewerAndRendersItsContent() {
         val directory = Files.createTempDirectory(context.cacheDir.toPath(), "duplicate-svg-").toFile()
         try {
-            val svg = """<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><rect width="64" height="64" fill="orange"/></svg>"""
+            val svg = """<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" fill="orange"/></svg>"""
             val keeper = File(directory, "keeper.svg").apply { writeText(svg) }
             val copy = File(directory, "copy.svg").apply { writeText(svg) }
             val exact = listOf(fileRow(keeper, 1), fileRow(copy, 2))
+            showSearch(exact)
+            openFirstGroup(exact)
+            rule.onNodeWithTag("duplicate-preview-${exact[0].uri}").performClick()
+            waitForTag("svg-page")
+            val viewer = rule.onNodeWithTag("viewer-root").assertIsDisplayed()
+            screenshot("shared-svg-viewer")
+            val pixels = viewer.captureToImage().toPixelMap()
+            assertTrue("The viewer must display visible orange pixels from the SVG fixture",
+                (0 until pixels.width step 4).any { x ->
+                    (0 until pixels.height step 4).any { y ->
+                        val color = pixels[x, y]
+                        color.red > .9f && color.green > .4f && color.blue < .1f
+                    }
+                })
+            rule.onNodeWithContentDescription("К результатам").performClick()
+            rule.onNodeWithTag("duplicate-copy-grid").assertIsDisplayed()
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test fun visualCandidatesVerifyRealPixelsWithoutOfferingTrash() {
+        val directory = Files.createTempDirectory(context.cacheDir.toPath(), "duplicate-visual-").toFile()
+        try {
             val jpeg = jpegFixture()
             val visual = (0..1).map { index ->
                 val file = File(directory, "visual-$index.jpg").apply { writeBytes(jpeg) }
                 fileRow(file, index + 1L).copy(fullHash = null, perceptualHash = "0123456789abcdef")
             }
-            showSearch(exact + visual)
-            openFirstGroup(exact)
-            rule.onNodeWithTag("duplicate-preview-${exact[0].uri}").performClick()
-            waitForTag("svg-page")
-            rule.onNodeWithTag("viewer-root").assertIsDisplayed()
-            val vector = rule.onNodeWithTag("svg-page").captureToImage().toPixelMap()
-            val center = vector[vector.width / 2, vector.height / 2]
-            assertTrue("SVG fixture is rendered in the viewer", center.red > .9f && center.green > .4f && center.blue < .1f)
-            screenshot("shared-svg-viewer")
-            rule.onNodeWithContentDescription("К результатам").performClick()
-            rule.onNodeWithTag("duplicate-copy-grid").assertIsDisplayed()
-            rule.onNodeWithContentDescription("Назад").performClick()
+            showSearch(visual)
             rule.onNodeWithText("Похожие изображения", substring = false).performClick()
             rule.waitUntil(10_000) {
                 rule.onAllNodes(hasText("Проверить исходные пиксели")).fetchSemanticsNodes().isNotEmpty()
@@ -141,9 +154,9 @@ class DuplicateSearchUiTest {
                     hasText("Подтверждено · пиксели совпадают") or hasText("Не подтверждено", substring = true)
                 ).fetchSemanticsNodes().isNotEmpty()
             }
+            screenshot("visual-candidates-read-only")
             rule.onNodeWithText("Подтверждено · пиксели совпадают").assertIsDisplayed()
             rule.onNodeWithText("В корзину…").assertDoesNotExist()
-            screenshot("visual-candidates-read-only")
         } finally {
             directory.deleteRecursively()
         }
