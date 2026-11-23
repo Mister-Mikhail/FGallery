@@ -1,10 +1,17 @@
 package com.mistermikhail.fgallery.data
 
+import androidx.exifinterface.media.ExifInterface
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class VisualDuplicateSourceVerificationTest {
+    @Test fun anImageWithoutExifOrientationUsesTheStoredPixelOrder() {
+        val source = VisualDuplicatePixelVerification.Pixels(2, 1, intArrayOf(10, 200))
+        assertSame(source, orientSourcePixels(source, ExifInterface.ORIENTATION_UNDEFINED))
+    }
+
     @Test fun sourceDecodeBoundsRejectUnknownOrOversizedImages() {
         assertFalse(safeSourceDimensions(0, 100))
         assertFalse(safeSourceDimensions(-1, 100))

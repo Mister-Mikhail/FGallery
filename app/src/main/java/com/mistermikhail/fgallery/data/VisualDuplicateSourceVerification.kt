@@ -44,7 +44,7 @@ internal object VisualDuplicateSourceVerification {
             val orientation = context.contentResolver.openInputStream(uri)?.use {
                 ExifInterface(it).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
             } ?: return null
-            if (orientation !in 1..8) return null
+            if (orientation !in ExifInterface.ORIENTATION_UNDEFINED..ExifInterface.ORIENTATION_ROTATE_270) return null
             val bitmap = context.contentResolver.openInputStream(uri)?.use {
                 BitmapFactory.decodeStream(it)
             } ?: return null
@@ -76,8 +76,9 @@ internal fun orientSourcePixels(
     source: VisualDuplicatePixelVerification.Pixels,
     orientation: Int,
 ): VisualDuplicatePixelVerification.Pixels? {
-    if (!source.valid() || orientation !in 1..8) return null
-    if (orientation == 1) return source
+    if (!source.valid() || orientation !in ExifInterface.ORIENTATION_UNDEFINED..ExifInterface.ORIENTATION_ROTATE_270) return null
+    // AndroidX supplies ORIENTATION_UNDEFINED for files with no orientation tag.
+    if (orientation == ExifInterface.ORIENTATION_UNDEFINED || orientation == ExifInterface.ORIENTATION_NORMAL) return source
     val w = source.width
     val h = source.height
     val swap = orientation in 5..8
