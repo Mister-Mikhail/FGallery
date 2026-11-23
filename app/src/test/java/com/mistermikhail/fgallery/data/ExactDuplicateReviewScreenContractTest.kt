@@ -19,6 +19,34 @@ class ExactDuplicateReviewScreenContractTest {
         assertTrue(message(1, 1).contains("не найдено"))
     }
 
+    @Test fun rejectedCatalogueCannotDisplayStaleSelectedCountOrPendingTaps() {
+        val review = planExactDuplicateReview(
+            listOf(row("original", "phone", "DCIM"), row("copy", "phone", "DCIM")),
+            requestedUris = setOf("copy"),
+        )
+        val validCards = exactDuplicateReviewCards(review)
+        val visible: (List<ExactDuplicateReviewCard>) -> Set<String> = {
+            com.mistermikhail.fgallery.ui.duplicateVisibleReviewUris(it)
+        }
+        assertEquals(setOf("original", "copy"), visible(validCards))
+        val count: (Set<String>, Map<String, Boolean>, Set<String>) -> Int = { selected, pending, uris ->
+            com.mistermikhail.fgallery.ui.duplicateDisplayedSelectionCount(
+                selected, pending, uris, review.protectedUris)
+        }
+        assertEquals(1, count(review.selectedUris, emptyMap(), visible(validCards)))
+        val stale = review.copy(groups = review.groups.map { group ->
+            group.map { if (it.uri == "copy") it.copy(recycled = true) else it }
+        })
+        val rejectedCards = exactDuplicateReviewCards(stale)
+        assertTrue(rejectedCards.isEmpty())
+        assertTrue(visible(rejectedCards).isEmpty())
+        assertEquals(0, count(stale.selectedUris, mapOf("copy" to true), visible(rejectedCards)))
+        val discard = com.mistermikhail.fgallery.ui.duplicatePendingSelectionKeysToDiscard(
+            mapOf("copy" to true), visible(rejectedCards), stale.selectedUris, stale.protectedUris)
+        assertEquals(setOf("copy"), discard)
+        assertNull(exactDuplicateTrashPrompt(stale))
+    }
+
     @Test fun trashDialogDoesNotRepeatExactByteCount() {
         val review = planExactDuplicateReview(
             listOf(row("original", "phone", "DCIM"), row("copy", "phone", "DCIM")),
