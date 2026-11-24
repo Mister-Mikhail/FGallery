@@ -27,6 +27,9 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeLeft
+import androidx.compose.ui.test.swipeRight
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.unit.Density
@@ -193,6 +196,22 @@ class DuplicateSearchUiTest {
             comparison.performScrollToIndex(0)
             rule.onNodeWithContentDescription("Открыть ${visual[0].name}").performClick()
             waitForTag("viewer-root")
+            val viewer = rule.onNodeWithTag("viewer-root")
+            fun expectName(index: Int) {
+                val matcher = hasTestTag("comparison-viewer-file-name") and hasText(visual[index].name)
+                rule.waitUntil(10_000) { rule.onAllNodes(matcher).fetchSemanticsNodes().isNotEmpty() }
+                rule.onNode(matcher).assertIsDisplayed()
+            }
+            expectName(0)
+            viewer.performTouchInput { swipeLeft() }
+            expectName(1)
+            screenshot("visual-comparison-viewer")
+            viewer.performTouchInput { swipeLeft() }
+            expectName(0)
+            viewer.performTouchInput { swipeRight() }
+            expectName(1)
+            viewer.performTouchInput { swipeRight() }
+            expectName(0)
             rule.onNodeWithContentDescription("К сравнению").performClick()
             comparison.assertIsDisplayed()
 

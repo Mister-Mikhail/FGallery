@@ -209,15 +209,28 @@ internal fun DuplicateSearchScreen(
                     }
                 }
                 if (preview != null) {
+                    val comparison = state.visualComparison
+                    val catalogue = state.catalogue
+                    val items = remember(preview, comparison, catalogue) {
+                        val pair = comparison?.let {
+                            listOfNotNull(
+                                catalogue?.rows?.get(it.first)?.toDuplicateMediaItem(),
+                                catalogue?.rows?.get(it.second)?.toDuplicateMediaItem(),
+                            )
+                        }
+                        pair?.takeIf { it.size == 2 && it.any { item -> item.uriKey == preview.uriKey } } ?: listOf(preview)
+                    }
+                    var visibleName by remember(preview) { mutableStateOf(preview.name) }
                     DisposableEffect(Unit) {
                         ThumbnailCache.setViewerBusy(true)
                         onDispose { ThumbnailCache.setViewerBusy(false) }
                     }
                     Surface(Modifier.fillMaxSize(), color = Color.Black) {
                         ViewerScreen(
-                            items = remember(preview) { listOf(preview) },
+                            items = items,
                             initialItem = preview,
                             onBack = controller::closePreview,
+                            onVisibleItemChanged = { visibleName = it.name },
                             quickExifEnabled = true,
                             cleanupMode = false,
                             onTrash = {},
@@ -226,15 +239,28 @@ internal fun DuplicateSearchScreen(
                             onRename = { _, _ -> },
                             onMove = {},
                             readOnly = true,
+                            loopPages = comparisonOpen,
                         )
                     }
                     Surface(
                         modifier = Modifier.align(Alignment.TopStart).statusBarsPadding().padding(8.dp),
-                        color = duplicateColors.surface,
+                        color = if (comparisonOpen) duplicateColors.surface.copy(alpha = 0.85f) else duplicateColors.surface,
                         shape = MaterialTheme.shapes.large,
                     ) {
-                        IconButton(onClick = controller::closePreview) {
-                            Icon(Icons.AutoMirrored.Outlined.ArrowBack, if (comparisonOpen) "К сравнению" else "К результатам")
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(onClick = controller::closePreview) {
+                                Icon(Icons.AutoMirrored.Outlined.ArrowBack, if (comparisonOpen) "К сравнению" else "К результатам")
+                            }
+                            if (comparisonOpen) {
+                                Text(
+                                    visibleName.ifBlank { "Без имени" },
+                                    modifier = Modifier.padding(end = 12.dp, top = 4.dp, bottom = 4.dp)
+                                        .testTag("comparison-viewer-file-name"),
+                                    style = MaterialTheme.typography.labelLarge,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
                         }
                     }
                 }

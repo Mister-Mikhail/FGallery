@@ -126,11 +126,17 @@ fun ViewerScreen(
     recycleBinMode: Boolean = false,
     zoomSecondPower: Float = .85f,
     readOnly: Boolean = false,
+    loopPages: Boolean = false,
 ) {
-    val initialPage = items.indexOfFirst { it.uriKey == initialItem.uriKey }.coerceAtLeast(0)
+    val looping = loopPages && items.size > 1
+    val pages = remember(items, looping) {
+        if (looping) listOf(items.last()) + items + items.first() else items
+    }
+    val pageOffset = if (looping) 1 else 0
+    val initialPage = items.indexOfFirst { it.uriKey == initialItem.uriKey }.coerceAtLeast(0) + pageOffset
     val pagerState = rememberPagerState(
         initialPage = initialPage,
-        pageCount = { items.size },
+        pageCount = { pages.size },
     )
 
     var chromeVisible by remember { mutableStateOf(false) }
@@ -143,18 +149,32 @@ fun ViewerScreen(
     var videoPlaying by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
-    LaunchedEffect(initialItem.uriKey) {
-        val target = items.indexOfFirst { it.uriKey == initialItem.uriKey }
-        if (target >= 0 && target != pagerState.currentPage) pagerState.scrollToPage(target)
-    }
-
-    LaunchedEffect(items.size) {
-        if (items.isNotEmpty() && pagerState.currentPage > items.lastIndex) {
-            pagerState.scrollToPage(items.lastIndex)
+    LaunchedEffect(initialItem.uriKey, pageOffset) {
+        val index = items.indexOfFirst { it.uriKey == initialItem.uriKey }
+        if (index >= 0 && index + pageOffset != pagerState.currentPage) {
+            pagerState.scrollToPage(index + pageOffset)
         }
     }
 
-    val currentItem = items.getOrNull(pagerState.currentPage)
+    LaunchedEffect(pages.size) {
+        if (pages.isNotEmpty() && pagerState.currentPage > pages.lastIndex) {
+            pagerState.scrollToPage(pages.lastIndex)
+        }
+    }
+
+    if (looping) {
+        val settledPage = pagerState.settledPage
+        LaunchedEffect(settledPage, pages.size) {
+            // The outer pages show a copy of the opposite end. After the swipe
+            // settles, jump to the matching inner page without an animation.
+            when (settledPage) {
+                0 -> pagerState.scrollToPage(pages.lastIndex - 1)
+                pages.lastIndex -> pagerState.scrollToPage(1)
+            }
+        }
+    }
+
+    val currentItem = pages.getOrNull(pagerState.currentPage)
     LaunchedEffect(currentItem?.uriKey) {
         currentItem?.let(onVisibleItemChanged)
     }
@@ -201,10 +221,10 @@ fun ViewerScreen(
     ) {
         HorizontalPager(
             state = pagerState,
-            key = { items[it].uriKey },
+            key = { if (looping) it else pages[it].uriKey },
             modifier = Modifier.fillMaxSize().graphicsLayer { alpha = mediaAlpha },
         ) { page ->
-            val item = items.getOrNull(page) ?: return@HorizontalPager
+            val item = pages.getOrNull(page) ?: return@HorizontalPager
             val activePage = active && page == pagerState.currentPage
 
             if (item.kind == MediaKind.VIDEO) {
