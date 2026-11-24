@@ -151,6 +151,16 @@ internal class DuplicateSearchController(
         _state.value = current.copy(selected = selected, confirmation = null)
     }
 
+    fun selectCopies(cards: List<ExactDuplicateReviewCard>) {
+        val current = _state.value
+        val catalogue = current.catalogue ?: return
+        if (!catalogue.valid || current.tab != DuplicateTab.EXACT || current.trashInProgress ||
+            current.preparingConfirmation || current.confirmation != null || current.preview != null) return
+        val selected = cards.asSequence().filter { catalogue.cardsByHash[it.sha256] === it }
+            .flatMap { it.items.asSequence() }.map { it.uri }.filter { it in catalogue.selectableUris }.toSet()
+        _state.value = current.copy(selected = selected)
+    }
+
     fun clearSelection() {
         val current = _state.value
         if (!current.trashInProgress && !current.preparingConfirmation) {

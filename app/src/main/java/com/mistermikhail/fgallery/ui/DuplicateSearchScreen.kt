@@ -1,6 +1,13 @@
 package com.mistermikhail.fgallery.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.outlined.*
+import androidx.compose.material3.FilterChip
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -66,9 +73,13 @@ import com.mistermikhail.fgallery.data.ThumbnailCache
 import com.mistermikhail.fgallery.data.formatDuplicateBytes
 
 private val duplicateColors = darkColorScheme(
+    primary = Color.White, onPrimary = Color.Black,
+    secondaryContainer = Color(0xFFE5E5E5), onSecondaryContainer = Color.Black,
+    surfaceContainer = Color(0xFF171717), surfaceContainerHigh = Color(0xFF202020),
+    surfaceContainerHighest = Color(0xFF242424), surfaceTint = Color.Transparent,
     background = Color.Black,
     onBackground = Color(0xFFF1F1F1),
-    surface = Color(0xFF161616),
+    surface = Color.Black,
     onSurface = Color(0xFFF1F1F1),
     surfaceVariant = Color(0xFF262626),
     onSurfaceVariant = Color(0xFFDDDDDD),
@@ -83,6 +94,7 @@ internal fun DuplicateSearchScreen(
 ) {
     val state by controller.state.collectAsState()
     val busy = state.trashInProgress || state.preparingConfirmation
+    var grid by rememberSaveable { mutableStateOf(false) }
     val preview = state.preview
     fun back() {
         if (busy) return
@@ -107,13 +119,19 @@ internal fun DuplicateSearchScreen(
                     topBar = {
                         Column {
                             TopAppBar(
-                                title = { Text(if (state.group == null) "Дубликаты" else "Точные копии") },
+                                title = { Text(if (state.tab == DuplicateTab.EXACT) "Точные дубликаты" else "Похожие изображения") },
                                 navigationIcon = {
                                     IconButton(onClick = ::back, enabled = !busy) {
                                         Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Назад")
                                     }
                                 },
                                 actions = {
+                                    if (state.tab == DuplicateTab.EXACT && !state.catalogue?.cards.isNullOrEmpty()) {
+                                        IconButton(onClick = { grid = !grid }) {
+                                            Icon(if (grid) Icons.Outlined.ViewList else Icons.Outlined.GridView,
+                                                if (grid) "Список" else "Сетка")
+                                        }
+                                    }
                                     IconButton(onClick = { controller.refresh() }, enabled = !busy && state.scanProgress == null) {
                                         Icon(Icons.Outlined.Refresh, "Обновить поиск")
                                     }
@@ -148,8 +166,11 @@ internal fun DuplicateSearchScreen(
                         val catalogue = state.catalogue
                         when {
                             state.scanProgress != null -> {
+                                SearchMessage("Ищем одинаковые файлы")
+                                SearchMessage("Во всех доступных папках устройства")
                                 SearchMessage(state.scanProgress.orEmpty())
                                 LinearProgressIndicator(Modifier.fillMaxWidth())
+                                OutlinedButton(onClick = onClose, modifier = Modifier.padding(12.dp)) { Text("Отменить") }
                             }
                             state.error != null -> SearchMessage(state.error.orEmpty())
                             catalogue?.requiresAccess == true -> {
@@ -164,7 +185,7 @@ internal fun DuplicateSearchScreen(
                                     SearchMessage("Для ${catalogue.pendingFingerprints} файлов проверка пока не завершена или чтение недоступно.")
                                 }
                                 when (state.tab) {
-                                    DuplicateTab.EXACT -> ExactCopies(state, catalogue, controller, busy)
+                                    DuplicateTab.EXACT -> ExactCopies(state, catalogue, controller, busy, grid, onClose)
                                     DuplicateTab.VISUAL -> VisualCandidates(state, catalogue, controller)
                                 }
                             }
@@ -227,19 +248,21 @@ private fun DuplicateActions(state: DuplicateSearchUiState, controller: Duplicat
         modifier = Modifier.fillMaxWidth().testTag("duplicate-action-bar"),
         tonalElevation = 6.dp,
     ) {
-        Column(Modifier.navigationBarsPadding().padding(horizontal = 12.dp, vertical = 6.dp)) {
-            Text("Выбрано ${state.selected.size}", style = MaterialTheme.typography.titleSmall)
-            if (state.trashInProgress || state.preparingConfirmation) {
-                Text(
-                    if (state.trashInProgress) "Проверяем SHA-256 и переносим копии…" else "Проверяем выбор…",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                LinearProgressIndicator(Modifier.fillMaxWidth())
-            }
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.navigationBarsPadding().padding(horizontal = 8.dp, vertical = 4.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = controller::clearSelection, enabled = enabled) {
+                    Icon(Icons.Outlined.Close, "Снять выбор")
+                }
+                Column(Modifier.weight(1f)) {
+                    Text("Выбрано ${state.selected.size}", style = MaterialTheme.typography.titleSmall)
+                    val bytes = remember(state.selected, state.catalogue) {
+                        state.selected.sumOf { state.catalogue?.rows?.get(it)?.sizeBytes ?: 0L }
+                    }
+                    Text(formatDuplicateBytes(bytes), style = MaterialTheme.typography.bodySmall)
+                }
                 Button(onClick = controller::requestConfirmation, enabled = enabled) { Text("В корзину…") }
-                OutlinedButton(onClick = controller::clearSelection, enabled = enabled) { Text("Снять выбор") }
             }
+            if (!enabled) LinearProgressIndicator(Modifier.fillMaxWidth())
         }
     }
 }
@@ -250,65 +273,87 @@ private fun ExactCopies(
     catalogue: DuplicateCatalogue,
     controller: DuplicateSearchController,
     busy: Boolean,
+    grid: Boolean,
+    onClose: () -> Unit,
 ) {
-    val group = state.group
-    if (group != null) {
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(2),
-            modifier = Modifier.fillMaxSize().testTag("duplicate-copy-grid"),
-            contentPadding = PaddingValues(8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            item(key = "group-heading", span = { GridItemSpan(maxLineSpan) }) {
-                SearchMessage("${group.items.size} файлов · ${formatDuplicateBytes(group.sizeBytes)} каждый")
-            }
-            items(group.items, key = { it.uri }) { item ->
-                ExactCopyCard(
-                    item, catalogue.rows.getValue(item.uri), item.uri in state.selected, !busy,
-                    onOpen = { controller.openPreview(item.uri) },
-                    onSelect = { controller.setSelected(item.uri, it) },
-                )
+    var type by rememberSaveable { mutableStateOf("Все") }
+    var large by rememberSaveable { mutableStateOf(false) }
+    val cards = remember(catalogue, type, large) {
+        catalogue.cards.filter { card ->
+            val kind = catalogue.rows.getValue(card.items.first().uri).kind
+            (!large || card.sizeBytes > 5L * 1024 * 1024) && when (type) {
+                "Фото" -> kind in setOf("IMAGE", "RAW", "SVG")
+                "Видео" -> kind == "VIDEO"
+                else -> true
             }
         }
-    } else {
-        LazyColumn(
-            modifier = Modifier.fillMaxSize().testTag("duplicate-groups"),
-            contentPadding = PaddingValues(8.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            item("summary") {
-                Column(Modifier.padding(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("Вся доступная память", style = MaterialTheme.typography.titleMedium)
-                    when {
-                        !catalogue.valid -> Text("Каталог содержит неоднозначные записи. Выбор заблокирован. Обновите поиск.")
-                        catalogue.cards.isEmpty() -> Text(
-                            if (catalogue.pendingFingerprints == 0) "Точных копий не найдено" else "Подтверждённых групп пока нет"
-                        )
-                        else -> {
-                            Text("Групп: ${catalogue.cards.size} · файлов: ${catalogue.duplicateFileCount}")
-                            Text(
-                                "Можно освободить после очистки корзины: " +
-                                    (catalogue.reclaimableBytes?.let(::formatDuplicateBytes) ?: "объём превышает предел подсчёта"),
-                                style = MaterialTheme.typography.bodySmall,
-                            )
+    }
+    fun resetChoice() {
+        controller.clearSelection()
+        controller.showGroup(null)
+    }
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(if (grid) 2 else 1),
+        modifier = Modifier.fillMaxSize().testTag(if (state.group == null) "duplicate-groups" else "duplicate-copy-grid"),
+        contentPadding = PaddingValues(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        item("summary", span = { GridItemSpan(maxLineSpan) }) {
+            Column {
+                if (!catalogue.valid) SearchMessage("Неоднозначные записи каталога. Обновите поиск.")
+                else if (catalogue.cards.isEmpty()) {
+                    SearchMessage(if (catalogue.pendingFingerprints == 0) "Точных дубликатов не найдено" else "Подтверждённых групп пока нет")
+                    Button(onClick = onClose) { Text("К альбомам") }
+                } else {
+                    catalogue.reclaimableBytes?.let {
+                        Text("Можно освободить ${formatDuplicateBytes(it)}", style = MaterialTheme.typography.titleLarge)
+                    }
+                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf("Все", "Фото", "Видео").forEach { label ->
+                            FilterChip(type == label, { if (type != label) { resetChoice(); type = label } }, { Text(label) }, enabled = !busy)
                         }
+                        FilterChip(large, { resetChoice(); large = !large }, { Text("> 5 МБ") }, enabled = !busy)
+                    }
+                    if (cards.isEmpty()) SearchMessage("По этим фильтрам совпадений нет")
+                    else TextButton(onClick = { controller.selectCopies(cards) }, enabled = !busy) { Text("Выбрать лишние копии") }
+                }
+            }
+        }
+        if (catalogue.valid) cards.forEach { card ->
+            val expanded = state.group === card
+            item("group/${card.sha256}", span = { GridItemSpan(maxLineSpan) }) {
+                Surface(shape = MaterialTheme.shapes.medium, color = duplicateColors.surfaceContainer) {
+                    Row(Modifier.fillMaxWidth().clickable(enabled = !busy) { controller.showGroup(if (expanded) null else card) }
+                        .testTag("group-${card.sha256}").padding(8.dp), verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        val row = catalogue.rows.getValue(card.items.first().uri)
+                        DuplicateTile(row, Modifier.size(48.dp), interactive = false) {}
+                        Column(Modifier.weight(1f)) {
+                            Text("Файлов: ${card.items.size}", style = MaterialTheme.typography.titleMedium)
+                            if (catalogue.reclaimableBytes != null) Text("Можно освободить ${formatDuplicateBytes(card.sizeBytes * card.items.lastIndex)}",
+                                style = MaterialTheme.typography.bodySmall)
+                        }
+                        Icon(if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, null)
                     }
                 }
             }
-            if (catalogue.valid) items(catalogue.cards, key = { it.sha256 }) { card ->
-                val keeper = card.items.first()
-                Card(
-                    onClick = { controller.showGroup(card) },
-                    enabled = !busy,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Column(Modifier.padding(10.dp)) {
-                        Text(keeper.displayName.ifBlank { "Без имени" }, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        Text(
-                            "${card.items.size} файла(ов) · ${formatDuplicateBytes(card.sizeBytes)} каждый",
-                            style = MaterialTheme.typography.bodySmall,
-                        )
+            if (expanded) items(card.items, key = { "file/${it.uri}" }) { item ->
+                val row = catalogue.rows.getValue(item.uri)
+                val open = { controller.openPreview(item.uri) }
+                Surface(Modifier.fillMaxWidth().testTag("duplicate-card-${item.uri}"), shape = MaterialTheme.shapes.small,
+                    color = duplicateColors.surfaceContainer) {
+                    if (grid) Column {
+                        Box {
+                            DuplicateTile(row, onOpen = open)
+                            Box(Modifier.align(Alignment.TopEnd)) { CopyCheck(item, state, controller, busy) }
+                        }
+                        CopyInfo(item, row, Modifier.clickable(onClick = open).padding(8.dp))
+                    } else Row(Modifier.padding(6.dp), verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        DuplicateTile(row, Modifier.size(60.dp), onOpen = open)
+                        CopyInfo(item, row, Modifier.weight(1f).clickable(onClick = open))
+                        CopyCheck(item, state, controller, busy)
                     }
                 }
             }
@@ -317,47 +362,21 @@ private fun ExactCopies(
 }
 
 @Composable
-private fun ExactCopyCard(
-    item: ExactDuplicateReviewItem,
-    row: CatalogMediaRow,
-    selected: Boolean,
-    enabled: Boolean,
-    onOpen: () -> Unit,
-    onSelect: (Boolean) -> Unit,
-) {
-    Card(Modifier.fillMaxWidth().testTag("duplicate-card-${item.uri}")) {
-        DuplicateTile(row, onOpen = onOpen)
-        Column(Modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(
-                item.displayName.ifBlank { "Без имени" },
-                style = MaterialTheme.typography.bodyMedium,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(formatDuplicateBytes(row.sizeBytes), style = MaterialTheme.typography.bodySmall)
-            Text(
-                "${row.storageName.ifBlank { "Неизвестный носитель" }} / " +
-                    row.relativePath.ifBlank { row.folderTarget.ifBlank { "Папка неизвестна" } },
-                style = MaterialTheme.typography.bodySmall,
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis,
-            )
-            if (item.protectedOriginal) {
-                Text("Сохранить · защищено", style = MaterialTheme.typography.labelLarge)
-                Text(item.explanation, style = MaterialTheme.typography.bodySmall)
-            } else {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(
-                        checked = selected,
-                        onCheckedChange = onSelect,
-                        enabled = enabled,
-                        modifier = Modifier.testTag("duplicate-select-${item.uri}")
-                            .semantics { contentDescription = "Выбрать копию ${row.name}" },
-                    )
-                    Text("Копия", style = MaterialTheme.typography.labelLarge)
-                }
-            }
-        }
+private fun CopyCheck(item: ExactDuplicateReviewItem, state: DuplicateSearchUiState, controller: DuplicateSearchController, busy: Boolean) {
+    if (!item.protectedOriginal) Surface(shape = MaterialTheme.shapes.small, color = duplicateColors.surfaceContainer) {
+        Checkbox(item.uri in state.selected, { controller.setSelected(item.uri, it) }, enabled = !busy,
+            modifier = Modifier.testTag("duplicate-select-${item.uri}").semantics { contentDescription = "Выбрать копию ${item.displayName}" })
+    }
+}
+
+@Composable
+private fun CopyInfo(item: ExactDuplicateReviewItem, row: CatalogMediaRow, modifier: Modifier) {
+    Column(modifier) {
+        Text(item.displayName.ifBlank { "Без имени" }, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
+        Text(row.relativePath.ifBlank { row.folderTarget.ifBlank { row.storageName } }, maxLines = 2,
+            overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = duplicateColors.onSurfaceVariant)
+        Text(formatDuplicateBytes(row.sizeBytes), style = MaterialTheme.typography.bodySmall)
+        if (item.protectedOriginal) Text("Оставить", style = MaterialTheme.typography.labelMedium)
     }
 }
 
@@ -429,14 +448,12 @@ private fun VisualCandidates(
 }
 
 @Composable
-private fun DuplicateTile(row: CatalogMediaRow, onOpen: () -> Unit) {
+private fun DuplicateTile(row: CatalogMediaRow, modifier: Modifier = Modifier.fillMaxWidth().height(112.dp), interactive: Boolean = true, onOpen: () -> Unit) {
     val media = remember(row) { row.toDuplicateMediaItem() }
     val model = remember(media) { media?.let { GalleryThumb(it, highQuality = false) } }
     var failed by remember(model) { mutableStateOf(false) }
     Surface(
-        onClick = onOpen,
-        enabled = media != null,
-        modifier = Modifier.fillMaxWidth().height(112.dp).testTag("duplicate-preview-${row.uri}")
+        modifier = if (!interactive) modifier else modifier.clickable(enabled = media != null, onClick = onOpen).testTag("duplicate-preview-${row.uri}")
             .semantics { contentDescription = "Открыть ${row.name}" },
         color = MaterialTheme.colorScheme.surfaceVariant,
     ) {
@@ -451,7 +468,7 @@ private fun DuplicateTile(row: CatalogMediaRow, onOpen: () -> Unit) {
                 AsyncImage(
                     model = model,
                     contentDescription = null,
-                    contentScale = ContentScale.Fit,
+                    contentScale = ContentScale.Crop,
                     onError = { failed = true },
                     modifier = Modifier.fillMaxSize(),
                 )
