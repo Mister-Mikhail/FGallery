@@ -102,6 +102,7 @@ internal fun DuplicateSearchScreen(
     fun back() {
         if (busy) return
         when {
+            state.comparisonTrashConfirmation != null -> controller.dismissComparisonTrash()
             preview != null -> controller.closePreview()
             state.confirmation != null -> controller.dismissConfirmation()
             comparisonOpen -> controller.closeVisualComparison()
@@ -232,7 +233,8 @@ internal fun DuplicateSearchScreen(
                             onBack = controller::closePreview,
                             onVisibleItemChanged = { visibleName = it.name },
                             quickExifEnabled = true,
-                            cleanupMode = false,
+                            cleanupMode = state.comparisonCleanup,
+                            active = !busy,
                             onTrash = {},
                             onShare = {},
                             onCrop = {},
@@ -240,26 +242,51 @@ internal fun DuplicateSearchScreen(
                             onMove = {},
                             readOnly = true,
                             loopPages = comparisonOpen,
+                            onComparisonDoubleTap = if (items.size == 2) {
+                                { controller.requestComparisonTrash(it.uriKey) }
+                            } else null,
                         )
                     }
                     Surface(
-                        modifier = Modifier.align(Alignment.TopStart).statusBarsPadding().padding(8.dp),
+                        modifier = Modifier.align(Alignment.TopStart).statusBarsPadding().padding(8.dp)
+                            .then(if (comparisonOpen) Modifier.fillMaxWidth() else Modifier),
                         color = if (comparisonOpen) duplicateColors.surface.copy(alpha = 0.85f) else duplicateColors.surface,
                         shape = MaterialTheme.shapes.large,
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            IconButton(onClick = controller::closePreview) {
-                                Icon(Icons.AutoMirrored.Outlined.ArrowBack, if (comparisonOpen) "К сравнению" else "К результатам")
+                        Column {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                IconButton(onClick = controller::closePreview, enabled = !busy) {
+                                    Icon(Icons.AutoMirrored.Outlined.ArrowBack, if (comparisonOpen) "К сравнению" else "К результатам")
+                                }
+                                if (comparisonOpen) {
+                                    Text(
+                                        visibleName.ifBlank { "Без имени" },
+                                        modifier = Modifier.weight(1f).padding(end = 8.dp, top = 4.dp, bottom = 4.dp)
+                                            .testTag("comparison-viewer-file-name"),
+                                        style = MaterialTheme.typography.labelLarge,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                    if (items.size == 2) {
+                                        CleanupToggleButton(
+                                            enabled = state.comparisonCleanup,
+                                            onEnableRequest = { controller.setComparisonCleanup(true) },
+                                            onDisable = { controller.setComparisonCleanup(false) },
+                                            interactive = !busy,
+                                        )
+                                    }
+                                }
                             }
-                            if (comparisonOpen) {
-                                Text(
-                                    visibleName.ifBlank { "Без имени" },
-                                    modifier = Modifier.padding(end = 12.dp, top = 4.dp, bottom = 4.dp)
-                                        .testTag("comparison-viewer-file-name"),
-                                    style = MaterialTheme.typography.labelLarge,
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
+                            val status = when {
+                                state.preparingConfirmation -> "Проверяем исходный файл…"
+                                state.trashInProgress -> "Перемещаем в корзину…"
+                                state.comparisonError != null -> state.comparisonError
+                                state.comparisonCleanup -> "Двойной тап — в корзину"
+                                else -> null
+                            }
+                            if (status != null) {
+                                Text(status, Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp),
+                                    style = MaterialTheme.typography.bodySmall)
                             }
                         }
                     }
@@ -275,6 +302,19 @@ internal fun DuplicateSearchScreen(
                     },
                     dismissButton = {
                         TextButton(onClick = controller::dismissConfirmation) { Text("Отмена") }
+                    },
+                )
+            }
+            state.comparisonTrashConfirmation?.let { consent ->
+                AlertDialog(
+                    onDismissRequest = controller::dismissComparisonTrash,
+                    title = { Text("Переместить снимок в корзину?") },
+                    text = { Text("${consent.row.name}\n${consent.row.sizeBytes} байт") },
+                    confirmButton = {
+                        TextButton(onClick = { controller.confirmComparisonTrash(consent) }) { Text("В корзину") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = controller::dismissComparisonTrash) { Text("Отмена") }
                     },
                 )
             }

@@ -127,6 +127,7 @@ fun ViewerScreen(
     zoomSecondPower: Float = .85f,
     readOnly: Boolean = false,
     loopPages: Boolean = false,
+    onComparisonDoubleTap: ((MediaItem) -> Unit)? = null,
 ) {
     val looping = loopPages && items.size > 1
     val pages = remember(items, looping) {
@@ -262,11 +263,17 @@ fun ViewerScreen(
             } else if (item.kind == MediaKind.SVG) {
                 SvgViewer(item, ::toggleChrome, onDoubleTap = if (cleanupMode && !recycleBinMode && !readOnly) ({ onTrash(item) }) else null, zoomSecondPower = zoomSecondPower)
             } else {
+                val comparisonCleanup = onComparisonDoubleTap != null
                 TiledZoomableImage(
                     item = item,
                     onSingleTap = ::toggleChrome,
-                    cleanupMode = cleanupMode && !recycleBinMode && !readOnly,
-                    onTrash = { onTrash(item) },
+                    cleanupMode = cleanupMode && !recycleBinMode && (!readOnly || comparisonCleanup),
+                    onTrash = {
+                        if (onComparisonDoubleTap == null) onTrash(item)
+                        else if (activePage && !pagerState.isScrollInProgress && page == pagerState.settledPage) {
+                            onComparisonDoubleTap(item)
+                        }
+                    },
                     active = activePage,
                     zoomSecondPower = zoomSecondPower,
                     developRequested = item.uriKey in developRequested,
@@ -816,11 +823,12 @@ internal fun TiledZoomableImage(
 
 
     var previousTapTarget by remember(item.uri) { mutableFloatStateOf(0f) }
+    val latestTrash by rememberUpdatedState(onTrash)
     val doubleClick = remember(item.id, cleanupMode, zoomSecondPower) {
         DoubleClickToZoomListener { _, centroid ->
             val state = zoomableState
             if (cleanupMode) {
-                onTrash()
+                latestTrash()
                 return@DoubleClickToZoomListener
             }
 

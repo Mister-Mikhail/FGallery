@@ -17,6 +17,9 @@ import com.mistermikhail.fgallery.data.MediaItem
 import com.mistermikhail.fgallery.data.MediaKind
 import com.mistermikhail.fgallery.data.MediaRepository
 import com.mistermikhail.fgallery.data.ThumbnailCache
+import com.mistermikhail.fgallery.data.comparisonTrashSha256
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -94,6 +97,8 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
                 VisualDuplicateSourceVerification.verify(getApplication(), first, second)
             },
             trash = ::trashConfirmedExactDuplicates,
+            prepareComparisonTrash = ::checkedComparisonTrashSha256,
+            trashComparedImage = ::trashComparedImage,
             prepareVisual = ::prepareDuplicateVisualRows,
         )
     }
@@ -567,12 +572,7 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
     suspend fun moveToRecycleBin(items: List<MediaItem>) =
         moveToRecycleBinWithPreMoveCheck(items) { true }
 
-    /**
-     * Stage 6-only entry point. The caller must supply fresh byte verification
-     * for the protected original and the current selected copy on every move.
-     * A failed check leaves that source untouched and stops further moves.
-     * Never invoke this with an unverified duplicate-review selection.
-     */
+    /** The recycle bin runs the supplied check again before moving each source. */
     suspend fun moveToRecycleBinWithPreMoveCheck(
         items: List<MediaItem>,
         verifyBeforeMove: suspend (MediaItem) -> Boolean,
@@ -589,6 +589,21 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
                 LibrarySnapshot.removeItems(removed)
             }
         } finally { refresh() }
+    }
+
+    private suspend fun checkedComparisonTrashSha256(row: CatalogMediaRow): String = withContext(Dispatchers.IO) {
+        val context = getApplication<Application>()
+        val item = checkNotNull(row.toDuplicateMediaItem()) { "Исходный файл недоступен." }
+        val latest = CatalogStore.exactDuplicateReviewRows(context)
+        val jobContext = currentCoroutineContext()
+        comparisonTrashSha256(context, row, item, latest) { jobContext.ensureActive() }
+    }
+
+    private suspend fun trashComparedImage(consent: ComparisonTrashConfirmation) {
+        val item = checkNotNull(consent.row.toDuplicateMediaItem()) { "Исходный файл недоступен." }
+        moveToRecycleBinWithPreMoveCheck(listOf(item)) { candidate ->
+            candidate.uriKey == consent.row.uri && checkedComparisonTrashSha256(consent.row) == consent.sha256
+        }
     }
 
     /**

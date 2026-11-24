@@ -16,10 +16,15 @@ import androidx.compose.foundation.layout.size
 private val CleanupOrange = Color(0xFFFF5A36)
 private val CleanupInactive = Color.Gray
 
-/** Always visible: inactive grey confirms enable; active orange disables immediately. */
 @Composable
-internal fun CleanupToggleButton(enabled: Boolean, onEnableRequest: () -> Unit, onDisable: () -> Unit) {
-    IconButton(onClick = if (enabled) onDisable else onEnableRequest, modifier = Modifier.size(40.dp)) {
+internal fun CleanupToggleButton(
+    enabled: Boolean,
+    onEnableRequest: () -> Unit,
+    onDisable: () -> Unit,
+    interactive: Boolean = true,
+) {
+    IconButton(onClick = if (enabled) onDisable else onEnableRequest, enabled = interactive,
+        modifier = Modifier.size(40.dp)) {
         Icon(
             imageVector = Icons.Outlined.CleaningServices,
             contentDescription = if (enabled) "Выключить режим уборки" else "Включить режим уборки",

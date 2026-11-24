@@ -18,6 +18,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.doubleClick
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
@@ -41,9 +42,11 @@ import com.mistermikhail.fgallery.data.DuplicateSearchInput
 import com.mistermikhail.fgallery.data.ExactDuplicateReview
 import com.mistermikhail.fgallery.data.StorageRoot
 import com.mistermikhail.fgallery.data.VisualDuplicateSourceVerification
+import com.mistermikhail.fgallery.data.comparisonTrashSha256
 import com.mistermikhail.fgallery.data.verifyCurrentExactDuplicateSelection
 import com.mistermikhail.fgallery.data.formatDuplicateBytes
 import com.mistermikhail.fgallery.ui.DuplicateSearchController
+import com.mistermikhail.fgallery.ui.ComparisonTrashConfirmation
 import com.mistermikhail.fgallery.ui.DuplicateSearchScreen
 import com.mistermikhail.fgallery.ui.toDuplicateMediaItem
 import kotlinx.coroutines.runBlocking
@@ -236,6 +239,78 @@ class DuplicateSearchUiTest {
         }
     }
 
+    @Test fun comparisonCleanupConfirmsOnlyTheVisiblePhotoAndSupportsRestore() {
+        val directory = Files.createTempDirectory(context.cacheDir.toPath(), "comparison-bin-").toFile()
+        val firstBytes = jpegFixture()
+        val secondBytes = firstBytes.copyOf(firstBytes.size + 128)
+        val first = File(directory, "keep-visible.jpg").apply { writeBytes(firstBytes) }
+        val second = File(directory, "move-visible.jpg").apply { writeBytes(secondBytes) }
+        val rows = listOf(fileRow(first, 1), fileRow(second, 2)).map {
+            it.copy(fullHash = null, perceptualHash = "0123456789abcdef")
+        }
+        val root = StorageRoot("duplicate-fixture", "Fixture", directory.path, directory)
+        val bin = DriveRecycleBin(context, { listOf(root) }, { emptyList() })
+        fun currentRows() = rows.filter { File(it.sourcePath).isFile }
+        fun binFiles() = runBlocking { bin.load().filter { it.folderTarget.startsWith(directory.path + "/") } }
+        fun checkSource(row: CatalogMediaRow) =
+            comparisonTrashSha256(context, row, checkNotNull(row.toDuplicateMediaItem()), currentRows())
+        try {
+            showSearch(rows, load = ::currentRows, prepareComparisonTrash = ::checkSource, trashComparedImage = { consent ->
+                bin.trashWithPreMoveCheck(listOf(checkNotNull(consent.row.toDuplicateMediaItem()))) { item ->
+                    item.uriKey == consent.row.uri && checkSource(consent.row) == consent.sha256
+                }
+            })
+            rule.onNodeWithText("Похожие изображения", substring = false).performClick()
+            rule.waitUntil(10_000) { rule.onAllNodes(hasText("Файлов: 2")).fetchSemanticsNodes().isNotEmpty() }
+            rule.onNodeWithText("Файлов: 2").performClick()
+            rows.forEach { rule.onNodeWithContentDescription("Сравнить ${it.name}").performClick() }
+            rule.onNodeWithText("Сравнить").performClick()
+            rule.onNodeWithContentDescription("Открыть ${first.name}").performClick()
+            waitForTag("viewer-root")
+            val viewer = rule.onNodeWithTag("viewer-root")
+            val activate = rule.onNodeWithContentDescription("Включить режим уборки")
+            val deactivate = rule.onNodeWithContentDescription("Выключить режим уборки")
+            val confirm = hasText("Переместить снимок в корзину?")
+            activate.assertIsDisplayed()
+            viewer.performTouchInput { doubleClick() }
+            rule.onNode(confirm).assertDoesNotExist()
+            activate.assertIsDisplayed().performClick()
+            deactivate.assertIsDisplayed().performClick()
+            activate.assertIsDisplayed().performClick()
+            rule.onNodeWithContentDescription("К сравнению").performClick()
+            rule.onNodeWithContentDescription("Открыть ${first.name}").performClick()
+            activate.assertIsDisplayed().performClick()
+            viewer.performTouchInput { swipeLeft() }
+            val visible = hasTestTag("comparison-viewer-file-name") and hasText(second.name)
+            rule.waitUntil(10_000) { rule.onAllNodes(visible).fetchSemanticsNodes().isNotEmpty() }
+            rule.onNode(visible).assertIsDisplayed()
+            fun doubleTapAndCheck() {
+                viewer.performTouchInput { doubleClick() }
+                rule.waitUntil(10_000) { rule.onAllNodes(confirm).fetchSemanticsNodes().isNotEmpty() }
+                rule.onNodeWithText("${second.name}\n${second.length()} байт").assertIsDisplayed()
+            }
+            doubleTapAndCheck()
+            rule.onNodeWithText("Отмена").performClick()
+            assertArrayEquals(firstBytes, first.readBytes())
+            assertArrayEquals(secondBytes, second.readBytes())
+            assertTrue(binFiles().isEmpty())
+            doubleTapAndCheck()
+            rule.onNodeWithText("В корзину", substring = false).performClick()
+            val movedNotice = hasText("${second.name} перемещён в корзину.")
+            rule.waitUntil(10_000) { rule.onAllNodes(movedNotice).fetchSemanticsNodes().isNotEmpty() }
+            assertArrayEquals(firstBytes, first.readBytes())
+            val moved = binFiles().single()
+            assertEquals(second.name, moved.name)
+            runBlocking { bin.restore(listOf(moved)) }
+            assertArrayEquals(secondBytes, second.readBytes())
+            assertTrue(binFiles().isEmpty())
+        } finally {
+            val remaining = binFiles()
+            runBlocking { bin.restore(remaining) }
+            directory.deleteRecursively()
+        }
+    }
+
     @Test fun cancelLeavesFixturesIntactAndConfirmedCopyCanBeRestored() {
         val directory = Files.createTempDirectory(context.cacheDir.toPath(), "duplicate-bin-").toFile()
         val payload = ByteArray(1500) { it.toByte() }
@@ -324,6 +399,8 @@ class DuplicateSearchUiTest {
         rows: List<CatalogMediaRow>,
         fontScale: Float = 1f,
         load: suspend () -> List<CatalogMediaRow> = { rows },
+        prepareComparisonTrash: suspend (CatalogMediaRow) -> String = { error("Unexpected preflight") },
+        trashComparedImage: suspend (ComparisonTrashConfirmation) -> Unit = { error("Unexpected mutation") },
         trash: suspend (ExactDuplicateReview) -> Int = { error("Unexpected mutation") },
     ) {
         rule.setContent {
@@ -334,6 +411,8 @@ class DuplicateSearchUiTest {
                     load = { _, _ -> DuplicateSearchInput(load()) },
                     verifyVisual = { first, second -> VisualDuplicateSourceVerification.verify(context, first, second) },
                     trash = trash,
+                    prepareComparisonTrash = prepareComparisonTrash,
+                    trashComparedImage = trashComparedImage,
                 )
             }
             val density = LocalDensity.current.density

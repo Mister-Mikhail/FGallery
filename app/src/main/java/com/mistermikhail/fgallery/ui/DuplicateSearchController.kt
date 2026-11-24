@@ -55,6 +55,8 @@ internal data class DuplicateConfirmation(
     val prompt: ExactDuplicateTrashPrompt,
 )
 
+internal data class ComparisonTrashConfirmation(val row: CatalogMediaRow, val sha256: String)
+
 internal data class DuplicateSearchUiState(
     val catalogue: DuplicateCatalogue? = null,
     val tab: DuplicateTab = DuplicateTab.EXACT,
@@ -69,6 +71,9 @@ internal data class DuplicateSearchUiState(
     val visualComparison: Pair<String, String>? = null,
     val visualStatuses: Map<Pair<String, String>, String> = emptyMap(),
     val visualChecking: Pair<String, String>? = null,
+    val comparisonCleanup: Boolean = false,
+    val comparisonError: String? = null,
+    val comparisonTrashConfirmation: ComparisonTrashConfirmation? = null,
     val preparingConfirmation: Boolean = false,
     val confirmation: DuplicateConfirmation? = null,
     val trashInProgress: Boolean = false,
@@ -82,6 +87,8 @@ internal class DuplicateSearchController(
     private val load: suspend (Boolean, (String) -> Unit) -> DuplicateSearchInput,
     private val verifyVisual: suspend (CatalogMediaRow, CatalogMediaRow) -> VisualDuplicatePixelVerification.Result,
     private val trash: suspend (ExactDuplicateReview) -> Int,
+    private val prepareComparisonTrash: suspend (CatalogMediaRow) -> String,
+    private val trashComparedImage: suspend (ComparisonTrashConfirmation) -> Unit,
     private val prepareVisual: suspend (List<CatalogMediaRow>) -> List<CatalogMediaRow> = { it },
 ) {
     private val _state = MutableStateFlow(DuplicateSearchUiState())
@@ -125,7 +132,8 @@ internal class DuplicateSearchController(
     fun showTab(tab: DuplicateTab) {
         val current = _state.value
         if (current.trashInProgress || current.preparingConfirmation || current.tab == tab) return
-        _state.value = current.copy(tab = tab, group = null, confirmation = null, visualComparison = null)
+        _state.value = current.copy(tab = tab, group = null, confirmation = null, visualComparison = null,
+            preview = null, comparisonCleanup = false, comparisonError = null, comparisonTrashConfirmation = null)
         if (tab == DuplicateTab.VISUAL && current.visualGroups == null) loadVisualGroups()
     }
 
@@ -169,12 +177,80 @@ internal class DuplicateSearchController(
         val media = current.catalogue?.rows?.get(uri)?.toDuplicateMediaItem()
         _state.value = current.copy(
             preview = media,
+            comparisonCleanup = false,
+            comparisonError = null,
+            comparisonTrashConfirmation = null,
             notice = if (media == null) "Этот тип файла нельзя открыть в просмотрщике." else current.notice,
         )
     }
 
     fun closePreview() {
-        _state.value = _state.value.copy(preview = null)
+        val current = _state.value
+        if (current.trashInProgress || current.preparingConfirmation) return
+        _state.value = current.copy(preview = null, comparisonCleanup = false, comparisonError = null,
+            comparisonTrashConfirmation = null)
+    }
+
+    fun setComparisonCleanup(enabled: Boolean) {
+        val current = _state.value
+        if (current.preview == null || current.visualComparison == null || current.trashInProgress ||
+            current.preparingConfirmation || current.comparisonTrashConfirmation != null) return
+        _state.value = current.copy(comparisonCleanup = enabled, comparisonError = null)
+    }
+
+    fun requestComparisonTrash(uri: String) {
+        val current = _state.value
+        val pair = current.visualComparison ?: return
+        val catalogue = current.catalogue ?: return
+        val row = catalogue.rows[uri] ?: return
+        if (!current.comparisonCleanup || current.preview == null || current.tab != DuplicateTab.VISUAL ||
+            current.trashInProgress || current.preparingConfirmation || current.comparisonTrashConfirmation != null ||
+            (uri != pair.first && uri != pair.second) || row.kind != MediaKind.IMAGE.name) return
+        if (uri in catalogue.review.protectedUris) {
+            _state.value = current.copy(comparisonError = "Этот снимок помечен «Сохранить» в точных копиях.")
+            return
+        }
+
+        _state.value = current.copy(preparingConfirmation = true, comparisonError = null)
+        confirmationJob = scope.launch {
+            try {
+                val sha256 = withContext(Dispatchers.IO) { prepareComparisonTrash(row) }
+                _state.value = _state.value.copy(
+                    preparingConfirmation = false,
+                    comparisonTrashConfirmation = ComparisonTrashConfirmation(row, sha256),
+                )
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                _state.value = _state.value.copy(preparingConfirmation = false,
+                    comparisonError = failure.localizedMessage ?: "Не удалось проверить исходный файл.")
+            }
+        }
+    }
+
+    fun dismissComparisonTrash() {
+        _state.value = _state.value.copy(comparisonTrashConfirmation = null)
+    }
+
+    fun confirmComparisonTrash(consent: ComparisonTrashConfirmation) {
+        val current = _state.value
+        if (current.comparisonTrashConfirmation !== consent || !current.comparisonCleanup ||
+            current.preview == null || current.trashInProgress) return
+
+        _state.value = current.copy(comparisonTrashConfirmation = null, trashInProgress = true)
+        scope.launch {
+            val notice = try {
+                trashComparedImage(consent)
+                "${consent.row.name} перемещён в корзину."
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                "Перенос в корзину не подтверждён. ${failure.localizedMessage.orEmpty()}"
+            } finally {
+                _state.value = _state.value.copy(trashInProgress = false)
+            }
+            refresh(force = false, notice = notice)
+        }
     }
 
     fun loadVisualGroups() {
