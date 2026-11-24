@@ -19,6 +19,7 @@ import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.doubleClick
+import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
@@ -241,13 +242,15 @@ class DuplicateSearchUiTest {
         }
     }
 
-    @Test fun comparisonCleanupMovesOnlyTheVisiblePhotoOnDoubleTapAndSupportsRestore() {
+    @Test fun comparisonCanTrashFromViewerAndMenuWithoutReloadingResults() {
         val directory = Files.createTempDirectory(context.cacheDir.toPath(), "comparison-bin-").toFile()
         val firstBytes = jpegFixture()
         val secondBytes = firstBytes.copyOf(firstBytes.size + 128)
         val first = File(directory, "keep-visible.jpg").apply { writeBytes(firstBytes) }
         val second = File(directory, "move-visible.jpg").apply { writeBytes(secondBytes) }
-        val rows = listOf(fileRow(first, 1), fileRow(second, 2)).map {
+        val third = File(directory, "move-from-menu.jpg").apply { writeBytes(firstBytes.copyOf(firstBytes.size + 256)) }
+        val thirdBytes = third.readBytes()
+        val rows = listOf(fileRow(first, 1), fileRow(second, 2), fileRow(third, 3)).map {
             it.copy(fullHash = null, perceptualHash = "0123456789abcdef")
         }
         val root = StorageRoot("duplicate-fixture", "Fixture", directory.path, directory)
@@ -256,17 +259,18 @@ class DuplicateSearchUiTest {
         fun binFiles() = runBlocking { bin.load().filter { it.folderTarget.startsWith(directory.path + "/") } }
         fun checkSource(row: CatalogMediaRow) =
             comparisonTrashSha256(context, row, checkNotNull(row.toDuplicateMediaItem()), currentRows())
+        var loads = 0
         try {
-            showSearch(rows, load = ::currentRows, trashComparedImage = { row ->
+            showSearch(rows, load = { loads++; currentRows() }, trashComparedImage = { row ->
                 val sha256 = withContext(Dispatchers.IO) { checkSource(row) }
                 bin.trashWithPreMoveCheck(listOf(checkNotNull(row.toDuplicateMediaItem()))) { item ->
                     item.uriKey == row.uri && checkSource(row) == sha256
                 }
             })
             rule.onNodeWithText("Похожие изображения", substring = false).performClick()
-            rule.waitUntil(10_000) { rule.onAllNodes(hasText("Файлов: 2")).fetchSemanticsNodes().isNotEmpty() }
-            rule.onNodeWithText("Файлов: 2").performClick()
-            rows.forEach { rule.onNodeWithContentDescription("Сравнить ${it.name}").performClick() }
+            rule.waitUntil(10_000) { rule.onAllNodes(hasText("Файлов: 3")).fetchSemanticsNodes().isNotEmpty() }
+            rule.onNodeWithText("Файлов: 3").performClick()
+            rows.take(2).forEach { rule.onNodeWithContentDescription("Сравнить ${it.name}").performClick() }
             rule.onNodeWithText("Сравнить").performClick()
             rule.onNodeWithContentDescription("Открыть ${first.name}").performClick()
             waitForTag("viewer-root")
@@ -299,10 +303,27 @@ class DuplicateSearchUiTest {
             rule.onNode(confirm).assertDoesNotExist()
             assertArrayEquals(firstBytes, first.readBytes())
             assertFalse(second.exists())
-            val moved = binFiles().single()
-            assertEquals(second.name, moved.name)
-            runBlocking { bin.restore(listOf(moved)) }
+            assertEquals(second.name, binFiles().single().name)
+            rule.onNodeWithText("Файлов: 2").assertIsDisplayed()
+            rule.onNodeWithText("Выбрано 1 из 2").assertIsDisplayed()
+            rule.onNodeWithContentDescription("Сравнить ${second.name}").assertDoesNotExist()
+            rule.onNodeWithContentDescription("Сравнить ${third.name}").performClick()
+            rule.onNodeWithText("Сравнить").performClick()
+            rule.onNodeWithContentDescription("Открыть ${third.name}").performTouchInput { longClick() }
+            rule.onNodeWithText("В корзину", substring = false).assertIsDisplayed()
+            assertArrayEquals(thirdBytes, third.readBytes())
+            rule.onNodeWithText("В корзину", substring = false).performClick()
+            val menuNotice = hasText("${third.name} перемещён в корзину.")
+            rule.waitUntil(10_000) { rule.onAllNodes(menuNotice).fetchSemanticsNodes().isNotEmpty() }
+            rule.onNodeWithText("Похожих изображений не найдено").assertIsDisplayed()
+            rule.runOnIdle { assertEquals(1, loads) }
+            assertArrayEquals(firstBytes, first.readBytes())
+            assertFalse(third.exists())
+            val moved = binFiles()
+            assertEquals(setOf(second.name, third.name), moved.map { it.name }.toSet())
+            runBlocking { bin.restore(moved) }
             assertArrayEquals(secondBytes, second.readBytes())
+            assertArrayEquals(thirdBytes, third.readBytes())
             assertTrue(binFiles().isEmpty())
         } finally {
             val remaining = binFiles()
@@ -316,17 +337,20 @@ class DuplicateSearchUiTest {
         val payload = ByteArray(1500) { it.toByte() }
         val keeper = File(directory, "keeper.jpg").apply { writeBytes(payload) }
         val copy = File(directory, "copy.jpg").apply { writeBytes(payload) }
-        val rows = listOf(fileRow(keeper, 1), fileRow(copy, 2))
+        val other = File(directory, "other.jpg").apply { writeBytes(payload) }
+        val rows = listOf(fileRow(keeper, 1), fileRow(copy, 2), fileRow(other, 3))
         val root = StorageRoot("duplicate-fixture", "Fixture", directory.path, directory)
         val bin = DriveRecycleBin(context, { listOf(root) }, { emptyList() })
         fun binFiles() = runBlocking { bin.load().filter { it.folderTarget.startsWith(directory.path + "/") } }
+        var loads = 0
         try {
-            showSearch(rows, load = { rows.filter { File(it.sourcePath).exists() } }) { review ->
+            showSearch(rows, load = { loads++; rows }) { review ->
                 val verified = verifyCurrentExactDuplicateSelection(context, review, rows, explicitlyConfirmed = true)
                 check(verified == setOf(rows[1].uri))
                 bin.trashWithPreMoveCheck(listOf(rows[1].toDuplicateMediaItem()!!)) { item ->
                     item.uriKey in verifyCurrentExactDuplicateSelection(context, review, rows, explicitlyConfirmed = true)
-                }.size
+                }
+                verified
             }
             openFirstGroup(rows)
             rule.onNodeWithTag("duplicate-select-${rows[1].uri}").performClick()
@@ -342,8 +366,17 @@ class DuplicateSearchUiTest {
                 rule.onAllNodes(hasText("Проверить и переместить")).fetchSemanticsNodes().isNotEmpty()
             }
             rule.onNodeWithText("Проверить и переместить").performClick()
-            rule.waitUntil(10_000) { !copy.isFile }
+            val movedNotice = hasText("В корзину перемещено: 1 из 1.")
+            rule.waitUntil(10_000) { rule.onAllNodes(movedNotice).fetchSemanticsNodes().isNotEmpty() }
+            rule.onNodeWithTag("duplicate-copy-grid").performScrollToIndex(1)
+            rule.onNodeWithText("Файлов: 2").assertIsDisplayed()
+            rule.onNodeWithTag("duplicate-copy-grid").assertIsDisplayed()
+            rule.onNodeWithTag("duplicate-select-${rows[1].uri}").assertDoesNotExist()
+            rule.onNodeWithTag("duplicate-select-${rows[2].uri}").assertIsOff()
+            rule.runOnIdle { assertEquals(1, loads) }
             assertArrayEquals(payload, keeper.readBytes())
+            assertArrayEquals(payload, other.readBytes())
+            assertFalse(copy.exists())
             val item = binFiles().single()
             runBlocking { bin.restore(listOf(item)) }
             assertArrayEquals(payload, copy.readBytes())
@@ -400,7 +433,7 @@ class DuplicateSearchUiTest {
         fontScale: Float = 1f,
         load: suspend () -> List<CatalogMediaRow> = { rows },
         trashComparedImage: suspend (CatalogMediaRow) -> Unit = { error("Unexpected mutation") },
-        trash: suspend (ExactDuplicateReview) -> Int = { error("Unexpected mutation") },
+        trash: suspend (ExactDuplicateReview) -> Set<String> = { error("Unexpected mutation") },
     ) {
         rule.setContent {
             val scope = rememberCoroutineScope()

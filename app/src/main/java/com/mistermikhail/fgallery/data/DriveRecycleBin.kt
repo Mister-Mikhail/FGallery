@@ -68,7 +68,7 @@ class DriveRecycleBin(private val context: Context, private val mounted: () -> L
             } }
         }
     }
-    suspend fun trash(items: List<MediaItem>): List<String> = trashWithPreMoveCheck(items) { true }
+    suspend fun trash(items: List<MediaItem>): List<String> = trashWithPreMoveCheck(items) { true }.map { it.uriKey }
 
     /**
      * Stage 6 mutation boundary. The verifier runs under the recycle-bin mutex
@@ -79,7 +79,7 @@ class DriveRecycleBin(private val context: Context, private val mounted: () -> L
     suspend fun trashWithPreMoveCheck(
         items: List<MediaItem>,
         verifyBeforeMove: suspend (MediaItem) -> Boolean,
-    ): List<String> = withContext(Dispatchers.IO) {
+    ): List<MediaItem> = withContext(Dispatchers.IO) {
         lock.withLock {
             // Fail the entire proposed batch before the first mutation if any
             // selected file is already missing, changed or inaccessible.
@@ -119,7 +119,9 @@ class DriveRecycleBin(private val context: Context, private val mounted: () -> L
                         "Повторная проверка SHA-256 не пройдена: ${item.name}"
                     }
                     kotlinx.coroutines.currentCoroutineContext().ensureActive()
-                    StorageAccess.move(context, item, folder, "${token}_${item.name}").toString().also { moved -> write(record.apply { put("lastUri", moved) }) }
+                    val moved = StorageAccess.move(context, item, folder, "${token}_${item.name}")
+                    write(record.apply { put("lastUri", moved.toString()) })
+                    item(record, moved)
                 } catch (e: Exception) {
                     if (uri(record) == null) { runCatching { StorageAccess.delete(context, sidecar) }; forget(token) }
                     throw e

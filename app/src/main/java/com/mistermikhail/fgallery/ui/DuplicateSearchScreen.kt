@@ -2,6 +2,7 @@ package com.mistermikhail.fgallery.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.size
@@ -36,6 +37,8 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -242,7 +245,7 @@ internal fun DuplicateSearchScreen(
                             readOnly = true,
                             loopPages = comparisonOpen,
                             onComparisonDoubleTap = if (items.size == 2) {
-                                { controller.trashFromComparison(it.uriKey) }
+                                { controller.trashFromComparison(it.uriKey, fromCleanupGesture = true) }
                             } else null,
                         )
                     }
@@ -462,8 +465,11 @@ private fun VisualCandidates(
     val listState = rememberLazyGridState()
     var expanded by rememberSaveable { mutableStateOf<String?>(null) }
     var selected by rememberSaveable { mutableStateOf(arrayListOf<String>()) }
+    val expandedGroup = groups?.firstOrNull { it.key == expanded }
+    val selectedInGroup = selected.filter { it in expandedGroup?.uris.orEmpty() }
+    val busy = state.trashInProgress
     fun toggle(uri: String) {
-        selected = ArrayList(if (uri in selected) selected - uri else (selected + uri).take(2))
+        selected = ArrayList(if (uri in selectedInGroup) selectedInGroup - uri else (selectedInGroup + uri).take(2))
     }
     val comparison = state.visualComparison
     if (comparison != null) {
@@ -472,13 +478,15 @@ private fun VisualCandidates(
             second = catalogue.rows.getValue(comparison.second),
             status = state.visualStatuses[comparison],
             checking = state.visualChecking == comparison,
-            verificationAvailable = state.visualChecking == null,
+            verificationAvailable = state.visualChecking == null && !busy,
+            busy = busy,
             onOpen = controller::openPreview,
             onCheck = controller::checkVisual,
+            onTrash = { controller.trashFromComparison(it) },
         )
         return
     }
-    val pair = if (selected.size == 2) selected[0] to selected[1] else null
+    val pair = if (selectedInGroup.size == 2) selectedInGroup[0] to selectedInGroup[1] else null
     Column(Modifier.fillMaxSize()) {
         LazyVerticalGrid(columns = GridCells.Fixed(if (grid) 2 else 1),
             state = listState,
@@ -494,29 +502,29 @@ private fun VisualCandidates(
                 }
                 groups.isEmpty() -> item(span = { GridItemSpan(maxLineSpan) }) { SearchMessage("Похожих изображений не найдено") }
                 else -> groups.forEach { group ->
-                    val first = catalogue.rows.getValue(group.first())
-                    val open = expanded == first.uri
-                    item("visual-group/${first.uri}", span = { GridItemSpan(maxLineSpan) }) {
+                    val first = catalogue.rows.getValue(group.uris.first())
+                    val open = expanded == group.key
+                    item("visual-group/${group.key}", span = { GridItemSpan(maxLineSpan) }) {
                         Surface(shape = MaterialTheme.shapes.medium, color = duplicateColors.surfaceContainer) {
                             Row(Modifier.fillMaxWidth().clickable {
-                                expanded = if (open) null else first.uri
+                                expanded = if (open) null else group.key
                                 selected = arrayListOf()
                             }.padding(8.dp), verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                 if (!open) DuplicateTile(first, Modifier.size(48.dp), interactive = false) {}
                                 Column(Modifier.weight(1f)) {
-                                    Text("Файлов: ${group.size}", style = MaterialTheme.typography.titleMedium)
+                                    Text("Файлов: ${group.uris.size}", style = MaterialTheme.typography.titleMedium)
                                     Text(first.name, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
                                 }
                                 Icon(if (open) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, null)
                             }
                         }
                     }
-                    if (open) items(group, key = { "visual-file/$it" }) { uri ->
+                    if (open) items(group.uris, key = { "visual-file/$it" }) { uri ->
                         val row = catalogue.rows.getValue(uri)
                         val preview = { controller.openPreview(uri) }
                         val checkbox: @Composable () -> Unit = {
-                            Checkbox(uri in selected, { toggle(uri) }, enabled = uri in selected || selected.size < 2,
+                            Checkbox(uri in selectedInGroup, { toggle(uri) }, enabled = uri in selectedInGroup || selectedInGroup.size < 2,
                                 modifier = Modifier.semantics { contentDescription = "Сравнить ${row.name}" })
                         }
                         Surface(shape = MaterialTheme.shapes.small, color = duplicateColors.surfaceContainer) {
@@ -537,11 +545,11 @@ private fun VisualCandidates(
                 }
             }
         }
-        if (selected.isNotEmpty()) Surface(color = duplicateColors.surfaceContainer) {
+        if (selectedInGroup.isNotEmpty()) Surface(color = duplicateColors.surfaceContainer) {
             Column(Modifier.fillMaxWidth().padding(8.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = { selected = arrayListOf() }) { Icon(Icons.Outlined.Close, "Снять выбор") }
-                    Text("Выбрано ${selected.size} из 2", Modifier.weight(1f))
+                    Text("Выбрано ${selectedInGroup.size} из 2", Modifier.weight(1f))
                     Button(onClick = { pair?.let(controller::openVisualComparison) }, enabled = pair != null) {
                         Text("Сравнить")
                     }
@@ -559,9 +567,12 @@ private fun VisualComparison(
     status: String?,
     checking: Boolean,
     verificationAvailable: Boolean,
+    busy: Boolean,
     onOpen: (String) -> Unit,
     onCheck: () -> Unit,
+    onTrash: (String) -> Unit,
 ) {
+    var menuUri by remember(first.uri, second.uri) { mutableStateOf<String?>(null) }
     LazyColumn(
         modifier = Modifier.fillMaxSize().testTag("duplicate-visual-comparison"),
         contentPadding = PaddingValues(12.dp),
@@ -570,15 +581,34 @@ private fun VisualComparison(
         item("images") {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf(first, second).forEach { row ->
-                    DuplicateTile(
-                        row,
-                        Modifier.weight(1f).aspectRatio(1f),
-                        contentScale = ContentScale.Fit,
-                        highQuality = true,
-                        onOpen = { onOpen(row.uri) },
-                    )
+                    Box(Modifier.weight(1f)) {
+                        DuplicateTile(
+                            row,
+                            Modifier.fillMaxWidth().aspectRatio(1f),
+                            contentScale = ContentScale.Fit,
+                            highQuality = true,
+                            enabled = !busy,
+                            onOpen = { onOpen(row.uri) },
+                            onLongClick = { menuUri = row.uri },
+                        )
+                        DropdownMenu(expanded = menuUri == row.uri, onDismissRequest = { menuUri = null }) {
+                            DropdownMenuItem(
+                                text = { Text("В корзину") },
+                                leadingIcon = { Icon(Icons.Outlined.Delete, null) },
+                                enabled = !busy,
+                                onClick = {
+                                    menuUri = null
+                                    onTrash(row.uri)
+                                },
+                            )
+                        }
+                    }
                 }
             }
+        }
+        if (busy) item("moving") {
+            Text("Перемещаем в корзину…")
+            LinearProgressIndicator(Modifier.fillMaxWidth())
         }
         item("names") {
             ComparisonRow("Имя файла", first.name.ifBlank { "Без имени" }, second.name.ifBlank { "Без имени" })
@@ -659,14 +689,20 @@ private fun DuplicateTile(
     interactive: Boolean = true,
     contentScale: ContentScale = ContentScale.Crop,
     highQuality: Boolean = false,
+    enabled: Boolean = true,
+    onLongClick: (() -> Unit)? = null,
     onOpen: () -> Unit,
 ) {
     val media = remember(row) { row.toDuplicateMediaItem() }
     val model = remember(media, highQuality) { media?.let { GalleryThumb(it, highQuality = highQuality) } }
     var failed by remember(model) { mutableStateOf(false) }
     Surface(
-        modifier = if (!interactive) modifier else modifier.clickable(enabled = media != null, onClick = onOpen).testTag("duplicate-preview-${row.uri}")
-            .semantics { contentDescription = "Открыть ${row.name}" },
+        modifier = if (!interactive) modifier else modifier.combinedClickable(
+            enabled = enabled && media != null,
+            onClick = onOpen,
+            onLongClickLabel = "Действия со снимком",
+            onLongClick = onLongClick,
+        ).testTag("duplicate-preview-${row.uri}").semantics { contentDescription = "Открыть ${row.name}" },
         color = MaterialTheme.colorScheme.surfaceVariant,
     ) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

@@ -26,6 +26,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.updateAndGet
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.cancelAndJoin
@@ -87,6 +88,7 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
     private var refreshJob: kotlinx.coroutines.Job? = null
     private var fingerprintJob: kotlinx.coroutines.Job? = null
     @Volatile private var duplicateSearchActive = false
+    private var libraryChangedDuringDuplicateSearch = false
     @Volatile private var lastCatalogueScanSucceeded: Boolean? = null
 
     internal val duplicateSearch by lazy {
@@ -111,6 +113,14 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
     internal fun closeDuplicateSearch() {
         duplicateSearch.close()
         duplicateSearchActive = false
+        if (libraryChangedDuringDuplicateSearch) {
+            libraryChangedDuringDuplicateSearch = false
+            refresh()
+        }
+    }
+
+    internal fun onObservedLibraryChange() {
+        if (duplicateSearchActive) libraryChangedDuringDuplicateSearch = true else refresh()
     }
 
     private suspend fun loadDuplicateSearch(
@@ -239,8 +249,9 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
      * Compose reads already-materialized immutable lists during scroll/recomposition.
      */
     private fun derive(state: GalleryUiState): GalleryUiState {
+        val binUris = state.recycleBinUris + state.physicalBinUris
         val available = state.allItems.asSequence()
-            .filterNot { it.uriKey in (state.recycleBinUris + state.physicalBinUris) }
+            .filterNot { it.uriKey in binUris }
             .filter { item ->
                 when (state.filter) {
                     MediaFilter.ALL -> true
@@ -264,7 +275,7 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
         )
 
         val recycle = sortItems(
-            state.allItems.filter { it.uriKey in (state.recycleBinUris + state.physicalBinUris) },
+            state.allItems.filter { it.uriKey in binUris },
             state.sortMode,
         )
 
@@ -595,17 +606,45 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
         item: MediaItem,
     ): String = withContext(Dispatchers.IO) {
         val context = getApplication<Application>()
-        val latest = CatalogStore.exactDuplicateReviewRows(context)
+        val latest = CatalogStore.comparisonTrashRows(context, row.sizeBytes)
         val jobContext = currentCoroutineContext()
         comparisonTrashSha256(context, row, item, latest) { jobContext.ensureActive() }
     }
 
     private suspend fun trashComparedImage(row: CatalogMediaRow) {
         val item = checkNotNull(row.toDuplicateMediaItem()) { "Исходный файл недоступен." }
-        val sha256 = checkedComparisonTrashSha256(row, item)
-        moveToRecycleBinWithPreMoveCheck(listOf(item)) { candidate ->
-            candidate.uriKey == row.uri && checkedComparisonTrashSha256(row, candidate) == sha256
+        var preflightDigest: String? = null
+        val moved = driveBin.trashWithPreMoveCheck(listOf(item)) { candidate ->
+            if (candidate.uriKey != row.uri) return@trashWithPreMoveCheck false
+            val digest = checkedComparisonTrashSha256(row, candidate)
+            val expected = preflightDigest
+            preflightDigest = digest
+            expected == null || digest == expected
+        }.single()
+        recordDuplicateMove(row.uri, moved)
+    }
+
+    private suspend fun recordDuplicateMove(sourceUri: String, moved: MediaItem) {
+        // A scan started before the physical move must not overwrite the catalogue update.
+        refreshJob?.cancelAndJoin()
+        val stored = try {
+            CatalogStore.recordRecycleBinMove(getApplication(), sourceUri, moved)
+            true
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            false
         }
+        withContext(Dispatchers.Default) {
+            val current = _uiState.updateAndGet { current ->
+                derive(current.copy(
+                    allItems = current.allItems.filterNot { it.uriKey == sourceUri || it.uriKey == moved.uriKey } + moved,
+                    physicalBinUris = current.physicalBinUris + moved.uriKey,
+                ))
+            }
+            LibrarySnapshot.remember(LibrarySnapshot.Value(current.allItems, current.physicalBinUris, current.hasPermission))
+        }
+        if (!stored) withContext(Dispatchers.Main) { refresh() }
     }
 
     /**
@@ -617,30 +656,22 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
      */
     internal suspend fun trashConfirmedExactDuplicates(
         reviewed: com.mistermikhail.fgallery.data.ExactDuplicateReview,
-    ): Int = withContext(Dispatchers.IO) {
+    ): Set<String> = withContext(Dispatchers.IO) {
         val context = getApplication<Application>()
         val initial = CatalogStore.exactDuplicateReviewRows(context)
-        val confirmed = com.mistermikhail.fgallery.data.confirmedExactDuplicateUris(
-            reviewed, initial, explicitlyConfirmed = true,
-            includedStorageIds = reviewed.includedStorageIds,
-            includedFolderTargets = reviewed.includedFolderTargets,
+        // Verify every chosen copy and its keeper BEFORE the first mutation.
+        val confirmed = com.mistermikhail.fgallery.data.verifyCurrentExactDuplicateSelection(
+            context, reviewed, initial, explicitlyConfirmed = true,
         )
         check(confirmed.isNotEmpty() && confirmed == reviewed.selectedUris) {
-            "Каталог дубликатов изменился. Обновите список и подтвердите заново."
+            "Файл или каталог дубликатов изменился. Обновите список и подтвердите заново."
         }
-        // Verify every chosen copy and its keeper BEFORE the first mutation.
-        check(com.mistermikhail.fgallery.data.verifyCurrentExactDuplicateSelection(
-            context, reviewed, initial, explicitlyConfirmed = true,
-        ) == confirmed) { "SHA-256 изменился. Обновите список дубликатов." }
 
-        var completed = 0
+        val rowsByUri = initial.associateBy { it.uri }
+        val completed = linkedSetOf<String>()
         try {
             for (uri in confirmed.sorted()) {
-                val current = CatalogStore.exactDuplicateReviewRows(context)
-                check(com.mistermikhail.fgallery.data.exactDuplicateMovePairStillValid(
-                    reviewed, current, uri,
-                )) { "Файл или защищённый оригинал изменился. Операция остановлена." }
-                val row = current.single { it.uri == uri }
+                val row = rowsByUri.getValue(uri)
                 val item = MediaItem(
                     row.mediaId, android.net.Uri.parse(row.uri), row.name, row.mimeType,
                     MediaKind.valueOf(row.kind), row.dateTakenMillis,
@@ -648,7 +679,7 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
                     row.relativePath, row.sizeBytes, row.dateModifiedMillis,
                     row.storageId, row.storageName, row.folderTarget, row.sourcePath,
                 )
-                driveBin.trashWithPreMoveCheck(listOf(item)) { candidate ->
+                val moved = driveBin.trashWithPreMoveCheck(listOf(item)) { candidate ->
                     val latest = CatalogStore.exactDuplicateReviewRows(context)
                     if (candidate.uriKey != uri ||
                         !com.mistermikhail.fgallery.data.exactDuplicateMovePairStillValid(
@@ -665,25 +696,14 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
                         )
                         verified == setOf(uri)
                     }
-                }
-                // The physical move has already succeeded. A Room write error
-                // must not abort the remaining independently verified moves or
-                // leave this item visible as if it were still at its old URI.
-                // refresh() in finally reconciles any failed catalogue write.
-                runCatching { CatalogStore.removeUris(context, setOf(uri)) }
-                completed++
-                val removed = setOf(uri)
-                withContext(Dispatchers.Main) {
-                    _uiState.update { derive(it.copy(allItems = it.allItems.filterNot { media -> media.uriKey in removed })) }
-                    LibrarySnapshot.removeItems(removed)
-                }
+                }.single()
+                completed.add(uri)
+                recordDuplicateMove(uri, moved)
             }
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
             throw cancelled
         } catch (failure: Exception) {
             throw DuplicateTrashInterrupted(completed, failure)
-        } finally {
-            refresh()
         }
         completed
     }

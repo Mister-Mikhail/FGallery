@@ -26,9 +26,11 @@ import kotlinx.coroutines.withContext
 
 internal enum class DuplicateTab { EXACT, VISUAL }
 
-internal class DuplicateCatalogue(input: DuplicateSearchInput) {
-    val review = planExactDuplicateReview(input.rows)
-    val cards = exactDuplicateReviewCards(review)
+internal class DuplicateCatalogue(
+    private val input: DuplicateSearchInput,
+    val review: ExactDuplicateReview = planExactDuplicateReview(input.rows),
+    val cards: List<ExactDuplicateReviewCard> = exactDuplicateReviewCards(review),
+) {
     val cardsByHash = cards.associateBy { it.sha256 }
     val valid = review.catalogueValid && cards.size == review.groups.size
     val rows = input.rows.associateBy { it.uri }
@@ -47,6 +49,27 @@ internal class DuplicateCatalogue(input: DuplicateSearchInput) {
     val disconnectedStorages = input.disconnectedStorages
     val pendingFingerprints = input.pendingFingerprints
     val requiresAccess = input.requiresAccess
+
+    fun without(moved: Set<String>): DuplicateCatalogue {
+        val remainingInput = input.copy(rows = input.rows.filterNot { it.uri in moved })
+        if (review.groups.none { group -> group.any { it.uri in moved } }) {
+            return DuplicateCatalogue(remainingInput, review, cards)
+        }
+        val remaining = review.groups.mapNotNull { group ->
+            group.filterNot { it.uri in moved }.takeIf { it.size > 1 }
+        }.sortedWith(compareByDescending<List<CatalogMediaRow>> { it.size }.thenBy { it.first().uri })
+        return DuplicateCatalogue(
+            remainingInput,
+            review.copy(groups = remaining, protectedUris = remaining.mapTo(hashSetOf()) { it.first().uri }),
+        )
+    }
+}
+
+internal data class VisualDuplicateGroup(val key: String, val uris: List<String>) {
+    fun retaining(available: Set<String>): VisualDuplicateGroup? {
+        if (uris.all { it in available }) return this
+        return uris.filter { it in available }.takeIf { it.size > 1 }?.let { copy(uris = it) }
+    }
 }
 
 internal data class DuplicateConfirmation(
@@ -64,7 +87,7 @@ internal data class DuplicateSearchUiState(
     val error: String? = null,
     val notice: String? = null,
     val preview: MediaItem? = null,
-    val visualGroups: List<List<String>>? = null,
+    val visualGroups: List<VisualDuplicateGroup>? = null,
     val visualError: String? = null,
     val visualComparison: Pair<String, String>? = null,
     val visualStatuses: Map<Pair<String, String>, String> = emptyMap(),
@@ -76,14 +99,14 @@ internal data class DuplicateSearchUiState(
     val trashInProgress: Boolean = false,
 )
 
-internal class DuplicateTrashInterrupted(val completed: Int, cause: Exception) : Exception(cause.message, cause)
+internal class DuplicateTrashInterrupted(val moved: Set<String>, cause: Exception) : Exception(cause.message, cause)
 
 /** One catalogue snapshot per scan. UI events address indexed rows and do not touch files. */
 internal class DuplicateSearchController(
     private val scope: CoroutineScope,
     private val load: suspend (Boolean, (String) -> Unit) -> DuplicateSearchInput,
     private val verifyVisual: suspend (CatalogMediaRow, CatalogMediaRow) -> VisualDuplicatePixelVerification.Result,
-    private val trash: suspend (ExactDuplicateReview) -> Int,
+    private val trash: suspend (ExactDuplicateReview) -> Set<String>,
     private val trashComparedImage: suspend (CatalogMediaRow) -> Unit,
     private val prepareVisual: suspend (List<CatalogMediaRow>) -> List<CatalogMediaRow> = { it },
 ) {
@@ -103,11 +126,11 @@ internal class DuplicateSearchController(
         _state.value = DuplicateSearchUiState()
     }
 
-    fun refresh(force: Boolean = true, notice: String? = null) {
+    fun refresh(force: Boolean = true) {
         val current = _state.value
         if (current.trashInProgress) return
         close()
-        _state.value = DuplicateSearchUiState(tab = current.tab, notice = notice)
+        _state.value = DuplicateSearchUiState(tab = current.tab)
         scan = scope.launch {
             try {
                 val input = load(force) { progress -> _state.value = _state.value.copy(scanProgress = progress) }
@@ -192,33 +215,56 @@ internal class DuplicateSearchController(
         _state.value = current.copy(comparisonCleanup = enabled, comparisonError = null)
     }
 
-    fun trashFromComparison(uri: String) {
+    fun trashFromComparison(uri: String, fromCleanupGesture: Boolean = false) {
         val current = _state.value
         val pair = current.visualComparison ?: return
         val catalogue = current.catalogue ?: return
         val row = catalogue.rows[uri] ?: return
-        if (!current.comparisonCleanup || current.preview == null || current.tab != DuplicateTab.VISUAL ||
-            current.trashInProgress || current.preparingConfirmation ||
+        val canTrash = if (fromCleanupGesture) current.preview != null && current.comparisonCleanup
+            else current.preview == null
+        if (!canTrash || current.tab != DuplicateTab.VISUAL || current.trashInProgress || current.preparingConfirmation ||
             (uri != pair.first && uri != pair.second) || row.kind != MediaKind.IMAGE.name) return
         if (uri in catalogue.review.protectedUris) {
-            _state.value = current.copy(comparisonError = "Этот снимок помечен «Сохранить» в точных копиях.")
+            showComparisonError("Этот снимок помечен «Сохранить» в точных копиях.")
             return
         }
 
         _state.value = current.copy(trashInProgress = true, comparisonError = null)
         scope.launch {
-            val notice = try {
+            try {
                 trashComparedImage(row)
-                "${row.name} перемещён в корзину."
+                applyMoved(setOf(uri), "${row.name} перемещён в корзину.")
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Exception) {
-                "Не удалось завершить перенос ${row.name}. Проверьте корзину. ${failure.localizedMessage.orEmpty()}"
+                showComparisonError("Не удалось завершить перенос ${row.name}. Проверьте корзину. ${failure.localizedMessage.orEmpty()}")
             } finally {
                 _state.value = _state.value.copy(trashInProgress = false)
             }
-            refresh(force = false, notice = notice)
         }
+    }
+
+    private fun showComparisonError(message: String) {
+        val current = _state.value
+        _state.value = if (current.preview == null) current.copy(notice = message) else current.copy(comparisonError = message)
+    }
+
+    private suspend fun applyMoved(moved: Set<String>, notice: String) {
+        val previous = _state.value.catalogue ?: return
+        val updated = if (moved.isEmpty()) previous else withContext(Dispatchers.IO) { previous.without(moved) }
+        val current = _state.value
+        val removedFromComparison = current.visualComparison?.let { it.first in moved || it.second in moved } == true
+        _state.value = current.copy(
+            catalogue = updated,
+            group = current.group?.let { updated.cardsByHash[it.sha256] },
+            selected = current.selected.intersect(updated.selectableUris),
+            notice = notice,
+            preview = current.preview.takeUnless { removedFromComparison || it?.uriKey in moved },
+            visualComparison = current.visualComparison.takeUnless { removedFromComparison },
+            comparisonCleanup = current.comparisonCleanup && !removedFromComparison,
+            visualGroups = current.visualGroups?.mapNotNull { it.retaining(updated.rows.keys) },
+            visualStatuses = current.visualStatuses.filterKeys { it.first !in moved && it.second !in moved },
+        )
     }
 
     fun loadVisualGroups() {
@@ -229,8 +275,11 @@ internal class DuplicateSearchController(
         visualJob = scope.launch {
             try {
                 val rows = prepareVisual(catalogue.visualRows)
-                val groups = withContext(Dispatchers.Default) { visualReviewGroups(rows) { ensureActive() } }
-                _state.value = _state.value.copy(visualGroups = groups)
+                val groups = withContext(Dispatchers.Default) {
+                    visualReviewGroups(rows) { ensureActive() }.map { VisualDuplicateGroup(it.first(), it) }
+                }
+                val latest = _state.value
+                _state.value = latest.copy(visualGroups = groups.mapNotNull { it.retaining(latest.catalogue?.rows.orEmpty().keys) })
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
@@ -242,7 +291,8 @@ internal class DuplicateSearchController(
     fun openVisualComparison(pair: Pair<String, String>) {
         val current = _state.value
         if (current.tab != DuplicateTab.VISUAL || current.preview != null || pair.first == pair.second ||
-            current.visualGroups?.any { pair.first in it && pair.second in it } != true
+            current.trashInProgress ||
+            current.visualGroups?.any { pair.first in it.uris && pair.second in it.uris } != true
         ) return
         _state.value = current.copy(visualComparison = pair)
     }
@@ -254,7 +304,7 @@ internal class DuplicateSearchController(
     fun checkVisual() {
         val current = _state.value
         val pair = current.visualComparison ?: return
-        if (current.visualChecking != null || current.preview != null) return
+        if (current.visualChecking != null || current.preview != null || current.trashInProgress) return
         val rows = current.catalogue?.rows ?: return
         val first = rows[pair.first] ?: return
         val second = rows[pair.second] ?: return
@@ -273,7 +323,10 @@ internal class DuplicateSearchController(
                 "Не подтверждено · исходный файл недоступен"
             }
             val latest = _state.value
-            _state.value = latest.copy(visualChecking = null, visualStatuses = latest.visualStatuses + (pair to label))
+            val rowsStillAvailable = latest.catalogue?.rows.orEmpty()
+            val statuses = if (pair.first in rowsStillAvailable && pair.second in rowsStillAvailable)
+                latest.visualStatuses + (pair to label) else latest.visualStatuses
+            _state.value = latest.copy(visualChecking = null, visualStatuses = statuses)
         }
     }
 
@@ -309,19 +362,19 @@ internal class DuplicateSearchController(
         ) return
         _state.value = current.copy(confirmation = null, trashInProgress = true)
         scope.launch {
-            val notice = try {
-                "В корзину перемещено: ${trash(consent.review)} из ${consent.prompt.selectedCopyCount}."
+            try {
+                val moved = trash(consent.review)
+                applyMoved(moved, "В корзину перемещено: ${moved.size} из ${consent.prompt.selectedCopyCount}.")
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: DuplicateTrashInterrupted) {
-                "Подтверждено переносов: ${failure.completed} из ${consent.prompt.selectedCopyCount}. " +
-                    "Операция остановлена. Проверьте корзину. ${failure.localizedMessage.orEmpty()}"
+                applyMoved(failure.moved, "Подтверждено переносов: ${failure.moved.size} из ${consent.prompt.selectedCopyCount}. " +
+                    "Операция остановлена. Проверьте корзину. ${failure.localizedMessage.orEmpty()}")
             } catch (failure: Exception) {
-                "Файлы не перемещены. ${failure.localizedMessage ?: "Проверка не пройдена."}"
+                _state.value = _state.value.copy(notice = "Файлы не перемещены. ${failure.localizedMessage ?: "Проверка не пройдена."}")
             } finally {
                 _state.value = _state.value.copy(trashInProgress = false)
             }
-            refresh(force = false, notice = notice)
         }
     }
 }

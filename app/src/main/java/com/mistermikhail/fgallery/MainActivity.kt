@@ -1059,8 +1059,10 @@ class MainActivity : ComponentActivity() {
                 refreshSignal = uiScope.launch {
                     kotlinx.coroutines.delay(120)
                     folderRevision++
-                    viewModel.refresh()
-                    if (storageChanged) viewModel.onDuplicateStorageChanged()
+                    if (storageChanged) {
+                        viewModel.refresh()
+                        viewModel.onDuplicateStorageChanged()
+                    } else viewModel.onObservedLibraryChange()
                     storageChanged = false
                 }
             }
@@ -1130,7 +1132,7 @@ class MainActivity : ComponentActivity() {
                         refreshSignal?.cancel()
                         refreshSignal = uiScope.launch {
                             kotlinx.coroutines.delay(180)
-                            viewModel.refresh()
+                            viewModel.onObservedLibraryChange()
                         }
                     }
                 }.also { it.startWatching() }
