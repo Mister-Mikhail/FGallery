@@ -66,6 +66,7 @@ internal data class DuplicateSearchUiState(
     val preview: MediaItem? = null,
     val visualGroups: List<List<String>>? = null,
     val visualError: String? = null,
+    val visualComparison: Pair<String, String>? = null,
     val visualStatuses: Map<Pair<String, String>, String> = emptyMap(),
     val visualChecking: Pair<String, String>? = null,
     val preparingConfirmation: Boolean = false,
@@ -124,7 +125,7 @@ internal class DuplicateSearchController(
     fun showTab(tab: DuplicateTab) {
         val current = _state.value
         if (current.trashInProgress || current.preparingConfirmation || current.tab == tab) return
-        _state.value = current.copy(tab = tab, group = null, confirmation = null)
+        _state.value = current.copy(tab = tab, group = null, confirmation = null, visualComparison = null)
         if (tab == DuplicateTab.VISUAL && current.visualGroups == null) loadVisualGroups()
     }
 
@@ -194,10 +195,22 @@ internal class DuplicateSearchController(
         }
     }
 
-    fun checkVisual(pair: Pair<String, String>) {
+    fun openVisualComparison(pair: Pair<String, String>) {
         val current = _state.value
-        if (current.visualChecking != null || current.tab != DuplicateTab.VISUAL || pair.first == pair.second ||
-            current.visualGroups?.any { pair.first in it && pair.second in it } != true) return
+        if (current.tab != DuplicateTab.VISUAL || current.preview != null || pair.first == pair.second ||
+            current.visualGroups?.any { pair.first in it && pair.second in it } != true
+        ) return
+        _state.value = current.copy(visualComparison = pair)
+    }
+
+    fun closeVisualComparison() {
+        _state.value = _state.value.copy(visualComparison = null)
+    }
+
+    fun checkVisual() {
+        val current = _state.value
+        val pair = current.visualComparison ?: return
+        if (current.visualChecking != null || current.preview != null) return
         val rows = current.catalogue?.rows ?: return
         val first = rows[pair.first] ?: return
         val second = rows[pair.second] ?: return

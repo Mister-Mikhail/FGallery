@@ -39,6 +39,7 @@ import com.mistermikhail.fgallery.data.ExactDuplicateReview
 import com.mistermikhail.fgallery.data.StorageRoot
 import com.mistermikhail.fgallery.data.VisualDuplicateSourceVerification
 import com.mistermikhail.fgallery.data.verifyCurrentExactDuplicateSelection
+import com.mistermikhail.fgallery.data.formatDuplicateBytes
 import com.mistermikhail.fgallery.ui.DuplicateSearchController
 import com.mistermikhail.fgallery.ui.DuplicateSearchScreen
 import com.mistermikhail.fgallery.ui.toDuplicateMediaItem
@@ -152,13 +153,18 @@ class DuplicateSearchUiTest {
         }
     }
 
-    @Test fun visualCandidatesVerifyRealPixelsWithoutOfferingTrash() {
+    @Test fun visualComparisonShowsBothFilesAndVerifiesPixelsOnRequest() {
         val directory = Files.createTempDirectory(context.cacheDir.toPath(), "duplicate-visual-").toFile()
         try {
             val jpeg = jpegFixture()
             val visual = (0..1).map { index ->
-                val file = File(directory, "visual-$index.jpg").apply { writeBytes(jpeg) }
-                fileRow(file, index + 1L).copy(fullHash = null, perceptualHash = "0123456789abcdef")
+                val bytes = if (index == 0) jpeg else jpeg.copyOf(jpeg.size + 768)
+                val file = File(directory, "visual-$index.jpg").apply { writeBytes(bytes) }
+                fileRow(file, index + 1L).copy(
+                    fullHash = null,
+                    perceptualHash = "0123456789abcdef",
+                    dateTakenMillis = if (index == 0) 1_720_000_000_000L else 0L,
+                )
             }
             showSearch(visual)
             rule.onNodeWithText("Похожие изображения", substring = false).performClick()
@@ -167,14 +173,45 @@ class DuplicateSearchUiTest {
             visual.forEach { rule.onNodeWithContentDescription("Сравнить ${it.name}").performClick() }
             rule.onNodeWithText("Выбрано 2 из 2").assertIsDisplayed()
             rule.onNodeWithText("Сравнить").performClick()
+            val comparison = rule.onNodeWithTag("duplicate-visual-comparison").assertIsDisplayed()
+            val first = rule.onNodeWithTag("duplicate-preview-${visual[0].uri}").getUnclippedBoundsInRoot()
+            val second = rule.onNodeWithTag("duplicate-preview-${visual[1].uri}").getUnclippedBoundsInRoot()
+            assertTrue(first.right < second.left)
+            visual.forEach {
+                comparison.performScrollToNode(hasText(it.name))
+                rule.onNodeWithText(it.name).assertIsDisplayed()
+                val size = formatDuplicateBytes(it.sizeBytes)
+                comparison.performScrollToNode(hasText(size))
+                rule.onNodeWithText(size).assertIsDisplayed()
+            }
+            comparison.performScrollToNode(hasText("Разрешение"))
+            rule.onAllNodes(hasText("128×128"))[0].assertIsDisplayed()
+            rule.onAllNodes(hasText("128×128"))[1].assertIsDisplayed()
+            comparison.performScrollToNode(hasText("Дата"))
+            rule.onNodeWithText("Снят ", substring = true).assertIsDisplayed()
+            rule.onNodeWithText("Изменён ", substring = true).assertIsDisplayed()
+            comparison.performScrollToIndex(0)
+            rule.onNodeWithContentDescription("Открыть ${visual[0].name}").performClick()
+            waitForTag("viewer-root")
+            rule.onNodeWithContentDescription("К сравнению").performClick()
+            comparison.assertIsDisplayed()
+
+            comparison.performScrollToNode(hasText("Проверить исходные пиксели"))
+            rule.onNodeWithText("Подтверждено · пиксели совпадают").assertDoesNotExist()
+            rule.onNodeWithText("Проверить исходные пиксели").performClick()
             rule.waitUntil(10_000) {
                 rule.onAllNodes(
                     hasText("Подтверждено · пиксели совпадают") or hasText("Не подтверждено", substring = true)
                 ).fetchSemanticsNodes().isNotEmpty()
             }
-            screenshot("visual-candidates-read-only")
+            comparison.performScrollToNode(hasText("Подтверждено · пиксели совпадают"))
             rule.onNodeWithText("Подтверждено · пиксели совпадают").assertIsDisplayed()
             rule.onNodeWithText("В корзину…").assertDoesNotExist()
+            comparison.performScrollToIndex(0)
+            screenshot("visual-candidates-read-only")
+            rule.onNodeWithContentDescription("Назад").performClick()
+            rule.onNodeWithText("Выбрано 2 из 2").assertIsDisplayed()
+            rule.onNodeWithText("Сравнить").assertIsDisplayed()
         } finally {
             directory.deleteRecursively()
         }

@@ -9,6 +9,7 @@ import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.FilterChip
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -26,6 +27,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
@@ -96,11 +98,13 @@ internal fun DuplicateSearchScreen(
     val busy = state.trashInProgress || state.preparingConfirmation
     var grid by rememberSaveable { mutableStateOf(false) }
     val preview = state.preview
+    val comparisonOpen = state.visualComparison != null
     fun back() {
         if (busy) return
         when {
             preview != null -> controller.closePreview()
             state.confirmation != null -> controller.dismissConfirmation()
+            comparisonOpen -> controller.closeVisualComparison()
             state.group != null -> controller.showGroup(null)
             else -> onClose()
         }
@@ -119,26 +123,37 @@ internal fun DuplicateSearchScreen(
                     topBar = {
                         Column {
                             TopAppBar(
-                                title = { Text(if (state.tab == DuplicateTab.EXACT) "Точные дубликаты" else "Похожие изображения") },
+                                title = {
+                                    Text(when {
+                                        comparisonOpen -> "Сравнение"
+                                        state.tab == DuplicateTab.EXACT -> "Точные дубликаты"
+                                        else -> "Похожие изображения"
+                                    })
+                                },
                                 navigationIcon = {
                                     IconButton(onClick = ::back, enabled = !busy) {
                                         Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Назад")
                                     }
                                 },
                                 actions = {
-                                    if ((state.tab == DuplicateTab.EXACT && !state.catalogue?.cards.isNullOrEmpty()) ||
-                                        (state.tab == DuplicateTab.VISUAL && !state.visualGroups.isNullOrEmpty())) {
-                                        IconButton(onClick = { grid = !grid }) {
-                                            Icon(if (grid) Icons.Outlined.ViewList else Icons.Outlined.GridView,
-                                                if (grid) "Список" else "Сетка")
+                                    if (!comparisonOpen) {
+                                        val hasResults = when (state.tab) {
+                                            DuplicateTab.EXACT -> !state.catalogue?.cards.isNullOrEmpty()
+                                            DuplicateTab.VISUAL -> !state.visualGroups.isNullOrEmpty()
                                         }
-                                    }
-                                    IconButton(onClick = { controller.refresh() }, enabled = !busy && state.scanProgress == null) {
-                                        Icon(Icons.Outlined.Refresh, "Обновить поиск")
+                                        if (hasResults) {
+                                            IconButton(onClick = { grid = !grid }) {
+                                                Icon(if (grid) Icons.Outlined.ViewList else Icons.Outlined.GridView,
+                                                    if (grid) "Список" else "Сетка")
+                                            }
+                                        }
+                                        IconButton(onClick = { controller.refresh() }, enabled = !busy && state.scanProgress == null) {
+                                            Icon(Icons.Outlined.Refresh, "Обновить поиск")
+                                        }
                                     }
                                 },
                             )
-                            if (state.group == null) {
+                            if (state.group == null && !comparisonOpen) {
                                 PrimaryTabRow(selectedTabIndex = state.tab.ordinal) {
                                     Tab(
                                         text = { Text("Точные копии") },
@@ -219,7 +234,7 @@ internal fun DuplicateSearchScreen(
                         shape = MaterialTheme.shapes.large,
                     ) {
                         IconButton(onClick = controller::closePreview) {
-                            Icon(Icons.AutoMirrored.Outlined.ArrowBack, "К результатам")
+                            Icon(Icons.AutoMirrored.Outlined.ArrowBack, if (comparisonOpen) "К сравнению" else "К результатам")
                         }
                     }
                 }
@@ -393,14 +408,29 @@ private fun VisualCandidates(
     grid: Boolean,
 ) {
     val groups = state.visualGroups
+    val listState = rememberLazyGridState()
     var expanded by rememberSaveable { mutableStateOf<String?>(null) }
     var selected by rememberSaveable { mutableStateOf(arrayListOf<String>()) }
     fun toggle(uri: String) {
         selected = ArrayList(if (uri in selected) selected - uri else (selected + uri).take(2))
     }
+    val comparison = state.visualComparison
+    if (comparison != null) {
+        VisualComparison(
+            first = catalogue.rows.getValue(comparison.first),
+            second = catalogue.rows.getValue(comparison.second),
+            status = state.visualStatuses[comparison],
+            checking = state.visualChecking == comparison,
+            verificationAvailable = state.visualChecking == null,
+            onOpen = controller::openPreview,
+            onCheck = controller::checkVisual,
+        )
+        return
+    }
     val pair = if (selected.size == 2) selected[0] to selected[1] else null
     Column(Modifier.fillMaxSize()) {
         LazyVerticalGrid(columns = GridCells.Fixed(if (grid) 2 else 1),
+            state = listState,
             modifier = Modifier.weight(1f).testTag("duplicate-visual-list"),
             contentPadding = PaddingValues(8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -461,48 +491,127 @@ private fun VisualCandidates(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = { selected = arrayListOf() }) { Icon(Icons.Outlined.Close, "Снять выбор") }
                     Text("Выбрано ${selected.size} из 2", Modifier.weight(1f))
-                    Button(onClick = { pair?.let(controller::checkVisual) }, enabled = pair != null && state.visualChecking == null) { Text("Сравнить") }
-                }
-                if (pair != null) {
-                    val a = catalogue.rows.getValue(pair.first)
-                    val b = catalogue.rows.getValue(pair.second)
-                    val size = kotlin.math.abs(a.sizeBytes - b.sizeBytes)
-                    val resolution = when {
-                        minOf(a.width, a.height, b.width, b.height) <= 0 -> "Разрешение неизвестно"
-                        a.width == b.width && a.height == b.height -> "Разрешение совпадает"
-                        else -> "${a.width}×${a.height} и ${b.width}×${b.height}"
+                    Button(onClick = { pair?.let(controller::openVisualComparison) }, enabled = pair != null) {
+                        Text("Сравнить")
                     }
-                    Text("$resolution · " + if (size == 0L) "размер совпадает" else "разница ${formatDuplicateBytes(size)}",
-                        style = MaterialTheme.typography.bodySmall)
-                    val result = if (state.visualChecking == pair) "Проверяем пиксели…" else state.visualStatuses[pair]
-                    result?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
-                } else Text("Выберите второй снимок для сравнения", style = MaterialTheme.typography.bodySmall)
+                }
+                if (pair == null) Text("Выберите второй снимок для сравнения", style = MaterialTheme.typography.bodySmall)
             }
         }
     }
 }
 
 @Composable
-private fun VisualInfo(row: CatalogMediaRow, modifier: Modifier) {
-    val date = remember(row.dateTakenMillis, row.dateModifiedMillis) {
-        val taken = row.dateTakenMillis > 0
-        val millis = if (taken) row.dateTakenMillis else row.dateModifiedMillis
-        if (millis <= 0) null else (if (taken) "Снят " else "Изменён ") +
-            java.text.DateFormat.getDateTimeInstance().format(java.util.Date(millis))
-    }
-    Column(modifier) {
-        Text(row.name, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
-        Text(row.relativePath.ifBlank { row.folderTarget.ifBlank { row.storageName } }, style = MaterialTheme.typography.bodySmall)
-        Text(listOfNotNull(if (row.width > 0 && row.height > 0) "${row.width}×${row.height}" else null,
-            formatDuplicateBytes(row.sizeBytes.coerceAtLeast(0)), row.mimeType).joinToString(" · "), style = MaterialTheme.typography.bodySmall)
-        date?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+private fun VisualComparison(
+    first: CatalogMediaRow,
+    second: CatalogMediaRow,
+    status: String?,
+    checking: Boolean,
+    verificationAvailable: Boolean,
+    onOpen: (String) -> Unit,
+    onCheck: () -> Unit,
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().testTag("duplicate-visual-comparison"),
+        contentPadding = PaddingValues(12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        item("images") {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(first, second).forEach { row ->
+                    DuplicateTile(
+                        row,
+                        Modifier.weight(1f).aspectRatio(1f),
+                        contentScale = ContentScale.Fit,
+                        highQuality = true,
+                        onOpen = { onOpen(row.uri) },
+                    )
+                }
+            }
+        }
+        item("names") {
+            ComparisonRow("Имя файла", first.name.ifBlank { "Без имени" }, second.name.ifBlank { "Без имени" })
+        }
+        item("sizes") {
+            ComparisonRow("Размер файла", visualSize(first) ?: "Неизвестен", visualSize(second) ?: "Неизвестен")
+        }
+        item("resolution") {
+            ComparisonRow("Разрешение", visualResolution(first) ?: "Неизвестно", visualResolution(second) ?: "Неизвестно")
+        }
+        item("dates") {
+            ComparisonRow("Дата", visualDate(first) ?: "Неизвестна", visualDate(second) ?: "Неизвестна")
+        }
+        item("folders") {
+            ComparisonRow("Папка", visualFolder(first).ifBlank { "Неизвестна" }, visualFolder(second).ifBlank { "Неизвестна" })
+        }
+        item("verification") {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                OutlinedButton(onClick = onCheck, enabled = verificationAvailable) {
+                    Text("Проверить исходные пиксели")
+                }
+                if (checking) {
+                    Text("Проверяем пиксели…")
+                    LinearProgressIndicator(Modifier.fillMaxWidth())
+                } else {
+                    status?.let { Text(it) }
+                }
+            }
+        }
     }
 }
 
 @Composable
-private fun DuplicateTile(row: CatalogMediaRow, modifier: Modifier = Modifier.fillMaxWidth().height(112.dp), interactive: Boolean = true, onOpen: () -> Unit) {
+private fun ComparisonRow(label: String, first: String, second: String) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(label, style = MaterialTheme.typography.labelMedium, color = duplicateColors.onSurfaceVariant)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(first, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+            Text(second, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+        }
+    }
+}
+
+private fun visualFolder(row: CatalogMediaRow): String =
+    row.relativePath.ifBlank { row.folderTarget.ifBlank { row.storageName } }
+
+private fun visualResolution(row: CatalogMediaRow): String? =
+    if (row.width > 0 && row.height > 0) "${row.width}×${row.height}" else null
+
+private fun visualSize(row: CatalogMediaRow): String? =
+    row.sizeBytes.takeIf { it > 0L }?.let(::formatDuplicateBytes)
+
+@Composable
+private fun visualDate(row: CatalogMediaRow): String? = remember(row.dateTakenMillis, row.dateModifiedMillis) {
+    val taken = row.dateTakenMillis > 0
+    val millis = if (taken) row.dateTakenMillis else row.dateModifiedMillis
+    if (millis <= 0) null else (if (taken) "Снят " else "Изменён ") +
+        java.text.DateFormat.getDateTimeInstance().format(java.util.Date(millis))
+}
+
+@Composable
+private fun VisualInfo(row: CatalogMediaRow, modifier: Modifier) {
+    Column(modifier) {
+        Text(row.name, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
+        Text(visualFolder(row), style = MaterialTheme.typography.bodySmall)
+        Text(
+            listOfNotNull(visualResolution(row), visualSize(row), row.mimeType).joinToString(" · "),
+            style = MaterialTheme.typography.bodySmall,
+        )
+        visualDate(row)?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+    }
+}
+
+@Composable
+private fun DuplicateTile(
+    row: CatalogMediaRow,
+    modifier: Modifier = Modifier.fillMaxWidth().height(112.dp),
+    interactive: Boolean = true,
+    contentScale: ContentScale = ContentScale.Crop,
+    highQuality: Boolean = false,
+    onOpen: () -> Unit,
+) {
     val media = remember(row) { row.toDuplicateMediaItem() }
-    val model = remember(media) { media?.let { GalleryThumb(it, highQuality = false) } }
+    val model = remember(media, highQuality) { media?.let { GalleryThumb(it, highQuality = highQuality) } }
     var failed by remember(model) { mutableStateOf(false) }
     Surface(
         modifier = if (!interactive) modifier else modifier.clickable(enabled = media != null, onClick = onOpen).testTag("duplicate-preview-${row.uri}")
@@ -520,7 +629,7 @@ private fun DuplicateTile(row: CatalogMediaRow, modifier: Modifier = Modifier.fi
                 AsyncImage(
                     model = model,
                     contentDescription = null,
-                    contentScale = ContentScale.Crop,
+                    contentScale = contentScale,
                     onError = { failed = true },
                     modifier = Modifier.fillMaxSize(),
                 )
