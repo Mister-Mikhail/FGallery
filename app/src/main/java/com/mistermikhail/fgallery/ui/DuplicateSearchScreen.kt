@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -108,6 +109,8 @@ internal fun DuplicateSearchScreen(
             preview != null -> controller.closePreview()
             state.confirmation != null -> controller.dismissConfirmation()
             comparisonOpen -> controller.closeVisualComparison()
+            state.tab == DuplicateTab.VISUAL && state.visualSelected.isNotEmpty() -> controller.clearVisualSelection()
+            state.tab == DuplicateTab.EXACT && state.selected.isNotEmpty() -> controller.clearSelection()
             state.group != null -> controller.showGroup(null)
             else -> onClose()
         }
@@ -212,16 +215,12 @@ internal fun DuplicateSearchScreen(
                     }
                 }
                 if (preview != null) {
-                    val comparison = state.visualComparison
                     val catalogue = state.catalogue
-                    val items = remember(preview, comparison, catalogue) {
-                        val pair = comparison?.let {
-                            listOfNotNull(
-                                catalogue?.rows?.get(it.first)?.toDuplicateMediaItem(),
-                                catalogue?.rows?.get(it.second)?.toDuplicateMediaItem(),
-                            )
-                        }
-                        pair?.takeIf { it.size == 2 && it.any { item -> item.uriKey == preview.uriKey } } ?: listOf(preview)
+                    val selection = state.visualSelected
+                    val items = remember(preview, comparisonOpen, selection, catalogue) {
+                        if (comparisonOpen && preview.uriKey in selection) {
+                            selection.mapNotNull { catalogue?.rows?.get(it)?.toDuplicateMediaItem() }
+                        } else listOf(preview)
                     }
                     var visibleName by remember(preview) { mutableStateOf(preview.name) }
                     DisposableEffect(Unit) {
@@ -244,7 +243,7 @@ internal fun DuplicateSearchScreen(
                             onMove = {},
                             readOnly = true,
                             loopPages = comparisonOpen,
-                            onComparisonDoubleTap = if (items.size == 2) {
+                            onComparisonDoubleTap = if (items.size >= 2) {
                                 { controller.trashFromComparison(it.uriKey, fromCleanupGesture = true) }
                             } else null,
                         )
@@ -269,7 +268,7 @@ internal fun DuplicateSearchScreen(
                                         maxLines = 2,
                                         overflow = TextOverflow.Ellipsis,
                                     )
-                                    if (items.size == 2) {
+                                    if (items.size >= 2) {
                                         CleanupToggleButton(
                                             enabled = state.comparisonCleanup,
                                             onEnableRequest = { controller.setComparisonCleanup(true) },
@@ -463,19 +462,14 @@ private fun VisualCandidates(
 ) {
     val groups = state.visualGroups
     val listState = rememberLazyGridState()
-    var expanded by rememberSaveable { mutableStateOf<String?>(null) }
-    var selected by rememberSaveable { mutableStateOf(arrayListOf<String>()) }
-    val expandedGroup = groups?.firstOrNull { it.key == expanded }
-    val selectedInGroup = selected.filter { it in expandedGroup?.uris.orEmpty() }
+    val selected = state.visualSelected
     val busy = state.trashInProgress
-    fun toggle(uri: String) {
-        selected = ArrayList(if (uri in selectedInGroup) selectedInGroup - uri else (selectedInGroup + uri).take(2))
-    }
     val comparison = state.visualComparison
     if (comparison != null) {
         VisualComparison(
             first = catalogue.rows.getValue(comparison.first),
             second = catalogue.rows.getValue(comparison.second),
+            selected = remember(catalogue, selected) { selected.map { catalogue.rows.getValue(it) } },
             status = state.visualStatuses[comparison],
             checking = state.visualChecking == comparison,
             verificationAvailable = state.visualChecking == null && !busy,
@@ -483,10 +477,10 @@ private fun VisualCandidates(
             onOpen = controller::openPreview,
             onCheck = controller::checkVisual,
             onTrash = { controller.trashFromComparison(it) },
+            onChoose = controller::chooseComparisonImage,
         )
         return
     }
-    val pair = if (selectedInGroup.size == 2) selectedInGroup[0] to selectedInGroup[1] else null
     Column(Modifier.fillMaxSize()) {
         LazyVerticalGrid(columns = GridCells.Fixed(if (grid) 2 else 1),
             state = listState,
@@ -503,13 +497,11 @@ private fun VisualCandidates(
                 groups.isEmpty() -> item(span = { GridItemSpan(maxLineSpan) }) { SearchMessage("Похожих изображений не найдено") }
                 else -> groups.forEach { group ->
                     val first = catalogue.rows.getValue(group.uris.first())
-                    val open = expanded == group.key
+                    val open = state.expandedVisualGroup == group.key
                     item("visual-group/${group.key}", span = { GridItemSpan(maxLineSpan) }) {
                         Surface(shape = MaterialTheme.shapes.medium, color = duplicateColors.surfaceContainer) {
-                            Row(Modifier.fillMaxWidth().clickable {
-                                expanded = if (open) null else group.key
-                                selected = arrayListOf()
-                            }.padding(8.dp), verticalAlignment = Alignment.CenterVertically,
+                            Row(Modifier.fillMaxWidth().clickable { controller.toggleVisualGroup(group.key) }
+                                .padding(8.dp), verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                 if (!open) DuplicateTile(first, Modifier.size(48.dp), interactive = false) {}
                                 Column(Modifier.weight(1f)) {
@@ -524,7 +516,7 @@ private fun VisualCandidates(
                         val row = catalogue.rows.getValue(uri)
                         val preview = { controller.openPreview(uri) }
                         val checkbox: @Composable () -> Unit = {
-                            Checkbox(uri in selectedInGroup, { toggle(uri) }, enabled = uri in selectedInGroup || selectedInGroup.size < 2,
+                            Checkbox(uri in selected, { controller.setVisualSelected(uri, it) }, enabled = !busy,
                                 modifier = Modifier.semantics { contentDescription = "Сравнить ${row.name}" })
                         }
                         Surface(shape = MaterialTheme.shapes.small, color = duplicateColors.surfaceContainer) {
@@ -545,16 +537,17 @@ private fun VisualCandidates(
                 }
             }
         }
-        if (selectedInGroup.isNotEmpty()) Surface(color = duplicateColors.surfaceContainer) {
+        if (selected.isNotEmpty()) Surface(color = duplicateColors.surfaceContainer) {
             Column(Modifier.fillMaxWidth().padding(8.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { selected = arrayListOf() }) { Icon(Icons.Outlined.Close, "Снять выбор") }
-                    Text("Выбрано ${selectedInGroup.size} из 2", Modifier.weight(1f))
-                    Button(onClick = { pair?.let(controller::openVisualComparison) }, enabled = pair != null) {
+                    IconButton(onClick = controller::clearVisualSelection) { Icon(Icons.Outlined.Close, "Снять выбор") }
+                    val groupSize = groups?.firstOrNull { it.key == state.expandedVisualGroup }?.uris?.size ?: selected.size
+                    Text("Выбрано ${selected.size} из $groupSize", Modifier.weight(1f))
+                    Button(onClick = controller::openVisualComparison, enabled = selected.size >= 2 && !busy) {
                         Text("Сравнить")
                     }
                 }
-                if (pair == null) Text("Выберите второй снимок для сравнения", style = MaterialTheme.typography.bodySmall)
+                if (selected.size == 1) Text("Выберите ещё снимок для сравнения", style = MaterialTheme.typography.bodySmall)
             }
         }
     }
@@ -564,6 +557,7 @@ private fun VisualCandidates(
 private fun VisualComparison(
     first: CatalogMediaRow,
     second: CatalogMediaRow,
+    selected: List<CatalogMediaRow>,
     status: String?,
     checking: Boolean,
     verificationAvailable: Boolean,
@@ -571,13 +565,27 @@ private fun VisualComparison(
     onOpen: (String) -> Unit,
     onCheck: () -> Unit,
     onTrash: (String) -> Unit,
+    onChoose: (ComparisonColumn, String) -> Unit,
 ) {
     var menuUri by remember(first.uri, second.uri) { mutableStateOf<String?>(null) }
+    var choosing by remember { mutableStateOf<ComparisonColumn?>(null) }
     LazyColumn(
         modifier = Modifier.fillMaxSize().testTag("duplicate-visual-comparison"),
         contentPadding = PaddingValues(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        if (selected.size > 2) item("choose-photos") {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = { choosing = ComparisonColumn.LEFT }, enabled = !busy,
+                    modifier = Modifier.weight(1f).semantics { contentDescription = "Выбрать левый снимок" }) {
+                    Text("Слева · ${selected.indexOf(first) + 1} из ${selected.size}")
+                }
+                OutlinedButton(onClick = { choosing = ComparisonColumn.RIGHT }, enabled = !busy,
+                    modifier = Modifier.weight(1f).semantics { contentDescription = "Выбрать правый снимок" }) {
+                    Text("Справа · ${selected.indexOf(second) + 1} из ${selected.size}")
+                }
+            }
+        }
         item("images") {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf(first, second).forEach { row ->
@@ -638,6 +646,28 @@ private fun VisualComparison(
                 }
             }
         }
+    }
+    choosing?.let { column ->
+        val otherUri = if (column == ComparisonColumn.LEFT) second.uri else first.uri
+        AlertDialog(
+            onDismissRequest = { choosing = null },
+            title = { Text(if (column == ComparisonColumn.LEFT) "Левый снимок" else "Правый снимок") },
+            text = {
+                LazyColumn(Modifier.fillMaxWidth().heightIn(max = 320.dp)) {
+                    items(selected, key = { it.uri }) { row ->
+                        TextButton(
+                            onClick = {
+                                onChoose(column, row.uri)
+                                choosing = null
+                            },
+                            enabled = row.uri != otherUri,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text(row.name.ifBlank { "Без имени" }) }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { choosing = null }) { Text("Отмена") } },
+        )
     }
 }
 

@@ -36,6 +36,7 @@ import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import androidx.test.espresso.Espresso.pressBack
 import androidx.test.platform.app.InstrumentationRegistry
 import com.mistermikhail.fgallery.data.CatalogMediaRow
 import com.mistermikhail.fgallery.data.DriveRecycleBin
@@ -242,6 +243,62 @@ class DuplicateSearchUiTest {
         }
     }
 
+    @Test fun comparisonIncludesAllSelectedPhotosAndBackClearsSelectionFirst() {
+        val directory = Files.createTempDirectory(context.cacheDir.toPath(), "comparison-selection-").toFile()
+        try {
+            val jpeg = jpegFixture()
+            val rows = (1..4).map { index ->
+                val photo = File(directory, "compare-$index.jpg").apply { writeBytes(jpeg.copyOf(jpeg.size + index * 64)) }
+                fileRow(photo, index.toLong()).copy(fullHash = null, perceptualHash = "0123456789abcdef")
+            }
+            var exits = 0
+            showSearch(rows, onClose = { exits++ })
+            rule.onNodeWithText("Похожие изображения", substring = false).performClick()
+            val header = hasText("Файлов: 4")
+            rule.waitUntil(10_000) { rule.onAllNodes(header).fetchSemanticsNodes().isNotEmpty() }
+            rule.onNode(header).performClick()
+            val groups = rule.onNodeWithTag("duplicate-visual-list")
+            rows.forEach {
+                val check = "Сравнить ${it.name}"
+                groups.performScrollToNode(androidx.compose.ui.test.hasContentDescription(check))
+                rule.onNodeWithContentDescription(check).performClick().assertIsOn()
+            }
+            rule.onNodeWithText("Выбрано 4 из 4").assertIsDisplayed()
+            rule.onNodeWithText("Сравнить").performClick()
+            rule.onNodeWithContentDescription("Выбрать правый снимок").performClick()
+            rule.onNodeWithText(rows[2].name).performClick()
+            rule.onNodeWithContentDescription("Открыть ${rows[2].name}").assertIsDisplayed()
+            rule.onNodeWithContentDescription("Выбрать левый снимок").performClick()
+            rule.onNodeWithText(rows[3].name).performClick()
+            rule.onNodeWithContentDescription("Открыть ${rows[3].name}").performClick()
+            waitForTag("viewer-root")
+            val viewer = rule.onNodeWithTag("viewer-root")
+            (listOf(rows.last()) + rows).forEachIndexed { index, row ->
+                if (index > 0) viewer.performTouchInput { swipeLeft() }
+                val name = hasTestTag("comparison-viewer-file-name") and hasText(row.name)
+                rule.waitUntil(10_000) { rule.onAllNodes(name).fetchSemanticsNodes().isNotEmpty() }
+                rule.onNode(name).assertIsDisplayed()
+            }
+            pressBack()
+            rule.onNodeWithTag("duplicate-visual-comparison").assertIsDisplayed()
+            pressBack()
+            rule.onNodeWithText("Выбрано 4 из 4").assertIsDisplayed()
+
+            rule.onNodeWithContentDescription("Назад").performClick()
+            rule.onNodeWithText("Выбрано 4 из 4").assertDoesNotExist()
+            val lastCheck = "Сравнить ${rows.last().name}"
+            groups.performScrollToNode(androidx.compose.ui.test.hasContentDescription(lastCheck))
+            rule.onNodeWithContentDescription(lastCheck).assertIsOff().performClick()
+            pressBack()
+            rule.onNodeWithContentDescription(lastCheck).assertIsOff()
+            rule.runOnIdle { assertEquals(0, exits) }
+            pressBack()
+            rule.runOnIdle { assertEquals(1, exits) }
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
     @Test fun comparisonCanTrashFromViewerAndMenuWithoutReloadingResults() {
         val directory = Files.createTempDirectory(context.cacheDir.toPath(), "comparison-bin-").toFile()
         val firstBytes = jpegFixture()
@@ -431,6 +488,7 @@ class DuplicateSearchUiTest {
     private fun showSearch(
         rows: List<CatalogMediaRow>,
         fontScale: Float = 1f,
+        onClose: () -> Unit = {},
         load: suspend () -> List<CatalogMediaRow> = { rows },
         trashComparedImage: suspend (CatalogMediaRow) -> Unit = { error("Unexpected mutation") },
         trash: suspend (ExactDuplicateReview) -> Set<String> = { error("Unexpected mutation") },
@@ -452,7 +510,7 @@ class DuplicateSearchUiTest {
                 LocalContentColor provides Color.Black,
             ) {
                 LaunchedEffect(controller) { controller.refresh(force = false) }
-                DuplicateSearchScreen(controller, onClose = {}, onRequestAccess = {})
+                DuplicateSearchScreen(controller, onClose = onClose, onRequestAccess = {})
             }
         }
     }
