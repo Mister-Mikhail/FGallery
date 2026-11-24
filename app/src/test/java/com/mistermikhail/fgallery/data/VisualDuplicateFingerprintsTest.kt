@@ -168,4 +168,11 @@ class VisualDuplicateFingerprintsTest {
             rows[250].copy(dateTakenMillis = 1_010_000L, name = "unrelated.jpg")))
     }
 
+    @Test fun wholeCatalogueGroupsHaveNoRepeatedFilesOrTenPairCutoff() {
+        val rows = (0..260).map { row("content://file/$it", "aaaaaaaaaaaaaaaa") }
+        val groups = visualReviewGroups(rows + rows.first())
+        assertEquals(1, groups.size)
+        assertEquals(rows.size, groups.single().size)
+        assertEquals(rows.map { it.uri }.toSet(), groups.single().toSet())
+    }
 }

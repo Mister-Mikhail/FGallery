@@ -130,7 +130,7 @@ internal fun <T> visualCandidatePage(items: List<T>, page: Int, pageSize: Int = 
  * earlier-indexed anchors, so a pair appears only once in the review.
  *
  * Six disjoint dHash slices provide a lossless shortlist for Hamming <= 5:
- * at least one slice must be identical. Capture-time buckets independently
+ * at least one slice must be identical. Filename stems independently
  * shortlist crops (which cannot rely on dHash).
  *
  * The indexes are metadata-only. Source pixels must still be verified by the
@@ -144,8 +144,45 @@ internal fun visualCandidatesAcrossPages(
 ): List<Pair<String, String>> {
     require(pageSize > 0 && maxPairs > 0)
     if (page < 0 || page >= visualCandidatePageCount(items.size, pageSize)) return emptyList()
+    val result = mutableListOf<Pair<String, String>>()
+    val start = page * pageSize
+    visitVisualMatches(items, start until minOf(items.size.toLong(), start.toLong() + pageSize).toInt()) { i, j ->
+        result.add(items[i].uri to items[j].uri)
+        result.size < maxPairs
+    }
+    return result
+}
+
+/** Group connected matches across the catalogue without storing every pair in a burst. */
+internal fun visualReviewGroups(rows: List<CatalogMediaRow>, checkActive: () -> Unit = {}): List<List<String>> {
+    val items = rows.distinctBy { it.uri }
+    val parent = IntArray(items.size) { it }
+    fun root(index: Int): Int {
+        var node = index
+        while (parent[node] != node) {
+            parent[node] = parent[parent[node]]
+            node = parent[node]
+        }
+        return node
+    }
+    visitVisualMatches(items, items.indices, checkActive, { i, j -> root(i) != root(j) }) { i, j ->
+        parent[root(j)] = root(i)
+        true
+    }
+    return items.indices.groupBy(::root).values.filter { it.size > 1 }.map { group ->
+        group.map { items[it] }.sortedWith(compareBy<CatalogMediaRow> { it.relativePath }
+            .thenBy { it.name }.thenBy { it.uri }).map { it.uri }
+    }.sortedWith(compareBy<List<String>> { it.first() })
+}
+
+private fun visitVisualMatches(
+    items: List<CatalogMediaRow>,
+    anchors: IntRange,
+    checkActive: () -> Unit = {},
+    needsComparison: (Int, Int) -> Boolean = { _, _ -> true },
+    onMatch: (Int, Int) -> Boolean,
+) {
     val hashSlices = HashMap<String, MutableList<Int>>()
-    val timeBuckets = HashMap<Long, MutableList<Int>>()
     val cropStems = HashMap<String, MutableList<Int>>()
     fun hashKeys(hash: String?): List<String> {
         if (hash == null || hash.length != 16 || !hash.all {
@@ -165,14 +202,9 @@ internal fun visualCandidatesAcrossPages(
         hashKeys(row.perceptualHash).forEach { key ->
             hashSlices.getOrPut(key) { mutableListOf() }.add(index)
         }
-        if (row.dateTakenMillis > 0L) {
-            timeBuckets.getOrPut(row.dateTakenMillis / 2_000L) { mutableListOf() }.add(index)
-        }
     }
-    val result = ArrayList<Pair<String, String>>(maxPairs)
-    val start = page * pageSize
-    val end = minOf(items.size, start + pageSize)
-    for (i in start until end) {
+    for (i in anchors) {
+        checkActive()
         val first = items[i]
         if (first.kind != "IMAGE" || first.recycled || isCameraRawImage(first.name)) continue
         val candidates = HashSet<Int>()
@@ -180,14 +212,8 @@ internal fun visualCandidatesAcrossPages(
         hashKeys(first.perceptualHash).forEach { key ->
             hashSlices[key]?.let(candidates::addAll)
         }
-        if (first.dateTakenMillis > 0L) {
-            val bucket = first.dateTakenMillis / 2_000L
-            for (near in bucket - 1L..bucket + 1L) {
-                timeBuckets[near]?.let(candidates::addAll)
-            }
-        }
         for (j in candidates.sorted()) {
-            if (j <= i) continue
+            if (j <= i || !needsComparison(i, j)) continue
             val second = items[j]
             // Copies already identified by full SHA-256 belong to the exact tab.
             val digest = first.fullHash
@@ -195,10 +221,8 @@ internal fun visualCandidatesAcrossPages(
                 digest.equals(second.fullHash, ignoreCase = true)
             ) continue
             if (potentialVisualDuplicate(first, second)) {
-                result.add(first.uri to second.uri)
-                if (result.size == maxPairs) return result
+                if (!onMatch(i, j)) return
             }
         }
     }
-    return result
 }

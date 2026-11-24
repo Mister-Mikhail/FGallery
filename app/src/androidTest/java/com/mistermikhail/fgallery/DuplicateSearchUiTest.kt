@@ -162,11 +162,11 @@ class DuplicateSearchUiTest {
             }
             showSearch(visual)
             rule.onNodeWithText("Похожие изображения", substring = false).performClick()
-            rule.waitUntil(10_000) {
-                rule.onAllNodes(hasText("Проверить исходные пиксели")).fetchSemanticsNodes().isNotEmpty()
-            }
-            rule.onNodeWithText("Не проверено").assertIsDisplayed()
-            rule.onNodeWithText("Проверить исходные пиксели").performClick()
+            rule.waitUntil(10_000) { rule.onAllNodes(hasText("Файлов: 2")).fetchSemanticsNodes().isNotEmpty() }
+            rule.onNodeWithText("Файлов: 2").performClick()
+            visual.forEach { rule.onNodeWithContentDescription("Сравнить ${it.name}").performClick() }
+            rule.onNodeWithText("Выбрано 2 из 2").assertIsDisplayed()
+            rule.onNodeWithText("Сравнить").performClick()
             rule.waitUntil(10_000) {
                 rule.onAllNodes(
                     hasText("Подтверждено · пиксели совпадают") or hasText("Не подтверждено", substring = true)

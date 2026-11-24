@@ -126,7 +126,8 @@ internal fun DuplicateSearchScreen(
                                     }
                                 },
                                 actions = {
-                                    if (state.tab == DuplicateTab.EXACT && !state.catalogue?.cards.isNullOrEmpty()) {
+                                    if ((state.tab == DuplicateTab.EXACT && !state.catalogue?.cards.isNullOrEmpty()) ||
+                                        (state.tab == DuplicateTab.VISUAL && !state.visualGroups.isNullOrEmpty())) {
                                         IconButton(onClick = { grid = !grid }) {
                                             Icon(if (grid) Icons.Outlined.ViewList else Icons.Outlined.GridView,
                                                 if (grid) "Список" else "Сетка")
@@ -186,7 +187,7 @@ internal fun DuplicateSearchScreen(
                                 }
                                 when (state.tab) {
                                     DuplicateTab.EXACT -> ExactCopies(state, catalogue, controller, busy, grid, onClose)
-                                    DuplicateTab.VISUAL -> VisualCandidates(state, catalogue, controller)
+                                    DuplicateTab.VISUAL -> VisualCandidates(state, catalogue, controller, grid)
                                 }
                             }
                         }
@@ -332,7 +333,7 @@ private fun ExactCopies(
                         .testTag("group-${card.sha256}").padding(8.dp), verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         val row = catalogue.rows.getValue(card.items.first().uri)
-                        DuplicateTile(row, Modifier.size(48.dp), interactive = false) {}
+                        if (!expanded) DuplicateTile(row, Modifier.size(48.dp), interactive = false) {}
                         Column(Modifier.weight(1f)) {
                             Text("Файлов: ${card.items.size}", style = MaterialTheme.typography.titleMedium)
                             if (catalogue.reclaimableBytes != null) Text("Можно освободить ${formatDuplicateBytes(card.sizeBytes * card.items.lastIndex)}",
@@ -384,70 +385,117 @@ private fun CopyInfo(item: ExactDuplicateReviewItem, row: CatalogMediaRow, modif
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun VisualCandidates(
     state: DuplicateSearchUiState,
     catalogue: DuplicateCatalogue,
     controller: DuplicateSearchController,
+    grid: Boolean,
 ) {
-    LazyColumn(
-        modifier = Modifier.fillMaxSize().testTag("duplicate-visual-list"),
-        contentPadding = PaddingValues(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        item("visual-summary") {
-            Column {
-                Text("Похожие изображения (кандидаты)", style = MaterialTheme.typography.titleMedium)
-                Text("Результаты проверки доступны только для просмотра.", style = MaterialTheme.typography.bodySmall)
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(
-                        enabled = state.visualPage > 0,
-                        onClick = { controller.showVisualPage(state.visualPage - 1) },
-                    ) { Text("Предыдущая") }
-                    OutlinedButton(
-                        enabled = state.visualPage + 1 < catalogue.visualPageCount,
-                        onClick = { controller.showVisualPage(state.visualPage + 1) },
-                    ) { Text("Следующая") }
+    val groups = state.visualGroups
+    var expanded by rememberSaveable { mutableStateOf<String?>(null) }
+    var selected by rememberSaveable { mutableStateOf(arrayListOf<String>()) }
+    fun toggle(uri: String) {
+        selected = ArrayList(if (uri in selected) selected - uri else (selected + uri).take(2))
+    }
+    val pair = if (selected.size == 2) selected[0] to selected[1] else null
+    Column(Modifier.fillMaxSize()) {
+        LazyVerticalGrid(columns = GridCells.Fixed(if (grid) 2 else 1),
+            modifier = Modifier.weight(1f).testTag("duplicate-visual-list"),
+            contentPadding = PaddingValues(8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            when {
+                state.visualError != null -> item(span = { GridItemSpan(maxLineSpan) }) {
+                    Column { SearchMessage(state.visualError); TextButton(onClick = controller::loadVisualGroups) { Text("Повторить") } }
                 }
-                Text("Страница ${state.visualPage + 1} из ${catalogue.visualPageCount}")
-            }
-        }
-        val pairs = state.visualPairs
-        when {
-            state.visualError != null -> item("visual-error") {
-                SearchMessage(state.visualError)
-                TextButton(onClick = { controller.showVisualPage(state.visualPage) }) { Text("Повторить") }
-            }
-            pairs == null -> item("visual-progress") {
-                SearchMessage("Ищем кандидатов на этой странице…")
-                LinearProgressIndicator(Modifier.fillMaxWidth())
-            }
-            pairs.isEmpty() -> item("visual-empty") { SearchMessage("На этой странице кандидатов нет.") }
-            else -> items(pairs, key = { catalogue.rows.getValue(it.first).uri + "\n" + it.second }) { pair ->
-                Card(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            listOf(pair.first, pair.second).forEach { uri ->
-                                val row = catalogue.rows.getValue(uri)
+                groups == null -> item(span = { GridItemSpan(maxLineSpan) }) {
+                    Column { SearchMessage("Сравниваем изображения во всех папках…"); LinearProgressIndicator(Modifier.fillMaxWidth()) }
+                }
+                groups.isEmpty() -> item(span = { GridItemSpan(maxLineSpan) }) { SearchMessage("Похожих изображений не найдено") }
+                else -> groups.forEach { group ->
+                    val first = catalogue.rows.getValue(group.first())
+                    val open = expanded == first.uri
+                    item("visual-group/${first.uri}", span = { GridItemSpan(maxLineSpan) }) {
+                        Surface(shape = MaterialTheme.shapes.medium, color = duplicateColors.surfaceContainer) {
+                            Row(Modifier.fillMaxWidth().clickable {
+                                expanded = if (open) null else first.uri
+                                selected = arrayListOf()
+                            }.padding(8.dp), verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                if (!open) DuplicateTile(first, Modifier.size(48.dp), interactive = false) {}
                                 Column(Modifier.weight(1f)) {
-                                    DuplicateTile(row) { controller.openPreview(uri) }
-                                    Text(row.name, style = MaterialTheme.typography.bodySmall)
+                                    Text("Файлов: ${group.size}", style = MaterialTheme.typography.titleMedium)
+                                    Text(first.name, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
                                 }
+                                Icon(if (open) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, null)
                             }
                         }
-                        Text(
-                            if (state.visualChecking == pair) "Проверяем исходные пиксели…"
-                            else state.visualStatuses[pair] ?: "Не проверено"
-                        )
-                        OutlinedButton(
-                            enabled = state.visualChecking == null,
-                            onClick = { controller.checkVisual(pair) },
-                        ) { Text("Проверить исходные пиксели") }
+                    }
+                    if (open) items(group, key = { "visual-file/$it" }) { uri ->
+                        val row = catalogue.rows.getValue(uri)
+                        val preview = { controller.openPreview(uri) }
+                        val checkbox: @Composable () -> Unit = {
+                            Checkbox(uri in selected, { toggle(uri) }, enabled = uri in selected || selected.size < 2,
+                                modifier = Modifier.semantics { contentDescription = "Сравнить ${row.name}" })
+                        }
+                        Surface(shape = MaterialTheme.shapes.small, color = duplicateColors.surfaceContainer) {
+                            if (grid) Column {
+                                Box {
+                                    DuplicateTile(row, onOpen = preview)
+                                    Surface(Modifier.align(Alignment.TopEnd), color = duplicateColors.surfaceContainer) { checkbox() }
+                                }
+                                VisualInfo(row, Modifier.clickable(onClick = preview).padding(8.dp))
+                            } else Row(Modifier.padding(6.dp), verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                DuplicateTile(row, Modifier.size(60.dp), onOpen = preview)
+                                VisualInfo(row, Modifier.weight(1f).clickable(onClick = preview))
+                                checkbox()
+                            }
+                        }
                     }
                 }
             }
         }
+        if (selected.isNotEmpty()) Surface(color = duplicateColors.surfaceContainer) {
+            Column(Modifier.fillMaxWidth().padding(8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { selected = arrayListOf() }) { Icon(Icons.Outlined.Close, "Снять выбор") }
+                    Text("Выбрано ${selected.size} из 2", Modifier.weight(1f))
+                    Button(onClick = { pair?.let(controller::checkVisual) }, enabled = pair != null && state.visualChecking == null) { Text("Сравнить") }
+                }
+                if (pair != null) {
+                    val a = catalogue.rows.getValue(pair.first)
+                    val b = catalogue.rows.getValue(pair.second)
+                    val size = kotlin.math.abs(a.sizeBytes - b.sizeBytes)
+                    val resolution = when {
+                        minOf(a.width, a.height, b.width, b.height) <= 0 -> "Разрешение неизвестно"
+                        a.width == b.width && a.height == b.height -> "Разрешение совпадает"
+                        else -> "${a.width}×${a.height} и ${b.width}×${b.height}"
+                    }
+                    Text("$resolution · " + if (size == 0L) "размер совпадает" else "разница ${formatDuplicateBytes(size)}",
+                        style = MaterialTheme.typography.bodySmall)
+                    val result = if (state.visualChecking == pair) "Проверяем пиксели…" else state.visualStatuses[pair]
+                    result?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+                } else Text("Выберите второй снимок для сравнения", style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
+}
+
+@Composable
+private fun VisualInfo(row: CatalogMediaRow, modifier: Modifier) {
+    val date = remember(row.dateTakenMillis, row.dateModifiedMillis) {
+        val taken = row.dateTakenMillis > 0
+        val millis = if (taken) row.dateTakenMillis else row.dateModifiedMillis
+        if (millis <= 0) null else (if (taken) "Снят " else "Изменён ") +
+            java.text.DateFormat.getDateTimeInstance().format(java.util.Date(millis))
+    }
+    Column(modifier) {
+        Text(row.name, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
+        Text(row.relativePath.ifBlank { row.folderTarget.ifBlank { row.storageName } }, style = MaterialTheme.typography.bodySmall)
+        Text(listOfNotNull(if (row.width > 0 && row.height > 0) "${row.width}×${row.height}" else null,
+            formatDuplicateBytes(row.sizeBytes.coerceAtLeast(0)), row.mimeType).joinToString(" · "), style = MaterialTheme.typography.bodySmall)
+        date?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
     }
 }
 

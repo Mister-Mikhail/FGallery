@@ -13,8 +13,8 @@ import com.mistermikhail.fgallery.data.VisualDuplicatePixelVerification
 import com.mistermikhail.fgallery.data.exactDuplicateReviewCards
 import com.mistermikhail.fgallery.data.exactDuplicateTrashPrompt
 import com.mistermikhail.fgallery.data.planExactDuplicateReview
-import com.mistermikhail.fgallery.data.visualCandidatePageCount
-import com.mistermikhail.fgallery.data.visualCandidatesAcrossPages
+import kotlinx.coroutines.ensureActive
+import com.mistermikhail.fgallery.data.visualReviewGroups
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -36,7 +36,6 @@ internal class DuplicateCatalogue(input: DuplicateSearchInput) {
         card.items.filterNot { it.protectedOriginal }.map { it.uri }
     }.toHashSet() else emptySet()
     val visualRows = input.rows.filter { it.kind == MediaKind.IMAGE.name && !it.recycled }
-    val visualPageCount = visualCandidatePageCount(visualRows.size)
     val duplicateFileCount = cards.sumOf { it.items.size }
     val reclaimableBytes = try {
         cards.fold(0L) { total, card ->
@@ -65,8 +64,7 @@ internal data class DuplicateSearchUiState(
     val error: String? = null,
     val notice: String? = null,
     val preview: MediaItem? = null,
-    val visualPage: Int = 0,
-    val visualPairs: List<Pair<String, String>>? = null,
+    val visualGroups: List<List<String>>? = null,
     val visualError: String? = null,
     val visualStatuses: Map<Pair<String, String>, String> = emptyMap(),
     val visualChecking: Pair<String, String>? = null,
@@ -91,8 +89,6 @@ internal class DuplicateSearchController(
     private var visualJob: Job? = null
     private var verificationJob: Job? = null
     private var confirmationJob: Job? = null
-    private var indexedVisualRows: List<CatalogMediaRow>? = null
-    private val visualPages = mutableMapOf<Int, List<Pair<String, String>>>()
 
     fun close() {
         if (_state.value.trashInProgress) return
@@ -100,8 +96,6 @@ internal class DuplicateSearchController(
         visualJob?.cancel()
         verificationJob?.cancel()
         confirmationJob?.cancel()
-        visualPages.clear()
-        indexedVisualRows = null
         _state.value = DuplicateSearchUiState()
     }
 
@@ -115,7 +109,7 @@ internal class DuplicateSearchController(
                 val input = load(force) { progress -> _state.value = _state.value.copy(scanProgress = progress) }
                 val catalogue = withContext(Dispatchers.IO) { DuplicateCatalogue(input) }
                 _state.value = _state.value.copy(catalogue = catalogue, scanProgress = null)
-                if (_state.value.tab == DuplicateTab.VISUAL) showVisualPage(0)
+                if (_state.value.tab == DuplicateTab.VISUAL) loadVisualGroups()
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Exception) {
@@ -131,7 +125,7 @@ internal class DuplicateSearchController(
         val current = _state.value
         if (current.trashInProgress || current.preparingConfirmation || current.tab == tab) return
         _state.value = current.copy(tab = tab, group = null, confirmation = null)
-        if (tab == DuplicateTab.VISUAL && current.visualPairs == null) showVisualPage(current.visualPage)
+        if (tab == DuplicateTab.VISUAL && current.visualGroups == null) loadVisualGroups()
     }
 
     fun showGroup(card: ExactDuplicateReviewCard?) {
@@ -182,35 +176,28 @@ internal class DuplicateSearchController(
         _state.value = _state.value.copy(preview = null)
     }
 
-    fun showVisualPage(page: Int) {
+    fun loadVisualGroups() {
         val current = _state.value
         val catalogue = current.catalogue ?: return
-        if (current.trashInProgress || current.tab != DuplicateTab.VISUAL || page !in 0 until catalogue.visualPageCount) return
-        visualJob?.cancel()
-        val cached = visualPages[page]
-        _state.value = current.copy(visualPage = page, visualPairs = cached, visualError = null)
-        if (cached != null) return
+        if (current.tab != DuplicateTab.VISUAL || visualJob?.isActive == true) return
+        _state.value = current.copy(visualError = null)
         visualJob = scope.launch {
             try {
-                val rows = indexedVisualRows ?: prepareVisual(catalogue.visualRows).also { indexedVisualRows = it }
-                val pairs = withContext(Dispatchers.Default) {
-                    visualCandidatesAcrossPages(rows, page)
-                }
-                visualPages[page] = pairs
-                _state.value = _state.value.copy(visualPairs = pairs)
+                val rows = prepareVisual(catalogue.visualRows)
+                val groups = withContext(Dispatchers.Default) { visualReviewGroups(rows) { ensureActive() } }
+                _state.value = _state.value.copy(visualGroups = groups)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
-                _state.value = _state.value.copy(visualError = "Не удалось загрузить кандидатов.")
+                _state.value = _state.value.copy(visualError = "Не удалось сравнить изображения.")
             }
         }
     }
 
     fun checkVisual(pair: Pair<String, String>) {
         val current = _state.value
-        if (current.visualChecking != null || current.trashInProgress ||
-            current.visualPairs?.contains(pair) != true
-        ) return
+        if (current.visualChecking != null || current.tab != DuplicateTab.VISUAL || pair.first == pair.second ||
+            current.visualGroups?.any { pair.first in it && pair.second in it } != true) return
         val rows = current.catalogue?.rows ?: return
         val first = rows[pair.first] ?: return
         val second = rows[pair.second] ?: return
