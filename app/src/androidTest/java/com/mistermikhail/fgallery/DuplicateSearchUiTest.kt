@@ -109,6 +109,21 @@ class DuplicateSearchUiTest {
         panel.assertDoesNotExist()
     }
 
+    @Test fun smartSelectionProtectsKeeperAndClearsWhenFilterChanges() {
+        val rows = generatedRows(3)
+        showSearch(rows)
+        waitForTag("duplicate-groups")
+        rule.onNodeWithText("Выбрать лишние копии").performClick()
+        rule.onNodeWithText("Выбрано 2").assertIsDisplayed()
+        rule.onNodeWithText("Видео").performClick()
+        rule.onNodeWithTag("duplicate-action-bar").assertDoesNotExist()
+        rule.onNodeWithText("По этим фильтрам совпадений нет").assertIsDisplayed()
+        rule.onNodeWithText("Все").performClick()
+        openFirstGroup(rows)
+        rule.onNodeWithTag("duplicate-select-${rows[0].uri}").assertDoesNotExist()
+        rule.onNodeWithTag("duplicate-select-${rows[1].uri}").assertIsOff()
+    }
+
     @Test fun svgUsesTheSharedViewerAndRendersItsContent() {
         val directory = Files.createTempDirectory(context.cacheDir.toPath(), "duplicate-svg-").toFile()
         try {

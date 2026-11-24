@@ -256,9 +256,13 @@ private fun DuplicateActions(state: DuplicateSearchUiState, controller: Duplicat
                 Column(Modifier.weight(1f)) {
                     Text("Выбрано ${state.selected.size}", style = MaterialTheme.typography.titleSmall)
                     val bytes = remember(state.selected, state.catalogue) {
-                        state.selected.sumOf { state.catalogue?.rows?.get(it)?.sizeBytes ?: 0L }
+                        runCatching {
+                            state.selected.fold(0L) { total, uri ->
+                                Math.addExact(total, state.catalogue?.rows?.get(uri)?.sizeBytes ?: 0L)
+                            }
+                        }.getOrNull()
                     }
-                    Text(formatDuplicateBytes(bytes), style = MaterialTheme.typography.bodySmall)
+                    bytes?.let { Text(formatDuplicateBytes(it), style = MaterialTheme.typography.bodySmall) }
                 }
                 Button(onClick = controller::requestConfirmation, enabled = enabled) { Text("В корзину…") }
             }
@@ -313,7 +317,7 @@ private fun ExactCopies(
                         listOf("Все", "Фото", "Видео").forEach { label ->
                             FilterChip(type == label, { if (type != label) { resetChoice(); type = label } }, { Text(label) }, enabled = !busy)
                         }
-                        FilterChip(large, { resetChoice(); large = !large }, { Text("> 5 МБ") }, enabled = !busy)
+                        FilterChip(large, { resetChoice(); large = !large }, { Text("> 5 МиБ") }, enabled = !busy)
                     }
                     if (cards.isEmpty()) SearchMessage("По этим фильтрам совпадений нет")
                     else TextButton(onClick = { controller.selectCopies(cards) }, enabled = !busy) { Text("Выбрать лишние копии") }
