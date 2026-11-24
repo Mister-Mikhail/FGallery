@@ -97,7 +97,6 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
                 VisualDuplicateSourceVerification.verify(getApplication(), first, second)
             },
             trash = ::trashConfirmedExactDuplicates,
-            prepareComparisonTrash = ::checkedComparisonTrashSha256,
             trashComparedImage = ::trashComparedImage,
             prepareVisual = ::prepareDuplicateVisualRows,
         )
@@ -591,18 +590,21 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
         } finally { refresh() }
     }
 
-    private suspend fun checkedComparisonTrashSha256(row: CatalogMediaRow): String = withContext(Dispatchers.IO) {
+    private suspend fun checkedComparisonTrashSha256(
+        row: CatalogMediaRow,
+        item: MediaItem,
+    ): String = withContext(Dispatchers.IO) {
         val context = getApplication<Application>()
-        val item = checkNotNull(row.toDuplicateMediaItem()) { "Исходный файл недоступен." }
         val latest = CatalogStore.exactDuplicateReviewRows(context)
         val jobContext = currentCoroutineContext()
         comparisonTrashSha256(context, row, item, latest) { jobContext.ensureActive() }
     }
 
-    private suspend fun trashComparedImage(consent: ComparisonTrashConfirmation) {
-        val item = checkNotNull(consent.row.toDuplicateMediaItem()) { "Исходный файл недоступен." }
+    private suspend fun trashComparedImage(row: CatalogMediaRow) {
+        val item = checkNotNull(row.toDuplicateMediaItem()) { "Исходный файл недоступен." }
+        val sha256 = checkedComparisonTrashSha256(row, item)
         moveToRecycleBinWithPreMoveCheck(listOf(item)) { candidate ->
-            candidate.uriKey == consent.row.uri && checkedComparisonTrashSha256(consent.row) == consent.sha256
+            candidate.uriKey == row.uri && checkedComparisonTrashSha256(row, candidate) == sha256
         }
     }
 

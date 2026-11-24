@@ -29,7 +29,7 @@ internal fun currentDuplicateSha256(
     }
 }
 
-/** Verify the source a manual comparison targets before consent and again at the move boundary. */
+/** Verify the selected comparison source when cleanup starts and again at the move boundary. */
 internal fun comparisonTrashSha256(
     context: Context,
     row: CatalogMediaRow,

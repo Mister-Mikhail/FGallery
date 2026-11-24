@@ -102,7 +102,6 @@ internal fun DuplicateSearchScreen(
     fun back() {
         if (busy) return
         when {
-            state.comparisonTrashConfirmation != null -> controller.dismissComparisonTrash()
             preview != null -> controller.closePreview()
             state.confirmation != null -> controller.dismissConfirmation()
             comparisonOpen -> controller.closeVisualComparison()
@@ -243,7 +242,7 @@ internal fun DuplicateSearchScreen(
                             readOnly = true,
                             loopPages = comparisonOpen,
                             onComparisonDoubleTap = if (items.size == 2) {
-                                { controller.requestComparisonTrash(it.uriKey) }
+                                { controller.trashFromComparison(it.uriKey) }
                             } else null,
                         )
                     }
@@ -278,7 +277,6 @@ internal fun DuplicateSearchScreen(
                                 }
                             }
                             val status = when {
-                                state.preparingConfirmation -> "Проверяем исходный файл…"
                                 state.trashInProgress -> "Перемещаем в корзину…"
                                 state.comparisonError != null -> state.comparisonError
                                 state.comparisonCleanup -> "Двойной тап — в корзину"
@@ -302,19 +300,6 @@ internal fun DuplicateSearchScreen(
                     },
                     dismissButton = {
                         TextButton(onClick = controller::dismissConfirmation) { Text("Отмена") }
-                    },
-                )
-            }
-            state.comparisonTrashConfirmation?.let { consent ->
-                AlertDialog(
-                    onDismissRequest = controller::dismissComparisonTrash,
-                    title = { Text("Переместить снимок в корзину?") },
-                    text = { Text("${consent.row.name}\n${consent.row.sizeBytes} байт") },
-                    confirmButton = {
-                        TextButton(onClick = { controller.confirmComparisonTrash(consent) }) { Text("В корзину") }
-                    },
-                    dismissButton = {
-                        TextButton(onClick = controller::dismissComparisonTrash) { Text("Отмена") }
                     },
                 )
             }
