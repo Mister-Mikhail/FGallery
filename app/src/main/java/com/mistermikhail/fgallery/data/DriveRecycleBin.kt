@@ -78,6 +78,8 @@ class DriveRecycleBin(private val context: Context, private val mounted: () -> L
      */
     suspend fun trashWithPreMoveCheck(
         items: List<MediaItem>,
+        verifyPreflight: (suspend (MediaItem) -> Boolean)? = null,
+        onMoved: (source: MediaItem, destination: MediaItem) -> Unit = { _, _ -> },
         verifyBeforeMove: suspend (MediaItem) -> Boolean,
     ): List<MediaItem> = withContext(Dispatchers.IO) {
         lock.withLock {
@@ -85,11 +87,12 @@ class DriveRecycleBin(private val context: Context, private val mounted: () -> L
             // selected file is already missing, changed or inaccessible.
             // The per-item check below is still required because SAF/MediaStore
             // content may change between this preflight and the actual move.
-            check(preflightDuplicateTrash(items, verifyBeforeMove, { it.uriKey }, { item ->
+            check(preflightDuplicateTrash(items, verifyPreflight ?: verifyBeforeMove, { it.uriKey }, { item ->
                 item.sourcePath.takeIf { it.isNotBlank() }
             })) {
                 "Повторная проверка выбранных файлов не пройдена"
             }
+            val binFolders = mutableMapOf<String, String>()
             items.map { item ->
                 val source = StorageAccess.file(context, item)
                 val root = mounted().firstOrNull { source != null && source.path.startsWith(it.directory!!.path + "/") }
@@ -104,12 +107,13 @@ class DriveRecycleBin(private val context: Context, private val mounted: () -> L
                     }.getOrDefault(false)
                 }
                 val target = root?.directory?.takeIf { it.canWrite() }?.path ?: grant?.target ?: error("Нет доступа к накопителю ${item.storageName}")
-                val folder = StorageAccess.directory(context, target, StorageAccess.BIN)
+                val folder = binFolders.getOrPut(target) { StorageAccess.directory(context, target, StorageAccess.BIN) }
                 val token = UUID.randomUUID().toString()
                 val record = metadata(item, token, folder, StorageAccess.parent(context, item))
                 write(record) // Journal before moving: an interruption cannot lose the original location.
                 val sidecarName = "$token.fgallery.json"
                 val sidecar = StorageAccess.create(context, folder, sidecarName, "application/json")
+                var destinationWritten = false
                 try {
                     context.contentResolver.openOutputStream(sidecar, "w")!!.use { output ->
                         output.write(record.toString().toByteArray(Charsets.UTF_8)); output.flush()
@@ -120,10 +124,16 @@ class DriveRecycleBin(private val context: Context, private val mounted: () -> L
                     }
                     kotlinx.coroutines.currentCoroutineContext().ensureActive()
                     val moved = StorageAccess.move(context, item, folder, "${token}_${item.name}")
+                    destinationWritten = true
+                    val movedItem = item(record, moved)
+                    onMoved(item, movedItem)
                     write(record.apply { put("lastUri", moved.toString()) })
-                    item(record, moved)
+                    movedItem
                 } catch (e: Exception) {
-                    if (uri(record) == null) { runCatching { StorageAccess.delete(context, sidecar) }; forget(token) }
+                    if (!destinationWritten && uri(record) == null) {
+                        runCatching { StorageAccess.delete(context, sidecar) }
+                        forget(token)
+                    }
                     throw e
                 }
             }

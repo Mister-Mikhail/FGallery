@@ -110,6 +110,7 @@ internal fun DuplicateSearchScreen(
         when {
             preview != null -> controller.closePreview()
             state.confirmation != null -> controller.dismissConfirmation()
+            state.visualTrashConfirmation != null -> controller.dismissVisualTrashConfirmation()
             comparisonOpen -> controller.closeVisualComparison()
             state.tab == DuplicateTab.VISUAL && state.visualSelected.isNotEmpty() -> controller.clearVisualSelection()
             state.tab == DuplicateTab.EXACT && state.selected.isNotEmpty() -> controller.clearSelection()
@@ -304,6 +305,25 @@ internal fun DuplicateSearchScreen(
                     },
                     dismissButton = {
                         TextButton(onClick = controller::dismissConfirmation) { Text("Отмена") }
+                    },
+                )
+            }
+            state.visualTrashConfirmation?.let { consent ->
+                AlertDialog(
+                    onDismissRequest = controller::dismissVisualTrashConfirmation,
+                    title = { Text("Переместить выбранные снимки в корзину?") },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("Файлов: ${consent.rows.size} · ${formatDuplicateBytes(consent.bytes)} (${consent.bytes} байт)")
+                            val protected = consent.selected.size - consent.rows.size
+                            if (protected > 0) Text("Останутся снимки с пометкой «Сохранить»: $protected.")
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = { controller.confirmVisualTrash(consent) }) { Text("Переместить в корзину") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = controller::dismissVisualTrashConfirmation) { Text("Отмена") }
                     },
                 )
             }
@@ -539,16 +559,23 @@ private fun VisualCandidates(
             }
         }
         if (selected.isNotEmpty()) Surface(color = duplicateColors.surfaceContainer) {
-            Column(Modifier.fillMaxWidth().padding(8.dp)) {
+            Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(8.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = controller::clearVisualSelection) { Icon(Icons.Outlined.Close, "Снять выбор") }
+                    IconButton(onClick = controller::clearVisualSelection, enabled = !busy) {
+                        Icon(Icons.Outlined.Close, "Снять выбор")
+                    }
                     val groupSize = groups?.firstOrNull { it.key == state.expandedVisualGroup }?.uris?.size ?: selected.size
-                    Text("Выбрано ${selected.size} из $groupSize", Modifier.weight(1f))
-                    Button(onClick = controller::openVisualComparison, enabled = selected.size >= 2 && !busy) {
+                    Text("Выбрано ${selected.size} из $groupSize")
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = controller::requestVisualTrashConfirmation, enabled = !busy, modifier = Modifier.weight(1f)) {
+                        Text("В корзину…")
+                    }
+                    Button(onClick = controller::openVisualComparison, enabled = selected.size >= 2 && !busy, modifier = Modifier.weight(1f)) {
                         Text("Сравнить")
                     }
                 }
-                if (selected.size == 1) Text("Выберите ещё снимок для сравнения", style = MaterialTheme.typography.bodySmall)
+                if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
             }
         }
     }

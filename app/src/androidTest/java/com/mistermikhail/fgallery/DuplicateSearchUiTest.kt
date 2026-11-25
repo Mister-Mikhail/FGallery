@@ -47,14 +47,13 @@ import com.mistermikhail.fgallery.data.ExactDuplicateReview
 import com.mistermikhail.fgallery.data.StorageRoot
 import com.mistermikhail.fgallery.data.VisualDuplicateSourceVerification
 import com.mistermikhail.fgallery.data.comparisonTrashSha256
-import com.mistermikhail.fgallery.data.verifyCurrentExactDuplicateSelection
 import com.mistermikhail.fgallery.data.formatDuplicateBytes
+import com.mistermikhail.fgallery.data.planExactDuplicateReview
+import com.mistermikhail.fgallery.data.trashExactDuplicateBatch
 import com.mistermikhail.fgallery.ui.DuplicateSearchController
 import com.mistermikhail.fgallery.ui.DuplicateSearchScreen
 import com.mistermikhail.fgallery.ui.toDuplicateMediaItem
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withContext
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -339,15 +338,10 @@ class DuplicateSearchUiTest {
         val bin = DriveRecycleBin(context, { listOf(root) }, { emptyList() })
         fun currentRows() = rows.filter { File(it.sourcePath).isFile }
         fun binFiles() = runBlocking { bin.load().filter { it.folderTarget.startsWith(directory.path + "/") } }
-        fun checkSource(row: CatalogMediaRow) =
-            comparisonTrashSha256(context, row, checkNotNull(row.toDuplicateMediaItem()), currentRows())
         var loads = 0
         try {
-            showSearch(rows, load = { loads++; currentRows() }, trashComparedImage = { row ->
-                val sha256 = withContext(Dispatchers.IO) { checkSource(row) }
-                bin.trashWithPreMoveCheck(listOf(checkNotNull(row.toDuplicateMediaItem()))) { item ->
-                    item.uriKey == row.uri && checkSource(row) == sha256
-                }
+            showSearch(rows, load = { loads++; currentRows() }, trashVisual = { selected ->
+                trashSelectedVisualFixtures(bin, selected, ::currentRows)
             })
             rule.onNodeWithText("Похожие изображения", substring = false).performClick()
             rule.waitUntil(10_000) { rule.onAllNodes(hasText("Файлов: 3")).fetchSemanticsNodes().isNotEmpty() }
@@ -414,6 +408,128 @@ class DuplicateSearchUiTest {
         }
     }
 
+    @Test fun visualGroupOffersTrashAndSkipsTheProtectedOriginal() {
+        val directory = Files.createTempDirectory(context.cacheDir.toPath(), "visual-group-trash-").toFile()
+        val jpeg = jpegFixture()
+        val rows = (1..4).map { index ->
+            val bytes = if (index <= 2) jpeg else jpeg.copyOf(jpeg.size + index * 64)
+            val file = File(directory, "photo-$index.jpg").apply { writeBytes(bytes) }
+            fileRow(file, index.toLong()).copy(perceptualHash = "0123456789abcdef")
+        }
+        val root = StorageRoot("duplicate-fixture", "Fixture", directory.path, directory)
+        val bin = DriveRecycleBin(context, { listOf(root) }, { emptyList() })
+        fun currentRows() = rows.filter { File(it.sourcePath).isFile }
+        fun binFiles() = runBlocking { bin.load().filter { it.folderTarget.startsWith(directory.path + "/") } }
+        try {
+            showSearch(rows, trashVisual = { selected -> trashSelectedVisualFixtures(bin, selected, ::currentRows) })
+            rule.onNodeWithText("Похожие изображения", substring = false).performClick()
+            val group = hasText("Файлов: 4")
+            rule.waitUntil(10_000) { rule.onAllNodes(group).fetchSemanticsNodes().isNotEmpty() }
+            rule.onNode(group).performClick()
+            val grid = rule.onNodeWithTag("duplicate-visual-list")
+            rows.take(3).forEach { row ->
+                val check = "Сравнить ${row.name}"
+                grid.performScrollToNode(hasContentDescription(check))
+                rule.onNodeWithContentDescription(check).performClick()
+            }
+            val trash = rule.onNodeWithText("В корзину…")
+            trash.assertIsDisplayed().performClick()
+            rule.onNodeWithText("Файлов: 2 · ", substring = true).assertIsDisplayed()
+            rule.onNodeWithText("Останутся снимки с пометкой «Сохранить»: 1.").assertIsDisplayed()
+            rule.onNodeWithText("Отмена").performClick()
+            assertTrue(binFiles().isEmpty())
+            assertEquals(rows, currentRows())
+            trash.performClick()
+            rule.onNodeWithText("Переместить в корзину").performClick()
+            val notice = hasText("В корзину перемещено: 2 из 2.")
+            rule.waitUntil(10_000) { rule.onAllNodes(notice).fetchSemanticsNodes().isNotEmpty() }
+            rule.onNodeWithText("Выбрано 1 из 2").assertIsDisplayed()
+            assertEquals(listOf(rows.first(), rows.last()), currentRows())
+            assertEquals(setOf(rows[1].name, rows[2].name), binFiles().map { it.name }.toSet())
+        } finally {
+            runBlocking { bin.restore(binFiles()) }
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test fun exactBatchMoves64CopiesWithOneFullCatalogueRead() {
+        val directory = Files.createTempDirectory(context.cacheDir.toPath(), "exact-video-batch-").toFile()
+        val root = StorageRoot("duplicate-fixture", "Fixture", directory.path, directory)
+        val bin = DriveRecycleBin(context, { listOf(root) }, { emptyList() })
+        val videoBytes = ByteArray(1_400_000) { it.toByte() }
+        val hash = fullDigest(videoBytes)
+        try {
+            val rows = (0..64).map { index ->
+                val file = File(directory, "clip-${index.toString().padStart(2, '0')}.mp4").apply { writeBytes(videoBytes) }
+                row(file, index + 1L, videoBytes.size.toLong(), hash).copy(kind = "VIDEO", mimeType = "video/mp4")
+            }
+            val catalogue = rows + generatedRows(1200)
+            val selected = rows.drop(1).map { it.uri }.toSet()
+            val review = planExactDuplicateReview(catalogue, requestedUris = selected)
+            var fullReads = 0
+            var scopedReads = 0
+            val moved = linkedMapOf<String, String>()
+            val start = SystemClock.elapsedRealtime()
+            runBlocking {
+                bin.trashExactDuplicateBatch(
+                    context, review,
+                    catalogue = { fullReads++; catalogue },
+                    rowsBySize = { size -> scopedReads++; rows.filter { it.sizeBytes == size } },
+                    mediaItem = { checkNotNull(it.toDuplicateMediaItem()) },
+                    onMoved = { source, destination -> moved[source.uriKey] = destination.uriKey },
+                )
+            }
+            val elapsed = SystemClock.elapsedRealtime() - start
+            assertEquals(1, fullReads)
+            assertEquals(64, scopedReads)
+            assertEquals(selected, moved.keys)
+            assertArrayEquals(videoBytes, File(rows.first().sourcePath).readBytes())
+            assertTrue(rows.drop(1).none { File(it.sourcePath).exists() })
+            logArtifact("performance-trash-64.csv",
+                "copies,bytes_per_copy,full_catalogue_reads,scoped_reads,elapsed_ms\n64,${videoBytes.size},$fullReads,$scopedReads,$elapsed\n".toByteArray())
+        } finally {
+            runBlocking { bin.restore(bin.load().filter { it.folderTarget.startsWith(directory.path + "/") }) }
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test fun exactBatchStopsWhenTheProtectedOriginalChangesAfterAMove() {
+        val directory = Files.createTempDirectory(context.cacheDir.toPath(), "exact-keeper-change-").toFile()
+        val root = StorageRoot("duplicate-fixture", "Fixture", directory.path, directory)
+        val bin = DriveRecycleBin(context, { listOf(root) }, { emptyList() })
+        val bytes = ByteArray(512) { it.toByte() }
+        val keeper = File(directory, "original.jpg").apply { writeBytes(bytes) }
+        val first = File(directory, "copy-a.jpg").apply { writeBytes(bytes) }
+        val second = File(directory, "copy-b.jpg").apply { writeBytes(bytes) }
+        val rows = listOf(fileRow(keeper, 1), fileRow(first, 2), fileRow(second, 3))
+        val review = planExactDuplicateReview(rows, requestedUris = setOf(rows[1].uri, rows[2].uri))
+        val moved = mutableSetOf<String>()
+        try {
+            val result = runCatching {
+                runBlocking {
+                    bin.trashExactDuplicateBatch(
+                        context, review,
+                        catalogue = { rows },
+                        rowsBySize = { rows },
+                        mediaItem = { checkNotNull(it.toDuplicateMediaItem()) },
+                        onMoved = { source, _ ->
+                            moved.add(source.uriKey)
+                            keeper.writeBytes(ByteArray(bytes.size) { 7 })
+                        },
+                    )
+                }
+            }
+            assertTrue(result.isFailure)
+            assertEquals(setOf(rows[1].uri), moved)
+            assertFalse(first.exists())
+            assertArrayEquals(bytes, second.readBytes())
+            assertTrue(keeper.isFile)
+        } finally {
+            runBlocking { bin.restore(bin.load().filter { it.folderTarget.startsWith(directory.path + "/") }) }
+            directory.deleteRecursively()
+        }
+    }
+
     @Test fun cancelLeavesFixturesIntactAndConfirmedCopyCanBeRestored() {
         val directory = Files.createTempDirectory(context.cacheDir.toPath(), "duplicate-bin-").toFile()
         val payload = ByteArray(1500) { it.toByte() }
@@ -427,12 +543,15 @@ class DuplicateSearchUiTest {
         var loads = 0
         try {
             showSearch(rows, load = { loads++; rows }) { review ->
-                val verified = verifyCurrentExactDuplicateSelection(context, review, rows, explicitlyConfirmed = true)
-                check(verified == setOf(rows[1].uri))
-                bin.trashWithPreMoveCheck(listOf(rows[1].toDuplicateMediaItem()!!)) { item ->
-                    item.uriKey in verifyCurrentExactDuplicateSelection(context, review, rows, explicitlyConfirmed = true)
-                }
-                verified
+                val moved = mutableSetOf<String>()
+                bin.trashExactDuplicateBatch(
+                    context, review,
+                    catalogue = { rows },
+                    rowsBySize = { size -> rows.filter { it.sizeBytes == size } },
+                    mediaItem = { checkNotNull(it.toDuplicateMediaItem()) },
+                    onMoved = { source, _ -> moved.add(source.uriKey) },
+                )
+                moved
             }
             openFirstGroup(rows)
             rule.onNodeWithTag("duplicate-select-${rows[1].uri}").performClick()
@@ -468,6 +587,27 @@ class DuplicateSearchUiTest {
             runBlocking { bin.restore(remaining) }
             directory.deleteRecursively()
         }
+    }
+
+    private suspend fun trashSelectedVisualFixtures(
+        bin: DriveRecycleBin,
+        selected: List<CatalogMediaRow>,
+        currentRows: () -> List<CatalogMediaRow>,
+    ): Set<String> {
+        val rowsByUri = selected.associateBy { it.uri }
+        val digests = mutableMapOf<String, String>()
+        val moved = mutableSetOf<String>()
+        bin.trashWithPreMoveCheck(
+            selected.map { checkNotNull(it.toDuplicateMediaItem()) },
+            verifyPreflight = { item ->
+                digests[item.uriKey] = comparisonTrashSha256(context, rowsByUri.getValue(item.uriKey), item, currentRows())
+                true
+            },
+            onMoved = { source, _ -> moved.add(source.uriKey) },
+        ) { item ->
+            comparisonTrashSha256(context, rowsByUri.getValue(item.uriKey), item, currentRows()) == digests.getValue(item.uriKey)
+        }
+        return moved
     }
 
     @Test fun hundredFileNavigationTiming() = recordNavigationTiming(100)
@@ -515,7 +655,7 @@ class DuplicateSearchUiTest {
         fontScale: Float = 1f,
         onClose: () -> Unit = {},
         load: suspend () -> List<CatalogMediaRow> = { rows },
-        trashComparedImage: suspend (CatalogMediaRow) -> Unit = { error("Unexpected mutation") },
+        trashVisual: suspend (List<CatalogMediaRow>) -> Set<String> = { error("Unexpected mutation") },
         trash: suspend (ExactDuplicateReview) -> Set<String> = { error("Unexpected mutation") },
     ) {
         rule.setContent {
@@ -526,7 +666,7 @@ class DuplicateSearchUiTest {
                     load = { _, _ -> DuplicateSearchInput(load()) },
                     verifyVisual = { first, second -> VisualDuplicateSourceVerification.verify(context, first, second) },
                     trash = trash,
-                    trashComparedImage = trashComparedImage,
+                    trashVisual = trashVisual,
                 )
             }
             val density = LocalDensity.current.density

@@ -102,7 +102,7 @@ internal object CatalogStore {
             eligibleExactDuplicateReviewRows(dao.allMedia(), disconnected)
         }
 
-    suspend fun comparisonTrashRows(context: Context, sizeBytes: Long): List<CatalogMediaRow> =
+    suspend fun duplicateRowsBySize(context: Context, sizeBytes: Long): List<CatalogMediaRow> =
         withContext(Dispatchers.IO) { CatalogDatabase.get(context).catalog().connectedMediaBySize(sizeBytes) }
 
     suspend fun duplicateSearchInput(context: Context, hasMediaPermission: Boolean): DuplicateSearchInput =
@@ -419,8 +419,8 @@ internal object CatalogStore {
             .applyMediaChanges(emptyList(), uris)
     }
 
-    suspend fun recordRecycleBinMove(context: Context, sourceUri: String, moved: MediaItem) =
+    suspend fun recordRecycleBinMoves(context: Context, moved: Map<String, MediaItem>) =
         withContext(Dispatchers.IO) {
-            CatalogDatabase.get(context).catalog().applyMediaChanges(listOf(toRow(moved, true)), setOf(sourceUri))
+            CatalogDatabase.get(context).catalog().applyMediaChanges(moved.values.map { toRow(it, true) }, moved.keys)
         }
 }

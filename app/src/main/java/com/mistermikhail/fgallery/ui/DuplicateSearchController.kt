@@ -80,6 +80,13 @@ internal data class DuplicateConfirmation(
     val prompt: ExactDuplicateTrashPrompt,
 )
 
+internal data class VisualTrashConfirmation(
+    val catalogue: DuplicateCatalogue,
+    val selected: Set<String>,
+    val rows: List<CatalogMediaRow>,
+    val bytes: Long,
+)
+
 internal data class DuplicateSearchUiState(
     val catalogue: DuplicateCatalogue? = null,
     val tab: DuplicateTab = DuplicateTab.EXACT,
@@ -100,6 +107,7 @@ internal data class DuplicateSearchUiState(
     val comparisonError: String? = null,
     val preparingConfirmation: Boolean = false,
     val confirmation: DuplicateConfirmation? = null,
+    val visualTrashConfirmation: VisualTrashConfirmation? = null,
     val trashInProgress: Boolean = false,
 )
 
@@ -111,7 +119,7 @@ internal class DuplicateSearchController(
     private val load: suspend (Boolean, (String) -> Unit) -> DuplicateSearchInput,
     private val verifyVisual: suspend (CatalogMediaRow, CatalogMediaRow) -> VisualDuplicatePixelVerification.Result,
     private val trash: suspend (ExactDuplicateReview) -> Set<String>,
-    private val trashComparedImage: suspend (CatalogMediaRow) -> Unit,
+    private val trashVisual: suspend (List<CatalogMediaRow>) -> Set<String>,
     private val prepareVisual: suspend (List<CatalogMediaRow>) -> List<CatalogMediaRow> = { it },
 ) {
     private val _state = MutableStateFlow(DuplicateSearchUiState())
@@ -156,7 +164,7 @@ internal class DuplicateSearchController(
         val current = _state.value
         if (current.trashInProgress || current.preparingConfirmation || current.tab == tab) return
         verificationJob?.cancel()
-        _state.value = current.copy(tab = tab, group = null, confirmation = null, visualReferenceUri = null,
+        _state.value = current.copy(tab = tab, group = null, confirmation = null, visualTrashConfirmation = null, visualReferenceUri = null,
             visualChecking = null, preview = null, comparisonCleanup = false, comparisonError = null)
         if (tab == DuplicateTab.VISUAL && current.visualGroups == null) loadVisualGroups()
     }
@@ -198,6 +206,7 @@ internal class DuplicateSearchController(
     fun toggleVisualGroup(key: String) {
         val current = _state.value
         if (current.tab != DuplicateTab.VISUAL || current.trashInProgress || current.preview != null ||
+            current.visualTrashConfirmation != null ||
             current.visualReferenceUri != null ||
             current.visualGroups?.any { it.key == key } != true) return
         _state.value = current.copy(
@@ -209,6 +218,7 @@ internal class DuplicateSearchController(
     fun setVisualSelected(uri: String, checked: Boolean) {
         val current = _state.value
         if (current.tab != DuplicateTab.VISUAL || current.trashInProgress || current.preview != null ||
+            current.visualTrashConfirmation != null ||
             current.visualReferenceUri != null ||
             current.visualGroups?.firstOrNull { it.key == current.expandedVisualGroup }?.uris?.contains(uri) != true
         ) return
@@ -218,7 +228,8 @@ internal class DuplicateSearchController(
 
     fun clearVisualSelection() {
         val current = _state.value
-        if (!current.trashInProgress && current.preview == null && current.visualReferenceUri == null) {
+        if (!current.trashInProgress && current.preview == null && current.visualReferenceUri == null &&
+            current.visualTrashConfirmation == null) {
             _state.value = current.copy(visualSelected = emptySet())
         }
     }
@@ -226,6 +237,7 @@ internal class DuplicateSearchController(
     fun openPreview(uri: String) {
         val current = _state.value
         if (current.trashInProgress || current.preparingConfirmation || current.confirmation != null ||
+            current.visualTrashConfirmation != null ||
             (current.visualReferenceUri != null && uri !in current.visualSelected)) return
         val media = current.catalogue?.rows?.get(uri)?.toDuplicateMediaItem()
         _state.value = current.copy(
@@ -264,21 +276,66 @@ internal class DuplicateSearchController(
             return
         }
 
+        moveVisualRows(listOf(row), singleName = row.name)
+    }
+
+    fun requestVisualTrashConfirmation() {
+        val current = _state.value
+        val catalogue = current.catalogue ?: return
+        if (current.tab != DuplicateTab.VISUAL || current.preview != null || current.visualReferenceUri != null ||
+            current.trashInProgress || current.visualTrashConfirmation != null || current.visualSelected.isEmpty()) return
+        val rows = (current.visualSelected - catalogue.review.protectedUris).map { catalogue.rows.getValue(it) }
+        if (rows.isEmpty()) {
+            showComparisonError("Выбранные снимки помечены «Сохранить» в точных копиях.")
+            return
+        }
+        val bytes = try {
+            rows.fold(0L) { total, row -> Math.addExact(total, row.sizeBytes) }
+        } catch (_: ArithmeticException) {
+            showComparisonError("Не удалось подсчитать размер выбранных файлов.")
+            return
+        }
+        _state.value = current.copy(visualTrashConfirmation = VisualTrashConfirmation(catalogue, current.visualSelected, rows, bytes))
+    }
+
+    fun dismissVisualTrashConfirmation() {
+        _state.value = _state.value.copy(visualTrashConfirmation = null)
+    }
+
+    fun confirmVisualTrash(consent: VisualTrashConfirmation) {
+        val current = _state.value
+        if (current.visualTrashConfirmation !== consent || current.catalogue !== consent.catalogue ||
+            current.visualSelected != consent.selected || current.visualReferenceUri != null || current.preview != null ||
+            current.tab != DuplicateTab.VISUAL || current.trashInProgress) return
+        moveVisualRows(consent.rows)
+    }
+
+    private fun moveVisualRows(rows: List<CatalogMediaRow>, singleName: String? = null) {
         verificationJob?.cancel()
-        _state.value = current.copy(trashInProgress = true, visualChecking = null, comparisonError = null)
+        _state.value = _state.value.copy(trashInProgress = true, visualTrashConfirmation = null,
+            visualChecking = null, comparisonError = null)
         scope.launch {
             try {
-                trashComparedImage(row)
-                applyMoved(setOf(uri), "${row.name} перемещён в корзину.")
+                val moved = trashVisual(rows)
+                val message = if (singleName != null && moved.isNotEmpty()) "$singleName перемещён в корзину."
+                    else "В корзину перемещено: ${moved.size} из ${rows.size}."
+                applyMoved(moved, message)
             } catch (cancelled: CancellationException) {
                 throw cancelled
+            } catch (failure: DuplicateTrashInterrupted) {
+                val message = interruptedTrashMessage(failure, rows.size)
+                if (failure.moved.isEmpty()) showComparisonError(message) else applyMoved(failure.moved, message)
             } catch (failure: Exception) {
-                showComparisonError("Не удалось завершить перенос ${row.name}. Проверьте корзину. ${failure.localizedMessage.orEmpty()}")
+                showComparisonError("Не удалось завершить перенос. Проверьте корзину. ${failure.localizedMessage.orEmpty()}")
             } finally {
                 _state.value = _state.value.copy(trashInProgress = false)
             }
         }
     }
+
+    private fun interruptedTrashMessage(failure: DuplicateTrashInterrupted, total: Int): String =
+        "Подтверждено переносов: ${failure.moved.size} из $total. Операция остановлена. " +
+            "Проверьте корзину. ${failure.localizedMessage.orEmpty()}"
 
     private fun showComparisonError(message: String) {
         val current = _state.value
@@ -336,6 +393,7 @@ internal class DuplicateSearchController(
     fun openVisualComparison() {
         val current = _state.value
         if (current.tab != DuplicateTab.VISUAL || current.preview != null || current.trashInProgress ||
+            current.visualTrashConfirmation != null ||
             current.visualSelected.size < 2) return
         _state.value = current.copy(visualReferenceUri = current.visualSelected.first())
     }
@@ -429,8 +487,7 @@ internal class DuplicateSearchController(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: DuplicateTrashInterrupted) {
-                applyMoved(failure.moved, "Подтверждено переносов: ${failure.moved.size} из ${consent.prompt.selectedCopyCount}. " +
-                    "Операция остановлена. Проверьте корзину. ${failure.localizedMessage.orEmpty()}")
+                applyMoved(failure.moved, interruptedTrashMessage(failure, consent.prompt.selectedCopyCount))
             } catch (failure: Exception) {
                 _state.value = _state.value.copy(notice = "Файлы не перемещены. ${failure.localizedMessage ?: "Проверка не пройдена."}")
             } finally {
