@@ -27,6 +27,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
@@ -59,6 +60,8 @@ class DuplicateSearchUiTest {
     @Test fun readableTextTwoColumnsAndPinnedActionsAtLargeFontScale() {
         val rows = generatedRows(24)
         showSearch(rows, fontScale = 1.5f)
+        waitForTag("duplicate-groups")
+        rule.onNodeWithContentDescription("Сетка").performClick()
         openFirstGroup(rows)
         val keeper = rule.onNodeWithTag("duplicate-card-${rows[0].uri}")
         val copy = rule.onNodeWithTag("duplicate-card-${rows[1].uri}")
@@ -92,18 +95,33 @@ class DuplicateSearchUiTest {
         val panel = rule.onNodeWithTag("duplicate-action-bar")
         val panelBounds = panel.getUnclippedBoundsInRoot()
         val grid = rule.onNodeWithTag("duplicate-copy-grid")
-        grid.performScrollToIndex(5)
+        grid.performScrollToNode(hasTestTag("duplicate-select-${rows[5].uri}"))
         rule.onNodeWithTag("duplicate-select-${rows[5].uri}").performClick()
         rule.onNodeWithText("Выбрано 2").assertIsDisplayed()
         grid.performScrollToIndex(20)
         assertEquals(panelBounds, panel.getUnclippedBoundsInRoot())
         rule.onNodeWithText("В корзину…").assertIsDisplayed()
-        rule.onNodeWithText("Снять выбор").assertIsDisplayed()
+        rule.onNodeWithContentDescription("Снять выбор").assertIsDisplayed()
         screenshot("exact-selection-large-font")
-        grid.performScrollToIndex(0)
+        grid.performScrollToNode(hasTestTag("duplicate-select-${rows[1].uri}"))
         checkbox.assertIsOn()
-        rule.onNodeWithText("Снять выбор").performClick()
+        rule.onNodeWithContentDescription("Снять выбор").performClick()
         panel.assertDoesNotExist()
+    }
+
+    @Test fun smartSelectionProtectsKeeperAndClearsWhenFilterChanges() {
+        val rows = generatedRows(3)
+        showSearch(rows)
+        waitForTag("duplicate-groups")
+        rule.onNodeWithText("Выбрать лишние копии").performClick()
+        rule.onNodeWithText("Выбрано 2").assertIsDisplayed()
+        rule.onNodeWithText("Видео").performClick()
+        rule.onNodeWithTag("duplicate-action-bar").assertDoesNotExist()
+        rule.onNodeWithText("По этим фильтрам совпадений нет").assertIsDisplayed()
+        rule.onNodeWithText("Все").performClick()
+        openFirstGroup(rows)
+        rule.onNodeWithTag("duplicate-select-${rows[0].uri}").assertDoesNotExist()
+        rule.onNodeWithTag("duplicate-select-${rows[1].uri}").assertIsOff()
     }
 
     @Test fun svgUsesTheSharedViewerAndRendersItsContent() {
@@ -144,11 +162,11 @@ class DuplicateSearchUiTest {
             }
             showSearch(visual)
             rule.onNodeWithText("Похожие изображения", substring = false).performClick()
-            rule.waitUntil(10_000) {
-                rule.onAllNodes(hasText("Проверить исходные пиксели")).fetchSemanticsNodes().isNotEmpty()
-            }
-            rule.onNodeWithText("Не проверено").assertIsDisplayed()
-            rule.onNodeWithText("Проверить исходные пиксели").performClick()
+            rule.waitUntil(10_000) { rule.onAllNodes(hasText("Файлов: 2")).fetchSemanticsNodes().isNotEmpty() }
+            rule.onNodeWithText("Файлов: 2").performClick()
+            visual.forEach { rule.onNodeWithContentDescription("Сравнить ${it.name}").performClick() }
+            rule.onNodeWithText("Выбрано 2 из 2").assertIsDisplayed()
+            rule.onNodeWithText("Сравнить").performClick()
             rule.waitUntil(10_000) {
                 rule.onAllNodes(
                     hasText("Подтверждено · пиксели совпадают") or hasText("Не подтверждено", substring = true)
@@ -226,7 +244,7 @@ class DuplicateSearchUiTest {
             val opened = SystemClock.elapsedRealtime()
             val grid = rule.onNodeWithTag("duplicate-copy-grid")
             grid.performScrollToIndex(count - 2)
-            grid.performScrollToIndex(0)
+            grid.performScrollToNode(hasTestTag("duplicate-select-${rows[1].uri}"))
             val scrolled = SystemClock.elapsedRealtime()
             val checkbox = rule.onNodeWithTag("duplicate-select-${rows[1].uri}")
             repeat(20) { checkbox.performClick() }
@@ -275,8 +293,8 @@ class DuplicateSearchUiTest {
 
     private fun openFirstGroup(rows: List<CatalogMediaRow>) {
         waitForTag("duplicate-groups")
-        rule.onNodeWithText(rows[0].name).performClick()
-        rule.onNodeWithTag("duplicate-copy-grid").assertIsDisplayed()
+        rule.onNodeWithTag("group-${rows[0].fullHash}").performClick()
+        rule.onNodeWithTag("duplicate-copy-grid").performScrollToIndex(2)
     }
 
     private fun waitForTag(tag: String) {
