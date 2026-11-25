@@ -21,6 +21,8 @@ import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.doubleClick
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -194,10 +196,9 @@ class DuplicateSearchUiTest {
                 comparison.performScrollToNode(hasText(size))
                 rule.onNodeWithText(size).assertIsDisplayed()
             }
-            comparison.performScrollToNode(hasText("Разрешение"))
+            comparison.performScrollToIndex(0)
             rule.onAllNodes(hasText("128×128"))[0].assertIsDisplayed()
             rule.onAllNodes(hasText("128×128"))[1].assertIsDisplayed()
-            comparison.performScrollToNode(hasText("Дата"))
             rule.onNodeWithText("Снят ", substring = true).assertIsDisplayed()
             rule.onNodeWithText("Изменён ", substring = true).assertIsDisplayed()
             comparison.performScrollToIndex(0)
@@ -243,12 +244,13 @@ class DuplicateSearchUiTest {
         }
     }
 
-    @Test fun comparisonIncludesAllSelectedPhotosAndBackClearsSelectionFirst() {
+    @Test fun comparisonShowsAndChecksFourPhotosAndBackClearsSelectionFirst() {
         val directory = Files.createTempDirectory(context.cacheDir.toPath(), "comparison-selection-").toFile()
         try {
             val jpeg = jpegFixture()
             val rows = (1..4).map { index ->
-                val photo = File(directory, "compare-$index.jpg").apply { writeBytes(jpeg.copyOf(jpeg.size + index * 64)) }
+                val bytes = if (index == 4) jpegFixture(blueOffset = 120) else jpeg
+                val photo = File(directory, "compare-$index.jpg").apply { writeBytes(bytes.copyOf(bytes.size + index * 64)) }
                 fileRow(photo, index.toLong()).copy(fullHash = null, perceptualHash = "0123456789abcdef")
             }
             var exits = 0
@@ -260,16 +262,39 @@ class DuplicateSearchUiTest {
             val groups = rule.onNodeWithTag("duplicate-visual-list")
             rows.forEach {
                 val check = "Сравнить ${it.name}"
-                groups.performScrollToNode(androidx.compose.ui.test.hasContentDescription(check))
+                groups.performScrollToNode(hasContentDescription(check))
                 rule.onNodeWithContentDescription(check).performClick().assertIsOn()
             }
             rule.onNodeWithText("Выбрано 4 из 4").assertIsDisplayed()
             rule.onNodeWithText("Сравнить").performClick()
-            rule.onNodeWithContentDescription("Выбрать правый снимок").performClick()
-            rule.onNodeWithText(rows[2].name).performClick()
-            rule.onNodeWithContentDescription("Открыть ${rows[2].name}").assertIsDisplayed()
-            rule.onNodeWithContentDescription("Выбрать левый снимок").performClick()
-            rule.onNodeWithText(rows[3].name).performClick()
+            rule.onNodeWithText("Выбрано 4 · Листайте вбок").assertIsDisplayed()
+            val comparison = rule.onNodeWithTag("duplicate-visual-comparison")
+            val photos = rule.onNodeWithTag("comparison-photos")
+            fun showPhoto(index: Int) {
+                comparison.performScrollToIndex(0)
+                photos.performScrollToIndex(index)
+            }
+            rows.forEachIndexed { index, row ->
+                showPhoto(index)
+                rule.onNodeWithContentDescription("Открыть ${row.name}").assertIsDisplayed()
+                rule.onNode(hasText(row.name) and hasAnyAncestor(hasTestTag("comparison-photo-${row.uri}")))
+                    .assertIsDisplayed()
+            }
+            comparison.performScrollToNode(hasText("Проверить исходные пиксели"))
+            rule.onNodeWithText("Проверка по снимку «${rows.first().name}»").assertIsDisplayed()
+            rule.onNodeWithText("Проверить исходные пиксели").performClick()
+            val checkButton = hasText("Проверить исходные пиксели")
+            rule.waitUntil(10_000) { rule.onAllNodes(checkButton).fetchSemanticsNodes().isNotEmpty() }
+            rows.drop(1).forEachIndexed { index, row ->
+                showPhoto(index + 1)
+                val expected = if (row == rows.last()) "Не подтверждено" else "Подтверждено · пиксели совпадают"
+                rule.onNode(hasText(expected) and hasAnyAncestor(hasTestTag("comparison-photo-${row.uri}")))
+                    .assertIsDisplayed()
+            }
+            rule.onNodeWithContentDescription("Открыть ${rows[3].name}").performTouchInput { longClick() }
+            rule.onNodeWithText("Взять за образец").performClick()
+            comparison.performScrollToNode(hasText("Проверка по снимку «${rows.last().name}»"))
+            showPhoto(3)
             rule.onNodeWithContentDescription("Открыть ${rows[3].name}").performClick()
             waitForTag("viewer-root")
             val viewer = rule.onNodeWithTag("viewer-root")
@@ -287,7 +312,7 @@ class DuplicateSearchUiTest {
             rule.onNodeWithContentDescription("Назад").performClick()
             rule.onNodeWithText("Выбрано 4 из 4").assertDoesNotExist()
             val lastCheck = "Сравнить ${rows.last().name}"
-            groups.performScrollToNode(androidx.compose.ui.test.hasContentDescription(lastCheck))
+            groups.performScrollToNode(hasContentDescription(lastCheck))
             rule.onNodeWithContentDescription(lastCheck).assertIsOff().performClick()
             pressBack()
             rule.onNodeWithContentDescription(lastCheck).assertIsOff()
@@ -559,11 +584,11 @@ class DuplicateSearchUiTest {
         row(file, index + 1L, 96, "a".repeat(64))
     }
 
-    private fun jpegFixture(): ByteArray {
+    private fun jpegFixture(blueOffset: Int = 0): ByteArray {
         val bitmap = Bitmap.createBitmap(128, 128, Bitmap.Config.ARGB_8888)
         return try {
             bitmap.setPixels(
-                IntArray(128 * 128) { i -> AndroidColor.rgb(i % 128, i / 128, (i * 7) % 256) },
+                IntArray(128 * 128) { i -> AndroidColor.rgb(i % 128, i / 128, (i * 7 + blueOffset) % 256) },
                 0, 128, 0, 0, 128, 128,
             )
             ByteArrayOutputStream().use {

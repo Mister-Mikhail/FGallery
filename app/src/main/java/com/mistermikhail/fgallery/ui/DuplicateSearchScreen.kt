@@ -12,6 +12,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -20,11 +21,12 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -102,7 +104,7 @@ internal fun DuplicateSearchScreen(
     val busy = state.trashInProgress || state.preparingConfirmation
     var grid by rememberSaveable { mutableStateOf(false) }
     val preview = state.preview
-    val comparisonOpen = state.visualComparison != null
+    val comparisonOpen = state.visualReferenceUri != null
     fun back() {
         if (busy) return
         when {
@@ -464,20 +466,19 @@ private fun VisualCandidates(
     val listState = rememberLazyGridState()
     val selected = state.visualSelected
     val busy = state.trashInProgress
-    val comparison = state.visualComparison
-    if (comparison != null) {
+    val referenceUri = state.visualReferenceUri
+    if (referenceUri != null) {
         VisualComparison(
-            first = catalogue.rows.getValue(comparison.first),
-            second = catalogue.rows.getValue(comparison.second),
             selected = remember(catalogue, selected) { selected.map { catalogue.rows.getValue(it) } },
-            status = state.visualStatuses[comparison],
-            checking = state.visualChecking == comparison,
-            verificationAvailable = state.visualChecking == null && !busy,
+            reference = catalogue.rows.getValue(referenceUri),
+            statuses = state.visualStatuses,
+            checking = state.visualChecking,
             busy = busy,
             onOpen = controller::openPreview,
             onCheck = controller::checkVisual,
+            onCancelCheck = controller::cancelVisualCheck,
             onTrash = { controller.trashFromComparison(it) },
-            onChoose = controller::chooseComparisonImage,
+            onChooseReference = controller::chooseVisualReference,
         )
         return
     }
@@ -555,60 +556,85 @@ private fun VisualCandidates(
 
 @Composable
 private fun VisualComparison(
-    first: CatalogMediaRow,
-    second: CatalogMediaRow,
     selected: List<CatalogMediaRow>,
-    status: String?,
-    checking: Boolean,
-    verificationAvailable: Boolean,
+    reference: CatalogMediaRow,
+    statuses: Map<Pair<String, String>, String>,
+    checking: VisualCheckProgress?,
     busy: Boolean,
     onOpen: (String) -> Unit,
     onCheck: () -> Unit,
+    onCancelCheck: () -> Unit,
     onTrash: (String) -> Unit,
-    onChoose: (ComparisonColumn, String) -> Unit,
+    onChooseReference: (String) -> Unit,
 ) {
-    var menuUri by remember(first.uri, second.uri) { mutableStateOf<String?>(null) }
-    var choosing by remember { mutableStateOf<ComparisonColumn?>(null) }
+    var menuUri by remember { mutableStateOf<String?>(null) }
     LazyColumn(
         modifier = Modifier.fillMaxSize().testTag("duplicate-visual-comparison"),
         contentPadding = PaddingValues(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        if (selected.size > 2) item("choose-photos") {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { choosing = ComparisonColumn.LEFT }, enabled = !busy,
-                    modifier = Modifier.weight(1f).semantics { contentDescription = "Выбрать левый снимок" }) {
-                    Text("Слева · ${selected.indexOf(first) + 1} из ${selected.size}")
-                }
-                OutlinedButton(onClick = { choosing = ComparisonColumn.RIGHT }, enabled = !busy,
-                    modifier = Modifier.weight(1f).semantics { contentDescription = "Выбрать правый снимок" }) {
-                    Text("Справа · ${selected.indexOf(second) + 1} из ${selected.size}")
-                }
-            }
+        if (selected.size > 2) item("count") {
+            Text("Выбрано ${selected.size} · Листайте вбок", style = MaterialTheme.typography.bodyMedium)
         }
-        item("images") {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf(first, second).forEach { row ->
-                    Box(Modifier.weight(1f)) {
-                        DuplicateTile(
-                            row,
-                            Modifier.fillMaxWidth().aspectRatio(1f),
-                            contentScale = ContentScale.Fit,
-                            highQuality = true,
-                            enabled = !busy,
-                            onOpen = { onOpen(row.uri) },
-                            onLongClick = { menuUri = row.uri },
-                        )
-                        DropdownMenu(expanded = menuUri == row.uri, onDismissRequest = { menuUri = null }) {
-                            DropdownMenuItem(
-                                text = { Text("В корзину") },
-                                leadingIcon = { Icon(Icons.Outlined.Delete, null) },
-                                enabled = !busy,
-                                onClick = {
-                                    menuUri = null
-                                    onTrash(row.uri)
-                                },
-                            )
+        item("photos") {
+            BoxWithConstraints(Modifier.fillMaxWidth()) {
+                val gap = 8.dp
+                val columns = (maxWidth / 180.dp).toInt().coerceIn(2, selected.size)
+                val moreColumns = columns < selected.size
+                val visibleColumns = if (moreColumns) columns + 0.15f else columns.toFloat()
+                val cardWidth = (maxWidth - gap * (if (moreColumns) columns else columns - 1)) / visibleColumns
+                LazyRow(
+                    modifier = Modifier.fillMaxWidth().testTag("comparison-photos"),
+                    horizontalArrangement = Arrangement.spacedBy(gap),
+                ) {
+                    items(selected, key = { it.uri }) { row ->
+                        Column(Modifier.width(cardWidth).testTag("comparison-photo-${row.uri}"),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Box {
+                                DuplicateTile(
+                                    row,
+                                    Modifier.fillMaxWidth().aspectRatio(1f),
+                                    contentScale = ContentScale.Fit,
+                                    highQuality = true,
+                                    enabled = !busy,
+                                    onOpen = { onOpen(row.uri) },
+                                    onLongClick = { menuUri = row.uri },
+                                )
+                                DropdownMenu(expanded = menuUri == row.uri, onDismissRequest = { menuUri = null }) {
+                                    if (selected.size > 2 && row.uri != reference.uri) {
+                                        DropdownMenuItem(
+                                            text = { Text("Взять за образец") },
+                                            enabled = checking == null && !busy,
+                                            onClick = {
+                                                menuUri = null
+                                                onChooseReference(row.uri)
+                                            },
+                                        )
+                                    }
+                                    DropdownMenuItem(
+                                        text = { Text("В корзину") },
+                                        leadingIcon = { Icon(Icons.Outlined.Delete, null) },
+                                        enabled = !busy,
+                                        onClick = {
+                                            menuUri = null
+                                            onTrash(row.uri)
+                                        },
+                                    )
+                                }
+                            }
+                            ComparisonValue("Имя файла", row.name.ifBlank { "Без имени" })
+                            ComparisonValue("Размер файла", visualSize(row) ?: "Неизвестен")
+                            ComparisonValue("Разрешение", visualResolution(row) ?: "Неизвестно")
+                            ComparisonValue("Дата", visualDate(row) ?: "Неизвестна")
+                            ComparisonValue("Папка", visualFolder(row).ifBlank { "Неизвестна" })
+                            if (row.uri == reference.uri && selected.size > 2) {
+                                Text("Образец проверки", style = MaterialTheme.typography.labelMedium)
+                            } else {
+                                statuses[reference.uri to row.uri]?.let {
+                                    Text(it, style = MaterialTheme.typography.bodySmall)
+                                }
+                            }
                         }
                     }
                 }
@@ -618,67 +644,29 @@ private fun VisualComparison(
             Text("Перемещаем в корзину…")
             LinearProgressIndicator(Modifier.fillMaxWidth())
         }
-        item("names") {
-            ComparisonRow("Имя файла", first.name.ifBlank { "Без имени" }, second.name.ifBlank { "Без имени" })
-        }
-        item("sizes") {
-            ComparisonRow("Размер файла", visualSize(first) ?: "Неизвестен", visualSize(second) ?: "Неизвестен")
-        }
-        item("resolution") {
-            ComparisonRow("Разрешение", visualResolution(first) ?: "Неизвестно", visualResolution(second) ?: "Неизвестно")
-        }
-        item("dates") {
-            ComparisonRow("Дата", visualDate(first) ?: "Неизвестна", visualDate(second) ?: "Неизвестна")
-        }
-        item("folders") {
-            ComparisonRow("Папка", visualFolder(first).ifBlank { "Неизвестна" }, visualFolder(second).ifBlank { "Неизвестна" })
-        }
         item("verification") {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                OutlinedButton(onClick = onCheck, enabled = verificationAvailable) {
-                    Text("Проверить исходные пиксели")
+                if (selected.size > 2) {
+                    Text("Проверка по снимку «${reference.name}»", style = MaterialTheme.typography.bodySmall)
                 }
-                if (checking) {
-                    Text("Проверяем пиксели…")
-                    LinearProgressIndicator(Modifier.fillMaxWidth())
+                if (checking != null) {
+                    Text("Проверено ${checking.completed} из ${checking.total}")
+                    LinearProgressIndicator(progress = { checking.completed.toFloat() / checking.total },
+                        modifier = Modifier.fillMaxWidth())
+                    TextButton(onClick = onCancelCheck) { Text("Остановить проверку") }
                 } else {
-                    status?.let { Text(it) }
+                    OutlinedButton(onClick = onCheck, enabled = !busy) { Text("Проверить исходные пиксели") }
                 }
             }
         }
     }
-    choosing?.let { column ->
-        val otherUri = if (column == ComparisonColumn.LEFT) second.uri else first.uri
-        AlertDialog(
-            onDismissRequest = { choosing = null },
-            title = { Text(if (column == ComparisonColumn.LEFT) "Левый снимок" else "Правый снимок") },
-            text = {
-                LazyColumn(Modifier.fillMaxWidth().heightIn(max = 320.dp)) {
-                    items(selected, key = { it.uri }) { row ->
-                        TextButton(
-                            onClick = {
-                                onChoose(column, row.uri)
-                                choosing = null
-                            },
-                            enabled = row.uri != otherUri,
-                            modifier = Modifier.fillMaxWidth(),
-                        ) { Text(row.name.ifBlank { "Без имени" }) }
-                    }
-                }
-            },
-            confirmButton = { TextButton(onClick = { choosing = null }) { Text("Отмена") } },
-        )
-    }
 }
 
 @Composable
-private fun ComparisonRow(label: String, first: String, second: String) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+private fun ComparisonValue(label: String, value: String) {
+    Column {
         Text(label, style = MaterialTheme.typography.labelMedium, color = duplicateColors.onSurfaceVariant)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(first, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-            Text(second, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-        }
+        Text(value, style = MaterialTheme.typography.bodyMedium)
     }
 }
 

@@ -25,7 +25,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 internal enum class DuplicateTab { EXACT, VISUAL }
-internal enum class ComparisonColumn { LEFT, RIGHT }
+
+internal data class VisualCheckProgress(val completed: Int, val total: Int)
 
 internal class DuplicateCatalogue(
     private val input: DuplicateSearchInput,
@@ -92,9 +93,9 @@ internal data class DuplicateSearchUiState(
     val visualError: String? = null,
     val expandedVisualGroup: String? = null,
     val visualSelected: Set<String> = emptySet(),
-    val visualComparison: Pair<String, String>? = null,
+    val visualReferenceUri: String? = null,
     val visualStatuses: Map<Pair<String, String>, String> = emptyMap(),
-    val visualChecking: Pair<String, String>? = null,
+    val visualChecking: VisualCheckProgress? = null,
     val comparisonCleanup: Boolean = false,
     val comparisonError: String? = null,
     val preparingConfirmation: Boolean = false,
@@ -154,8 +155,9 @@ internal class DuplicateSearchController(
     fun showTab(tab: DuplicateTab) {
         val current = _state.value
         if (current.trashInProgress || current.preparingConfirmation || current.tab == tab) return
-        _state.value = current.copy(tab = tab, group = null, confirmation = null, visualComparison = null,
-            preview = null, comparisonCleanup = false, comparisonError = null)
+        verificationJob?.cancel()
+        _state.value = current.copy(tab = tab, group = null, confirmation = null, visualReferenceUri = null,
+            visualChecking = null, preview = null, comparisonCleanup = false, comparisonError = null)
         if (tab == DuplicateTab.VISUAL && current.visualGroups == null) loadVisualGroups()
     }
 
@@ -196,7 +198,7 @@ internal class DuplicateSearchController(
     fun toggleVisualGroup(key: String) {
         val current = _state.value
         if (current.tab != DuplicateTab.VISUAL || current.trashInProgress || current.preview != null ||
-            current.visualComparison != null ||
+            current.visualReferenceUri != null ||
             current.visualGroups?.any { it.key == key } != true) return
         _state.value = current.copy(
             expandedVisualGroup = if (current.expandedVisualGroup == key) null else key,
@@ -207,7 +209,7 @@ internal class DuplicateSearchController(
     fun setVisualSelected(uri: String, checked: Boolean) {
         val current = _state.value
         if (current.tab != DuplicateTab.VISUAL || current.trashInProgress || current.preview != null ||
-            current.visualComparison != null ||
+            current.visualReferenceUri != null ||
             current.visualGroups?.firstOrNull { it.key == current.expandedVisualGroup }?.uris?.contains(uri) != true
         ) return
         val selected = if (checked) current.visualSelected + uri else current.visualSelected - uri
@@ -216,7 +218,7 @@ internal class DuplicateSearchController(
 
     fun clearVisualSelection() {
         val current = _state.value
-        if (!current.trashInProgress && current.preview == null && current.visualComparison == null) {
+        if (!current.trashInProgress && current.preview == null && current.visualReferenceUri == null) {
             _state.value = current.copy(visualSelected = emptySet())
         }
     }
@@ -224,7 +226,7 @@ internal class DuplicateSearchController(
     fun openPreview(uri: String) {
         val current = _state.value
         if (current.trashInProgress || current.preparingConfirmation || current.confirmation != null ||
-            (current.visualComparison != null && uri !in current.visualSelected)) return
+            (current.visualReferenceUri != null && uri !in current.visualSelected)) return
         val media = current.catalogue?.rows?.get(uri)?.toDuplicateMediaItem()
         _state.value = current.copy(
             preview = media,
@@ -242,19 +244,19 @@ internal class DuplicateSearchController(
 
     fun setComparisonCleanup(enabled: Boolean) {
         val current = _state.value
-        if (current.preview == null || current.visualComparison == null || current.trashInProgress ||
+        if (current.preview == null || current.visualReferenceUri == null || current.trashInProgress ||
             current.preparingConfirmation) return
         _state.value = current.copy(comparisonCleanup = enabled, comparisonError = null)
     }
 
     fun trashFromComparison(uri: String, fromCleanupGesture: Boolean = false) {
         val current = _state.value
-        val pair = current.visualComparison ?: return
+        if (current.visualReferenceUri == null || uri !in current.visualSelected) return
         val catalogue = current.catalogue ?: return
         val row = catalogue.rows[uri] ?: return
         val canTrash = if (fromCleanupGesture) {
-            current.preview != null && current.comparisonCleanup && uri in current.visualSelected
-        } else current.preview == null && (uri == pair.first || uri == pair.second)
+            current.preview != null && current.comparisonCleanup
+        } else current.preview == null
         if (!canTrash || current.tab != DuplicateTab.VISUAL || current.trashInProgress || current.preparingConfirmation ||
             row.kind != MediaKind.IMAGE.name) return
         if (uri in catalogue.review.protectedUris) {
@@ -262,7 +264,8 @@ internal class DuplicateSearchController(
             return
         }
 
-        _state.value = current.copy(trashInProgress = true, comparisonError = null)
+        verificationJob?.cancel()
+        _state.value = current.copy(trashInProgress = true, visualChecking = null, comparisonError = null)
         scope.launch {
             try {
                 trashComparedImage(row)
@@ -289,13 +292,11 @@ internal class DuplicateSearchController(
         val visualGroups = current.visualGroups?.mapNotNull { it.retaining(updated.rows.keys) }
         val expanded = visualGroups?.firstOrNull { it.key == current.expandedVisualGroup }
         val visualSelected = current.visualSelected - moved
-        val comparison = current.visualComparison?.takeIf { visualSelected.size >= 2 }?.let { (first, second) ->
-            val right = second.takeIf { it in visualSelected }
-            val left = first.takeIf { it in visualSelected } ?: visualSelected.first { it != right }
-            left to (right ?: visualSelected.first { it != left })
+        val reference = current.visualReferenceUri?.takeIf { visualSelected.size >= 2 }?.let { uri ->
+            uri.takeIf { it in visualSelected } ?: visualSelected.first()
         }
         val closePreview = current.preview?.uriKey in moved ||
-            (current.visualComparison != null && current.visualSelected.any { it in moved })
+            (current.visualReferenceUri != null && current.visualSelected.any { it in moved })
         _state.value = current.copy(
             catalogue = updated,
             group = current.group?.let { updated.cardsByHash[it.sha256] },
@@ -304,7 +305,7 @@ internal class DuplicateSearchController(
             preview = current.preview.takeUnless { closePreview },
             expandedVisualGroup = expanded?.key,
             visualSelected = if (expanded == null) emptySet() else visualSelected,
-            visualComparison = comparison,
+            visualReferenceUri = reference,
             comparisonCleanup = current.comparisonCleanup && !closePreview,
             visualGroups = visualGroups,
             visualStatuses = current.visualStatuses.filterKeys { it.first !in moved && it.second !in moved },
@@ -336,52 +337,58 @@ internal class DuplicateSearchController(
         val current = _state.value
         if (current.tab != DuplicateTab.VISUAL || current.preview != null || current.trashInProgress ||
             current.visualSelected.size < 2) return
-        val (first, second) = current.visualSelected.take(2)
-        _state.value = current.copy(visualComparison = first to second)
+        _state.value = current.copy(visualReferenceUri = current.visualSelected.first())
     }
 
-    fun chooseComparisonImage(column: ComparisonColumn, uri: String) {
+    fun chooseVisualReference(uri: String) {
         val current = _state.value
-        val (left, right) = current.visualComparison ?: return
-        if (current.preview != null || current.trashInProgress || uri !in current.visualSelected) return
-        val pair = when (column) {
-            ComparisonColumn.LEFT -> uri to right
-            ComparisonColumn.RIGHT -> left to uri
-        }
-        if (pair.first != pair.second) _state.value = current.copy(visualComparison = pair)
+        if (current.visualReferenceUri == null || current.preview != null || current.trashInProgress ||
+            current.visualChecking != null || uri !in current.visualSelected) return
+        _state.value = current.copy(visualReferenceUri = uri)
     }
 
     fun closeVisualComparison() {
-        _state.value = _state.value.copy(visualComparison = null)
+        cancelVisualCheck()
+        _state.value = _state.value.copy(visualReferenceUri = null)
+    }
+
+    fun cancelVisualCheck() {
+        verificationJob?.cancel()
+        _state.value = _state.value.copy(visualChecking = null)
     }
 
     fun checkVisual() {
         val current = _state.value
-        val pair = current.visualComparison ?: return
+        val referenceUri = current.visualReferenceUri ?: return
         if (current.visualChecking != null || current.preview != null || current.trashInProgress) return
         val rows = current.catalogue?.rows ?: return
-        val first = rows[pair.first] ?: return
-        val second = rows[pair.second] ?: return
-        _state.value = current.copy(visualChecking = pair)
+        val reference = rows[referenceUri] ?: return
+        val targets = current.visualSelected.filter { it != referenceUri }.mapNotNull(rows::get)
+        if (targets.isEmpty()) return
+        _state.value = current.copy(visualChecking = VisualCheckProgress(0, targets.size))
         verificationJob = scope.launch {
-            val label = try {
-                when (withContext(Dispatchers.IO) { verifyVisual(first, second) }) {
-                    VisualDuplicatePixelVerification.Result.EXACT_PIXELS -> "Подтверждено · пиксели совпадают"
-                    VisualDuplicatePixelVerification.Result.EXACT_CROP -> "Подтверждено · точное кадрирование"
-                    VisualDuplicatePixelVerification.Result.EXACT_INTEGER_RESIZE -> "Подтверждено · точное масштабирование"
-                    else -> "Не подтверждено"
-                }
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (_: Exception) {
-                "Не подтверждено · исходный файл недоступен"
+            val statuses = mutableMapOf<Pair<String, String>, String>()
+            targets.forEachIndexed { index, target ->
+                statuses[referenceUri to target.uri] = verifyVisualPair(reference, target)
+                ensureActive()
+                _state.value = _state.value.copy(visualChecking = VisualCheckProgress(index + 1, targets.size))
             }
             val latest = _state.value
-            val rowsStillAvailable = latest.catalogue?.rows.orEmpty()
-            val statuses = if (pair.first in rowsStillAvailable && pair.second in rowsStillAvailable)
-                latest.visualStatuses + (pair to label) else latest.visualStatuses
-            _state.value = latest.copy(visualChecking = null, visualStatuses = statuses)
+            _state.value = latest.copy(visualChecking = null, visualStatuses = latest.visualStatuses + statuses)
         }
+    }
+
+    private suspend fun verifyVisualPair(reference: CatalogMediaRow, target: CatalogMediaRow): String = try {
+        when (withContext(Dispatchers.IO) { verifyVisual(reference, target) }) {
+            VisualDuplicatePixelVerification.Result.EXACT_PIXELS -> "Подтверждено · пиксели совпадают"
+            VisualDuplicatePixelVerification.Result.EXACT_CROP -> "Подтверждено · точное кадрирование"
+            VisualDuplicatePixelVerification.Result.EXACT_INTEGER_RESIZE -> "Подтверждено · точное масштабирование"
+            else -> "Не подтверждено"
+        }
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: Exception) {
+        "Не подтверждено · исходный файл недоступен"
     }
 
     fun requestConfirmation() {
