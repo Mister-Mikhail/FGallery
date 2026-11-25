@@ -1,6 +1,8 @@
 package com.mistermikhail.fgallery.ui
 
 import android.app.Application
+import android.net.Uri
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
@@ -11,6 +13,7 @@ import com.mistermikhail.fgallery.data.DuplicateSearchInput
 import com.mistermikhail.fgallery.data.VisualDuplicateSourceVerification
 import com.mistermikhail.fgallery.data.DriveLibrary
 import com.mistermikhail.fgallery.data.DriveRecycleBin
+import com.mistermikhail.fgallery.data.RecycleBinNotifications
 import com.mistermikhail.fgallery.data.DocumentLibrary
 import com.mistermikhail.fgallery.data.AppSettingsRepository
 import com.mistermikhail.fgallery.data.MediaItem
@@ -27,12 +30,14 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.updateAndGet
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.withContext
+import java.util.concurrent.ConcurrentHashMap
 
 /** Album date is the latest timestamp of a contained file, not the folder mtime. */
 internal fun albumFileTimestamp(capturedOrCreated: Long, modified: Long): Long =
@@ -84,6 +89,8 @@ data class GalleryUiState(
 
 class GalleryViewModel(application: Application, private val savedStateHandle: SavedStateHandle) : AndroidViewModel(application) {
     private val driveBin = DriveRecycleBin(application)
+    private val binNotifications = RecycleBinNotifications(application)
+    private val pendingBinIndexMoves = ConcurrentHashMap<String, MediaItem>()
     private var lastJsonBackupMillis: Long = 0L
     private var thumbnailJob: kotlinx.coroutines.Job? = null
     private var albumWarmJob: kotlinx.coroutines.Job? = null
@@ -91,6 +98,8 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
     private var fingerprintJob: kotlinx.coroutines.Job? = null
     @Volatile private var duplicateSearchActive = false
     private var libraryChangedDuringDuplicateSearch = false
+    private val activeBinMoves = MutableStateFlow(0)
+    private var libraryChangedDuringBinMove = false
     @Volatile private var lastCatalogueScanSucceeded: Boolean? = null
 
     internal val duplicateSearch by lazy {
@@ -122,15 +131,31 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
     }
 
     internal fun onObservedLibraryChange() {
-        if (duplicateSearchActive) libraryChangedDuringDuplicateSearch = true else refresh()
+        when {
+            activeBinMoves.value > 0 -> libraryChangedDuringBinMove = true
+            duplicateSearchActive -> libraryChangedDuringDuplicateSearch = true
+            else -> refresh()
+        }
     }
+
+    internal suspend fun isOwnRecycleBinMediaChange(uri: Uri, flags: Int): Boolean =
+        binNotifications.isOwnMediaChange(uri, flags)
+
+    internal suspend fun awaitRecycleBinMoves() {
+        activeBinMoves.first { it == 0 }
+    }
+
+    internal fun isOwnRecycleBinFileChange(folder: String, event: Int, path: String?): Boolean =
+        binNotifications.isOwnFileChange(folder, event, path)
 
     private suspend fun loadDuplicateSearch(
         force: Boolean,
         progress: (String) -> Unit,
     ): DuplicateSearchInput {
         progress("Сканируем доступные носители…")
-        if (force || refreshJob == null) refresh(forceFull = force)
+        if (force || refreshJob == null || (lastCatalogueScanSucceeded != true && refreshJob?.isActive == false)) {
+            refresh(forceFull = force)
+        }
         while (true) {
             val current = refreshJob ?: break
             current.join()
@@ -139,7 +164,12 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
         check(lastCatalogueScanSucceeded == true) { "Не удалось обновить каталог носителей. Повторите поиск." }
         fingerprintJob?.cancelAndJoin()
         val context = getApplication<Application>()
-        val input = CatalogStore.duplicateSearchInput(context, _uiState.value.hasPermission)
+        flushPendingBinIndexMoves()
+        suspend fun searchInput() = CatalogStore.duplicateSearchInput(context, _uiState.value.hasPermission).let { input ->
+            if (pendingBinIndexMoves.isEmpty()) input
+            else input.copy(rows = input.rows.filterNot { pendingBinIndexMoves.containsKey(it.uri) })
+        }
+        val input = searchInput()
         if (input.pendingFingerprints == 0) return input
         progress("Файлов в очереди проверки: ${input.pendingFingerprints}")
         var batches = 0
@@ -150,10 +180,11 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
             batches++
             if (batches % 4 == 0) progress("Проверяем точные копии · обработано пакетов: $batches")
         }
-        return CatalogStore.duplicateSearchInput(context, _uiState.value.hasPermission)
+        return searchInput()
     }
 
     internal fun onDuplicateStorageChanged() {
+        binNotifications.clear()
         if (duplicateSearchActive) duplicateSearch.refresh(force = false)
     }
 
@@ -589,18 +620,9 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
         items: List<MediaItem>,
         verifyBeforeMove: suspend (MediaItem) -> Boolean,
     ) {
-        try {
-            driveBin.trashWithPreMoveCheck(items, verifyBeforeMove = verifyBeforeMove)
-            // The move completed; drop the original identities from Room now.
-            // A catalogue write failure must never undo or misreport a physical move.
-            runCatching { CatalogStore.removeUris(getApplication(), items.mapTo(hashSetOf()) { it.uriKey }) }
-            kotlinx.coroutines.withContext(Dispatchers.Main) {
-                refreshJob?.cancel()
-                val removed = items.mapTo(hashSetOf()) { it.uriKey }
-                _uiState.update { derive(it.copy(allItems = it.allItems.filterNot { item -> item.uriKey in removed })) }
-                LibrarySnapshot.removeItems(removed)
-            }
-        } finally { refresh() }
+        moveBinBatch { onMoved ->
+            driveBin.trashWithPreMoveCheck(items, onMoved = onMoved, verifyBeforeMove = verifyBeforeMove)
+        }
     }
 
     private suspend fun checkedComparisonTrashSha256(
@@ -613,7 +635,7 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
         comparisonTrashSha256(context, row, item, latest) { jobContext.ensureActive() }
     }
 
-    private suspend fun trashVisualDuplicates(rows: List<CatalogMediaRow>): Set<String> = moveDuplicateBatch { onMoved ->
+    private suspend fun trashVisualDuplicates(rows: List<CatalogMediaRow>): Set<String> = moveBinBatch { onMoved ->
         val rowsByUri = rows.associateBy { it.uri }
         val items = rows.map { row ->
             checkNotNull(row.toDuplicateMediaItem()) { "Исходный файл недоступен: ${row.name}" }
@@ -633,43 +655,53 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
 
     internal suspend fun trashConfirmedExactDuplicates(
         reviewed: com.mistermikhail.fgallery.data.ExactDuplicateReview,
-    ): Set<String> = moveDuplicateBatch { onMoved ->
+    ): Set<String> = moveBinBatch { onMoved ->
         val context = getApplication<Application>()
         driveBin.trashExactDuplicateBatch(
             context,
             reviewed,
-            catalogue = { CatalogStore.exactDuplicateReviewRows(context) },
-            rowsBySize = { CatalogStore.duplicateRowsBySize(context, it) },
+            rowsBySizes = { CatalogStore.duplicateRowsBySizes(context, it) },
+            movePair = { copy, keeper -> CatalogStore.duplicateMovePair(context, copy, keeper) },
             mediaItem = { row -> checkNotNull(row.toDuplicateMediaItem()).copy(kind = MediaKind.valueOf(row.kind)) },
             onMoved = onMoved,
         )
     }
 
-    private suspend fun moveDuplicateBatch(
+    private suspend fun moveBinBatch(
         move: suspend ((MediaItem, MediaItem) -> Unit) -> Unit,
-    ): Set<String> {
+    ): Set<String> = withContext(Dispatchers.Main.immediate) {
         val completed = linkedMapOf<String, MediaItem>()
+        activeBinMoves.value++
         try {
-            move { source, destination -> completed[source.uriKey] = destination }
+            move { source, destination ->
+                completed[source.uriKey] = destination
+                binNotifications.record(source, destination)
+            }
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
             throw cancelled
         } catch (failure: Exception) {
             throw DuplicateTrashInterrupted(completed.keys.toSet(), failure)
         } finally {
-            if (completed.isNotEmpty()) withContext(NonCancellable) { recordDuplicateMoves(completed) }
+            withContext(NonCancellable) {
+                try {
+                    if (completed.isNotEmpty()) recordBinMoves(completed)
+                } finally {
+                    activeBinMoves.value--
+                    if (activeBinMoves.value == 0 && libraryChangedDuringBinMove) {
+                        libraryChangedDuringBinMove = false
+                        onObservedLibraryChange()
+                    }
+                }
+            }
         }
-        return completed.keys.toSet()
+        completed.keys.toSet()
     }
 
-    private suspend fun recordDuplicateMoves(moved: Map<String, MediaItem>) {
+    private suspend fun recordBinMoves(moved: Map<String, MediaItem>) {
         // A scan started before these physical moves must not overwrite the catalogue update.
         refreshJob?.cancelAndJoin()
-        val stored = try {
-            CatalogStore.recordRecycleBinMoves(getApplication(), moved)
-            true
-        } catch (_: Exception) {
-            false
-        }
+        pendingBinIndexMoves.putAll(moved)
+        flushPendingBinIndexMoves()
         withContext(Dispatchers.Default) {
             val binUris = moved.values.mapTo(hashSetOf()) { it.uriKey }
             val current = _uiState.updateAndGet { current ->
@@ -680,12 +712,26 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
             }
             LibrarySnapshot.remember(LibrarySnapshot.Value(current.allItems, current.physicalBinUris, current.hasPermission))
         }
-        if (!stored) withContext(Dispatchers.Main) { refresh() }
+    }
+
+    private suspend fun flushPendingBinIndexMoves() {
+        val pending = pendingBinIndexMoves.toMap()
+        if (pending.isEmpty()) return
+        try {
+            CatalogStore.recordRecycleBinMoves(getApplication(), pending)
+            pending.forEach { (source, destination) -> pendingBinIndexMoves.remove(source, destination) }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            Log.w("FGallery", "Could not apply recycle-bin changes to Room", failure)
+        }
     }
 
     suspend fun restoreFromRecycleBin(items: List<MediaItem>) {
         try {
             driveBin.restore(items)
+            val restored = items.mapTo(hashSetOf()) { it.uriKey }
+            pendingBinIndexMoves.entries.removeIf { it.value.uriKey in restored }
             // A successful restore changes the URI identity. Remove the old
             // bin entry immediately; refresh() will index the restored URI.
             // Never delete the catalogue entry before the physical move succeeds.
@@ -699,6 +745,7 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
     fun onPermanentlyDeleted(uris: Collection<String>) {
         viewModelScope.launch {
             driveBin.deleted(uris)
+            pendingBinIndexMoves.entries.removeIf { it.value.uriKey in uris }
             settingsRepository.removeFromRecycleBin(uris)
             runCatching { CatalogStore.removeUris(getApplication(), uris.toSet()) }
             refresh()

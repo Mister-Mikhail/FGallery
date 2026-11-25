@@ -1,6 +1,7 @@
 package com.mistermikhail.fgallery.data
 
 import android.content.Context
+import android.media.MediaScannerConnection
 import android.net.Uri
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -82,60 +83,70 @@ class DriveRecycleBin(private val context: Context, private val mounted: () -> L
         onMoved: (source: MediaItem, destination: MediaItem) -> Unit = { _, _ -> },
         verifyBeforeMove: suspend (MediaItem) -> Boolean,
     ): List<MediaItem> = withContext(Dispatchers.IO) {
-        lock.withLock {
-            // Fail the entire proposed batch before the first mutation if any
-            // selected file is already missing, changed or inaccessible.
-            // The per-item check below is still required because SAF/MediaStore
-            // content may change between this preflight and the actual move.
-            check(preflightDuplicateTrash(items, verifyPreflight ?: verifyBeforeMove, { it.uriKey }, { item ->
-                item.sourcePath.takeIf { it.isNotBlank() }
-            })) {
-                "Повторная проверка выбранных файлов не пройдена"
+        val removedPaths = linkedSetOf<String>()
+        try {
+            lock.withLock {
+                // Fail the entire proposed batch before the first mutation if any
+                // selected file is already missing, changed or inaccessible.
+                // The per-item check below is still required because SAF/MediaStore
+                // content may change between this preflight and the actual move.
+                check(preflightDuplicateTrash(items, verifyPreflight ?: verifyBeforeMove, { it.uriKey }, { item ->
+                    item.sourcePath.takeIf { it.isNotBlank() }
+                })) {
+                    "Повторная проверка выбранных файлов не пройдена"
+                }
+                val binFolders = mutableMapOf<String, String>()
+                items.map { item ->
+                    val source = StorageAccess.file(context, item)
+                    val root = mounted().firstOrNull { source != null && source.path.startsWith(it.directory!!.path + "/") }
+                    val grant = granted().filter { it.id == item.storageId }.firstOrNull { candidate ->
+                        runCatching {
+                            val base = android.provider.DocumentsContract.getDocumentId(Uri.parse(candidate.target)).trimEnd('/')
+                            val sourceId = if (source != null && root != null) {
+                                val prefix = if (root.id == "external_primary") "primary" else root.directory!!.name
+                                "$prefix:${source.relativeTo(root.directory!!).invariantSeparatorsPath}"
+                            } else android.provider.DocumentsContract.getDocumentId(item.uri)
+                            sourceId == base || sourceId.startsWith("$base/") || (base.endsWith(':') && sourceId.startsWith(base))
+                        }.getOrDefault(false)
+                    }
+                    val target = root?.directory?.takeIf { it.canWrite() }?.path ?: grant?.target ?: error("Нет доступа к накопителю ${item.storageName}")
+                    val folder = binFolders.getOrPut(target) { StorageAccess.directory(context, target, StorageAccess.BIN) }
+                    val token = UUID.randomUUID().toString()
+                    val record = metadata(item, token, folder, StorageAccess.parent(context, item))
+                    write(record) // Journal before moving: an interruption cannot lose the original location.
+                    val sidecarName = "$token.fgallery.json"
+                    val sidecar = StorageAccess.create(context, folder, sidecarName, "application/json")
+                    var destinationWritten = false
+                    try {
+                        context.contentResolver.openOutputStream(sidecar, "w")!!.use { output ->
+                            output.write(record.toString().toByteArray(Charsets.UTF_8)); output.flush()
+                            if (output is java.io.FileOutputStream) output.fd.sync()
+                        }
+                        check(verifyBeforeMove(item)) {
+                            "Повторная проверка SHA-256 не пройдена: ${item.name}"
+                        }
+                        kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                        val moved = StorageAccess.move(context, item, folder, "${token}_${item.name}", scanMedia = false)
+                        destinationWritten = true
+                        source?.path?.let(removedPaths::add)
+                        val movedItem = item(record, moved)
+                        onMoved(item, movedItem)
+                        write(record.apply { put("lastUri", moved.toString()) })
+                        movedItem
+                    } catch (e: Exception) {
+                        if (!destinationWritten && uri(record) == null) {
+                            runCatching { StorageAccess.delete(context, sidecar) }
+                            forget(token)
+                        }
+                        throw e
+                    }
+                }
             }
-            val binFolders = mutableMapOf<String, String>()
-            items.map { item ->
-                val source = StorageAccess.file(context, item)
-                val root = mounted().firstOrNull { source != null && source.path.startsWith(it.directory!!.path + "/") }
-                val grant = granted().filter { it.id == item.storageId }.firstOrNull { candidate ->
-                    runCatching {
-                        val base = android.provider.DocumentsContract.getDocumentId(Uri.parse(candidate.target)).trimEnd('/')
-                        val sourceId = if (source != null && root != null) {
-                            val prefix = if (root.id == "external_primary") "primary" else root.directory!!.name
-                            "$prefix:${source.relativeTo(root.directory!!).invariantSeparatorsPath}"
-                        } else android.provider.DocumentsContract.getDocumentId(item.uri)
-                        sourceId == base || sourceId.startsWith("$base/") || (base.endsWith(':') && sourceId.startsWith(base))
-                    }.getOrDefault(false)
-                }
-                val target = root?.directory?.takeIf { it.canWrite() }?.path ?: grant?.target ?: error("Нет доступа к накопителю ${item.storageName}")
-                val folder = binFolders.getOrPut(target) { StorageAccess.directory(context, target, StorageAccess.BIN) }
-                val token = UUID.randomUUID().toString()
-                val record = metadata(item, token, folder, StorageAccess.parent(context, item))
-                write(record) // Journal before moving: an interruption cannot lose the original location.
-                val sidecarName = "$token.fgallery.json"
-                val sidecar = StorageAccess.create(context, folder, sidecarName, "application/json")
-                var destinationWritten = false
-                try {
-                    context.contentResolver.openOutputStream(sidecar, "w")!!.use { output ->
-                        output.write(record.toString().toByteArray(Charsets.UTF_8)); output.flush()
-                        if (output is java.io.FileOutputStream) output.fd.sync()
-                    }
-                    check(verifyBeforeMove(item)) {
-                        "Повторная проверка SHA-256 не пройдена: ${item.name}"
-                    }
-                    kotlinx.coroutines.currentCoroutineContext().ensureActive()
-                    val moved = StorageAccess.move(context, item, folder, "${token}_${item.name}")
-                    destinationWritten = true
-                    val movedItem = item(record, moved)
-                    onMoved(item, movedItem)
-                    write(record.apply { put("lastUri", moved.toString()) })
-                    movedItem
-                } catch (e: Exception) {
-                    if (!destinationWritten && uri(record) == null) {
-                        runCatching { StorageAccess.delete(context, sidecar) }
-                        forget(token)
-                    }
-                    throw e
-                }
+        } finally {
+            // Reconcile the old paths in Android's index in one request. The hidden bin
+            // is tracked by our journal and Room, so it never needs media indexing.
+            if (removedPaths.isNotEmpty()) runCatching {
+                MediaScannerConnection.scanFile(context, removedPaths.toTypedArray(), null, null)
             }
         }
     }

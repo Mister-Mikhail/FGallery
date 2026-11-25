@@ -103,7 +103,18 @@ internal object CatalogStore {
         }
 
     suspend fun duplicateRowsBySize(context: Context, sizeBytes: Long): List<CatalogMediaRow> =
-        withContext(Dispatchers.IO) { CatalogDatabase.get(context).catalog().connectedMediaBySize(sizeBytes) }
+        duplicateRowsBySizes(context, setOf(sizeBytes))
+
+    suspend fun duplicateRowsBySizes(context: Context, sizes: Set<Long>): List<CatalogMediaRow> =
+        withContext(Dispatchers.IO) {
+            val dao = CatalogDatabase.get(context).catalog()
+            sizes.chunked(400).flatMap { dao.connectedMediaBySizes(it) }
+        }
+
+    suspend fun duplicateMovePair(context: Context, copyUri: String, keeperUri: String): List<CatalogMediaRow> =
+        withContext(Dispatchers.IO) {
+            CatalogDatabase.get(context).catalog().connectedMediaByUris(listOf(copyUri, keeperUri))
+        }
 
     suspend fun duplicateSearchInput(context: Context, hasMediaPermission: Boolean): DuplicateSearchInput =
         withContext(Dispatchers.IO) {

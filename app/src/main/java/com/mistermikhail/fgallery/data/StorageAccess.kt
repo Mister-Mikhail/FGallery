@@ -148,7 +148,7 @@ object StorageAccess {
                 ?.let { DocumentsContract.buildDocumentUriUsingTree(Uri.parse(it.target), docId) }
     }
 
-    suspend fun move(context: Context, item: MediaItem, parent: String, name: String = item.name): Uri {
+    suspend fun move(context: Context, item: MediaItem, parent: String, name: String = item.name, scanMedia: Boolean = true): Uri {
         val sourceFile = file(context, item)
         val source = if (sourceFile?.exists() == true && sourceFile.canWrite()) Uri.fromFile(sourceFile)
             else sourceFile?.takeIf { it.exists() }?.let { documentForFile(context, it) } ?: item.uri
@@ -165,7 +165,7 @@ object StorageAccess {
             val destination = File(target, resolvedName)
             check(!destination.exists()) { "В папке уже есть $resolvedName" }
             if (runCatching { Files.move(File(source.path!!).toPath(), destination.toPath()); true }.getOrDefault(false)) {
-                MediaScannerConnection.scanFile(context, arrayOf(source.path!!, destination.path), null, null)
+                if (scanMedia) MediaScannerConnection.scanFile(context, arrayOf(source.path!!, destination.path), null, null)
                 return Uri.fromFile(destination)
             }
         }
@@ -210,7 +210,10 @@ object StorageAccess {
             currentCoroutineContext().ensureActive()
             check(delete(context, source)) { "Копия сохранена, но исходник не удалён" }
             sourceDeleted = true
-            MediaScannerConnection.scanFile(context, listOfNotNull(sourceFile?.path, destination.takeIf { it.scheme == "file" }?.path).toTypedArray(), null, null)
+            if (scanMedia) {
+                val paths = listOfNotNull(sourceFile?.path, destination.takeIf { it.scheme == "file" }?.path)
+                MediaScannerConnection.scanFile(context, paths.toTypedArray(), null, null)
+            }
             return destination
         } finally {
             if (!sourceDeleted) runCatching { delete(context, destination) }

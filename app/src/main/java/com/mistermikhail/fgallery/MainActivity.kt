@@ -1053,17 +1053,32 @@ class MainActivity : ComponentActivity() {
         DisposableEffect(Unit) {
             var refreshSignal: kotlinx.coroutines.Job? = null
             var storageChanged = false
-            fun changed(volume: Boolean = false) {
+            var unspecifiedMediaChange = false
+            val mediaChanges = linkedMapOf<Uri, Int>()
+            fun changed(volume: Boolean = false, uris: Collection<Uri> = emptyList(), flags: Int = 0) {
                 storageChanged = storageChanged || volume
+                if (!volume) {
+                    unspecifiedMediaChange = unspecifiedMediaChange || uris.isEmpty()
+                    uris.forEach { mediaChanges[it] = (mediaChanges[it] ?: 0) or flags }
+                }
                 refreshSignal?.cancel()
                 refreshSignal = uiScope.launch {
                     kotlinx.coroutines.delay(120)
-                    folderRevision++
-                    if (storageChanged) {
+                    if (!storageChanged) viewModel.awaitRecycleBinMoves()
+                    val changedStorage = storageChanged
+                    val externalMediaChange = !changedStorage && (unspecifiedMediaChange ||
+                        mediaChanges.toMap().any { (uri, flag) -> !viewModel.isOwnRecycleBinMediaChange(uri, flag) })
+                    mediaChanges.clear()
+                    unspecifiedMediaChange = false
+                    storageChanged = false
+                    if (changedStorage) {
+                        folderRevision++
                         viewModel.refresh()
                         viewModel.onDuplicateStorageChanged()
-                    } else viewModel.onObservedLibraryChange()
-                    storageChanged = false
+                    } else if (externalMediaChange) {
+                        folderRevision++
+                        viewModel.onObservedLibraryChange()
+                    }
                 }
             }
             val receiver = object : android.content.BroadcastReceiver() {
@@ -1090,6 +1105,10 @@ class MainActivity : ComponentActivity() {
             if (Build.VERSION.SDK_INT >= 30 && callback != null) manager.registerStorageVolumeCallback(mainExecutor, callback)
             val observer = object : android.database.ContentObserver(android.os.Handler(android.os.Looper.getMainLooper())) {
                 override fun onChange(selfChange: Boolean) { changed() }
+                override fun onChange(selfChange: Boolean, uri: Uri?) { changed(uris = listOfNotNull(uri)) }
+                override fun onChange(selfChange: Boolean, uris: Collection<Uri>, flags: Int) {
+                    changed(uris = uris, flags = flags)
+                }
             }
             contentResolver.registerContentObserver(MediaStore.Files.getContentUri("external"), true, observer)
             onDispose { refreshSignal?.cancel(); contentResolver.unregisterContentObserver(observer); unregisterReceiver(receiver); unregisterReceiver(usbReceiver); if (Build.VERSION.SDK_INT >= 30 && callback != null) manager.unregisterStorageVolumeCallback(callback) }
@@ -1121,6 +1140,8 @@ class MainActivity : ComponentActivity() {
         val watchedFolder = state.albums.firstOrNull { it.key == state.selectedAlbum }?.cover?.folderTarget
         DisposableEffect(state.selectedAlbum, watchedFolder) {
             var refreshSignal: kotlinx.coroutines.Job? = null
+            var watching = true
+            val fileChanges = linkedSetOf<Pair<Int, String?>>()
             val watcher = if (watchedFolder?.startsWith("/") == true) {
                 object : android.os.FileObserver(
                     watchedFolder,
@@ -1129,15 +1150,24 @@ class MainActivity : ComponentActivity() {
                         android.os.FileObserver.CLOSE_WRITE,
                 ) {
                     override fun onEvent(event: Int, path: String?) {
-                        refreshSignal?.cancel()
-                        refreshSignal = uiScope.launch {
-                            kotlinx.coroutines.delay(180)
-                            viewModel.onObservedLibraryChange()
+                        uiScope.launch {
+                            if (!watching) return@launch
+                            fileChanges.add(event to path)
+                            refreshSignal?.cancel()
+                            refreshSignal = uiScope.launch {
+                                kotlinx.coroutines.delay(180)
+                                viewModel.awaitRecycleBinMoves()
+                                val externalChange = fileChanges.any { (kind, name) ->
+                                    !viewModel.isOwnRecycleBinFileChange(watchedFolder, kind, name)
+                                }
+                                fileChanges.clear()
+                                if (externalChange) viewModel.onObservedLibraryChange()
+                            }
                         }
                     }
                 }.also { it.startWatching() }
             } else null
-            onDispose { refreshSignal?.cancel(); watcher?.stopWatching() }
+            onDispose { watching = false; refreshSignal?.cancel(); watcher?.stopWatching() }
         }
 
         val current = selectedItem

@@ -8,20 +8,24 @@ import java.io.File
 import kotlin.coroutines.coroutineContext
 
 /**
- * Authorize the whole confirmed batch against a fresh catalogue and live bytes.
- * At each move, the same-size catalogue rows give the current exact group.
+ * Authorize the confirmed batch against the catalogue buckets for its sizes and live bytes.
+ * At each move, retrieve only the copy and the protected original by their URI.
  * Rehash the copy and then its keeper under the bin lock immediately before moving.
  */
 internal suspend fun DriveRecycleBin.trashExactDuplicateBatch(
     context: Context,
     reviewed: ExactDuplicateReview,
-    catalogue: suspend () -> List<CatalogMediaRow>,
-    rowsBySize: suspend (Long) -> List<CatalogMediaRow>,
+    rowsBySizes: suspend (Set<Long>) -> List<CatalogMediaRow>,
+    movePair: suspend (String, String) -> List<CatalogMediaRow>,
     mediaItem: (CatalogMediaRow) -> MediaItem,
     onMoved: (MediaItem, MediaItem) -> Unit,
 ) = withContext(Dispatchers.IO) {
-    val initial = catalogue()
-    val confirmed = verifyCurrentExactDuplicateSelection(context, reviewed, initial, explicitlyConfirmed = true)
+    val sizes = reviewed.groups.filter { group -> group.any { it.uri in reviewed.selectedUris } }
+        .mapTo(hashSetOf()) { it.first().sizeBytes }
+    val affectedGroups = reviewed.groups.filter { it.firstOrNull()?.sizeBytes in sizes }
+    val scopedReview = reviewed.copy(groups = affectedGroups)
+    val initial = rowsBySizes(sizes)
+    val confirmed = verifyCurrentExactDuplicateSelection(context, scopedReview, initial, explicitlyConfirmed = true)
     check(confirmed.isNotEmpty() && confirmed == reviewed.selectedUris) {
         "Файл или каталог дубликатов изменился. Обновите список и подтвердите заново."
     }
@@ -39,8 +43,8 @@ internal suspend fun DriveRecycleBin.trashExactDuplicateBatch(
     trashWithPreMoveCheck(items, verifyPreflight = { it.uriKey in confirmed }, onMoved = onMoved) { item ->
         val copy = rowsByUri.getValue(item.uriKey)
         val keeper = keeperByCopy.getValue(item.uriKey)
-        val latest = rowsBySize(copy.sizeBytes)
-        if (!exactDuplicateMovePairStillValid(reviewed, latest, copy.uri)) return@trashWithPreMoveCheck false
+        val latest = movePair(copy.uri, keeper.uri)
+        if (!exactDuplicateMovePairStillValid(scopedReview, latest, copy.uri)) return@trashWithPreMoveCheck false
         val copyHash = currentDuplicateSha256(context, copy) { jobContext.ensureActive() }
         val keeperHash = currentDuplicateSha256(context, keeper) { jobContext.ensureActive() }
         File(copy.sourcePath).canonicalPath == checkedPaths.getValue(copy.uri) &&

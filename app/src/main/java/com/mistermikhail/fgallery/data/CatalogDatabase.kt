@@ -108,10 +108,16 @@ internal interface CatalogDao {
     suspend fun allMedia(): List<CatalogMediaRow>
 
     @Query("""
-        SELECT * FROM catalog_media WHERE sizeBytes = :size AND recycled = 0
+        SELECT * FROM catalog_media WHERE sizeBytes IN (:sizes) AND recycled = 0
         AND storageId NOT IN (SELECT storageId FROM catalog_volumes WHERE connected = 0)
     """)
-    suspend fun connectedMediaBySize(size: Long): List<CatalogMediaRow>
+    suspend fun connectedMediaBySizes(sizes: List<Long>): List<CatalogMediaRow>
+
+    @Query("""
+        SELECT * FROM catalog_media WHERE uri IN (:uris) AND recycled = 0
+        AND storageId NOT IN (SELECT storageId FROM catalog_volumes WHERE connected = 0)
+    """)
+    suspend fun connectedMediaByUris(uris: List<String>): List<CatalogMediaRow>
 
     /** Query only pending candidates rather than materializing the whole Room
      * catalogue on every idle batch. Do not LIMIT: inaccessible paths at the
