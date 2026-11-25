@@ -141,4 +141,41 @@ class QuarterTurnGestureTest {
         assertEquals(0, gesture.end())
     }
 
+    private fun moveAt(gesture: QuarterTurnGesture, degrees: Double, distance: Double = 1.0): Float {
+        val radians = Math.toRadians(degrees)
+        return gesture.move((distance * kotlin.math.cos(radians)).toFloat(),
+            (distance * kotlin.math.sin(radians)).toFloat())
+    }
+
+    @Test fun pinchJitterIsInvisibleInBothDirections() {
+        val gesture = QuarterTurnGesture()
+        gesture.begin(1f, 0f)
+        for (angle in listOf(-14.9, 12.0, -5.0, 14.9)) {
+            assertEquals(0f, moveAt(gesture, angle, 12.0), 0f)
+        }
+        assertEquals(0, gesture.end())
+    }
+
+    @Test fun previewStartsContinuouslyAndSymmetrically() {
+        for (sign in listOf(-1, 1)) {
+            val gesture = QuarterTurnGesture()
+            gesture.begin(1f, 0f)
+            assertEquals(sign * 0.12f, moveAt(gesture, sign * 15.1), 0.002f)
+            assertEquals(sign * 90f, moveAt(gesture, sign * 90.0), 0.001f)
+            assertEquals(Math.floorMod(sign, 4) * 90, gesture.end())
+        }
+    }
+
+    @Test fun adjustableThresholdIncludesImmediateTrackingAndFiftyDegrees() {
+        val immediate = QuarterTurnGesture(thresholdDegrees = 0)
+        immediate.begin(1f, 0f)
+        assertEquals(-2f, moveAt(immediate, -2.0), 0.001f)
+        val high = QuarterTurnGesture(thresholdDegrees = 50)
+        high.begin(1f, 0f)
+        assertEquals(0f, moveAt(high, 49.0), 0f)
+        assertEquals(0, high.end())
+        high.begin(1f, 0f)
+        assertEquals(90f, moveAt(high, 90.0), 0.001f)
+        assertEquals(90, high.end())
+    }
 }

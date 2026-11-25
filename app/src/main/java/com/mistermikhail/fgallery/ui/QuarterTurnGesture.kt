@@ -8,7 +8,13 @@ import kotlin.math.atan2
  * The preview may follow the fingers, but the committed orientation is always
  * one of 0, 90, 180 or 270 degrees.
  */
-internal class QuarterTurnGesture(initialQuarterTurns: Int = 0) {
+internal class QuarterTurnGesture(initialQuarterTurns: Int = 0, thresholdDegrees: Int = DEFAULT_THRESHOLD) {
+    companion object {
+        const val DEFAULT_THRESHOLD = 15
+        const val MAX_THRESHOLD = 50
+    }
+
+    private val threshold = thresholdDegrees.coerceIn(0, MAX_THRESHOLD)
     var quarterTurns: Int = Math.floorMod(initialQuarterTurns, 4)
         private set
 
@@ -26,27 +32,36 @@ internal class QuarterTurnGesture(initialQuarterTurns: Int = 0) {
         // rather than treating atan2(0, 0) as a real rotation.
         if (!validVector(dx, dy)) {
             lastAngle = null
-            return accumulatedDegrees.toFloat()
+            return previewDegrees().toFloat()
         }
         val current = angle(dx, dy)
         val previous = lastAngle ?: run {
             lastAngle = current
-            return accumulatedDegrees.toFloat()
+            return previewDegrees().toFloat()
         }
         var delta = current - previous
         if (delta > 180.0) delta -= 360.0
         if (delta < -180.0) delta += 360.0
         accumulatedDegrees += delta
         lastAngle = current
-        return accumulatedDegrees.toFloat()
+        return previewDegrees().toFloat()
+    }
+
+    // Start at zero at the edge of the dead zone and catch up continuously by 90°.
+    private fun previewDegrees(): Double {
+        val magnitude = kotlin.math.abs(accumulatedDegrees)
+        if (magnitude <= threshold) return 0.0
+        if (magnitude >= 90.0 || threshold == 0) return accumulatedDegrees
+        return Math.copySign((magnitude - threshold) * 90.0 / (90.0 - threshold), accumulatedDegrees)
     }
 
     /** Snap to the nearest quarter turn, in either direction. */
     fun end(): Int {
-        val steps = if (accumulatedDegrees >= 0) {
-            kotlin.math.floor((accumulatedDegrees + 45.0) / 90.0).toInt()
+        val preview = previewDegrees()
+        val steps = if (preview >= 0) {
+            kotlin.math.floor((preview + 45.0) / 90.0).toInt()
         } else {
-            kotlin.math.ceil((accumulatedDegrees - 45.0) / 90.0).toInt()
+            kotlin.math.ceil((preview - 45.0) / 90.0).toInt()
         }
         quarterTurns = Math.floorMod(quarterTurns + steps, 4)
         cancel()

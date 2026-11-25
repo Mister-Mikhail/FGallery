@@ -821,7 +821,9 @@ internal fun TiledZoomableImage(
 
     // Rotation is display-only and scoped to this media item. Observe at Final pass
     // without consuming events so Telephoto retains pinch zoom and pan.
-    val quarterTurnGesture = remember(item.uriKey) { QuarterTurnGesture() }
+    val quarterTurnGesture = remember(item.uriKey, context) {
+        QuarterTurnGesture(thresholdDegrees = rotationThresholdPreferences(context).rotationThreshold())
+    }
     var displayRotation by remember(item.uriKey) { mutableFloatStateOf(0f) }
     var rotationGestureActive by remember(item.uriKey) { mutableStateOf(false) }
     val animatedRotation by animateFloatAsState(

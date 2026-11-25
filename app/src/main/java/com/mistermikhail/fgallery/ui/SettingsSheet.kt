@@ -1,5 +1,11 @@
 package com.mistermikhail.fgallery.ui
 
+import android.content.Context
+import android.content.SharedPreferences
+import kotlin.math.roundToInt
+import androidx.compose.material3.Slider
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -34,6 +40,14 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+
+private const val ROTATION_THRESHOLD_KEY = "viewer_rotation_threshold_degrees"
+
+internal fun rotationThresholdPreferences(context: Context): SharedPreferences =
+    context.getSharedPreferences("fgallery_settings", Context.MODE_PRIVATE)
+
+internal fun SharedPreferences.rotationThreshold(): Int =
+    getInt(ROTATION_THRESHOLD_KEY, QuarterTurnGesture.DEFAULT_THRESHOLD).coerceIn(0, QuarterTurnGesture.MAX_THRESHOLD)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -111,6 +125,20 @@ fun SettingsSheet(
                     modifier = Modifier.graphicsLayer { scaleX = 0.82f; scaleY = 0.82f },
                 )
             }
+
+            val gesturePrefs = remember(context) { rotationThresholdPreferences(context) }
+            var rotationThreshold by remember { mutableIntStateOf(gesturePrefs.rotationThreshold()) }
+            Text("Порог поворота фото · ${rotationThreshold}°", style = MaterialTheme.typography.bodyLarge)
+            Text("Насколько нужно повернуть два пальца, чтобы фото начало вращаться.",
+                style = MaterialTheme.typography.bodySmall)
+            Slider(
+                value = rotationThreshold.toFloat(),
+                onValueChange = { rotationThreshold = it.roundToInt() },
+                onValueChangeFinished = { gesturePrefs.edit().putInt(ROTATION_THRESHOLD_KEY, rotationThreshold).apply() },
+                valueRange = 0f..QuarterTurnGesture.MAX_THRESHOLD.toFloat(),
+                steps = QuarterTurnGesture.MAX_THRESHOLD - 1,
+                modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Порог поворота фото" },
+            )
 
             var accessExpanded by remember { mutableStateOf(false) }
             Row(
