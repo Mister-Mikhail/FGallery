@@ -30,6 +30,10 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import com.mistermikhail.fgallery.ui.LocalViewerTiles
+import com.mistermikhail.fgallery.ui.ViewerTiles
+import com.mistermikhail.fgallery.ui.TileViewerFrame
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -135,7 +139,9 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         if (intent?.action == Intent.ACTION_VIEW) externalViewUri.value = intent?.data
         setContent {
-            FGalleryTheme { FGalleryRoot(viewModel) }
+            FGalleryTheme {
+                CompositionLocalProvider(LocalViewerTiles provides remember { ViewerTiles() }) { FGalleryRoot(viewModel) }
+            }
         }
     }
 
@@ -1138,6 +1144,7 @@ class MainActivity : ComponentActivity() {
             onDispose { refreshSignal?.cancel(); watcher?.stopWatching() }
         }
 
+        val viewerTiles = LocalViewerTiles.current
         val current = selectedItem
 
         // Heavy RAW decoding in the viewer must not compete with background
@@ -1277,6 +1284,7 @@ class MainActivity : ComponentActivity() {
                         viewModel.closeAlbum()
                     },
                     onOpenMedia = {
+                        viewerTiles.followUri = it.uriKey
                         selectedIds = emptySet()
                         selectedItem = it; savedViewerUri = it.uriKey
                     },
@@ -1348,54 +1356,43 @@ class MainActivity : ComponentActivity() {
                 targetState = current,
                 modifier = Modifier.fillMaxSize(),
                 transitionSpec = {
-                    if (targetState != null) {
-                        (
-                            fadeIn(animationSpec = tween(150)) +
-                                scaleIn(
-                                    animationSpec = tween(220),
-                                    initialScale = 0.96f,
-                                )
-                            ) togetherWith fadeOut(animationSpec = tween(90))
-                    } else {
-                        fadeIn(animationSpec = tween(90)) togetherWith
-                            (
-                                fadeOut(animationSpec = tween(180)) +
-                                    scaleOut(
-                                        animationSpec = tween(210),
-                                        targetScale = 0.96f,
-                                    )
-                                )
-                    }
+                    fadeIn(animationSpec = tween(180)) togetherWith fadeOut(animationSpec = tween(200))
                 },
                 contentKey = { item -> if (item == null) "gallery" else "viewer" },
                 label = "media-viewer-transition",
             ) { animatedItem ->
                 if (animatedItem != null) {
-                    ViewerScreen(
-                        items = (if (state.recycleBinVisible) state.recycleBinItems else state.visibleItems).let { items ->
-                            if (items.any { it.uriKey == animatedItem.uriKey }) items else listOf(animatedItem)
-                        },
-                        initialItem = animatedItem,
-                        onVisibleItemChanged = { savedViewerUri = it.uriKey },
-                        onBack = { selectedItem = null; savedViewerUri = null },
-                        active = videoCropItem == null && !operationBusy,
-                        onTrash = { requestTrash(listOf(it), keepViewerOpen = true) },
-                        onRestore = { restoreFromRecycleBin(listOf(it)) },
-                        editedPreviewUri = cropPreview?.takeIf { it.first == animatedItem.uriKey }?.second,
-                        zoomSecondPower = zoomSecondPower,
-                        quickExifEnabled = state.quickExifEnabled,
-                        cleanupMode = cleanupMode,
-                        onShare = ::shareMedia,
-                        onCrop = ::cropMedia,
-                        onRename = { item, name ->
-                            requestWrite(PendingWriteOperation.Rename(item, name))
-                        },
-                        onMove = { item ->
-                            beginMove(listOf(item))
-                        },
-                        deletingItemUri = deletingItemUri,
-                        recycleBinMode = state.recycleBinVisible,
-                    )
+                    DisposableEffect(Unit) { onDispose { viewerTiles.followUri = null } }
+                    TileViewerFrame(transition) {
+                        ViewerScreen(
+                            items = (if (state.recycleBinVisible) state.recycleBinItems else state.visibleItems).let { items ->
+                                if (items.any { it.uriKey == animatedItem.uriKey }) items else listOf(animatedItem)
+                            },
+                            initialItem = animatedItem,
+                            onVisibleItemChanged = {
+                                savedViewerUri = it.uriKey
+                                if (viewerTiles.followUri != null) viewerTiles.followUri = it.uriKey
+                            },
+                            onBack = { selectedItem = null; savedViewerUri = null },
+                            active = videoCropItem == null && !operationBusy,
+                            onTrash = { requestTrash(listOf(it), keepViewerOpen = true) },
+                            onRestore = { restoreFromRecycleBin(listOf(it)) },
+                            editedPreviewUri = cropPreview?.takeIf { it.first == animatedItem.uriKey }?.second,
+                            zoomSecondPower = zoomSecondPower,
+                            quickExifEnabled = state.quickExifEnabled,
+                            cleanupMode = cleanupMode,
+                            onShare = ::shareMedia,
+                            onCrop = ::cropMedia,
+                            onRename = { item, name ->
+                                requestWrite(PendingWriteOperation.Rename(item, name))
+                            },
+                            onMove = { item ->
+                                beginMove(listOf(item))
+                            },
+                            deletingItemUri = deletingItemUri,
+                            recycleBinMode = state.recycleBinVisible,
+                        )
+                    }
                 }
             }
         }
