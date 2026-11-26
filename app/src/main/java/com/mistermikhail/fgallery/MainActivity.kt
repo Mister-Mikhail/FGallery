@@ -1342,7 +1342,7 @@ class MainActivity : ComponentActivity() {
                     },
                     onConfirmMoveChanged = viewModel::setConfirmMove,
                     onConfirmRenameChanged = viewModel::setConfirmRename,
-                    livePreviewEnabled = current == null && pendingMoveItems.isEmpty(),
+                    livePreviewEnabled = current == null && viewerTiles.followUri == null && pendingMoveItems.isEmpty(),
                     onOpenExactDuplicates = {
                         selectedIds = emptySet()
                         duplicateReviewOpen = true

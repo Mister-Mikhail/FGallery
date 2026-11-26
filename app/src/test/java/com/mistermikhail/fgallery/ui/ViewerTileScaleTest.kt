@@ -15,4 +15,9 @@ class ViewerTileScaleTest {
     @Test fun comparisonThumbnailFitsWholePhotoInsideSquare() {
         assertEquals(0.25f, viewerTileScale(400f, 800f, 100f, 100f, 2f, fit = true), 0.0001f)
     }
+    @Test fun closingHandsOffToTheRealGridBeforeTheViewerIsRemoved() {
+        assertEquals(1f, closingViewerOpacity(.3f), 0f)
+        assertEquals(.5f, closingViewerOpacity(.1f), .0001f)
+        assertEquals(0f, closingViewerOpacity(0f), 0f)
+    }
 }
