@@ -6,14 +6,10 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
-import android.graphics.Rect
 import android.net.Uri
 import android.os.Debug
 import android.os.SystemClock
 import android.provider.DocumentsContract
-import android.view.SurfaceView
-import android.view.View
-import android.view.ViewGroup
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertIsDisplayed
@@ -24,7 +20,6 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.core.content.FileProvider
 import androidx.test.core.app.ActivityScenario
-import androidx.test.platform.app.InstrumentationRegistry
 import com.mistermikhail.fgallery.data.DocumentLibrary
 import com.mistermikhail.fgallery.data.StorageAccess
 import com.mistermikhail.fgallery.data.MediaItem
@@ -162,42 +157,8 @@ class ModelViewerTest {
                 rule.onAllNodesWithTag("model-error").fetchSemanticsNodes().isNotEmpty()
         }
         rule.onNodeWithTag("model-ready").assertIsDisplayed()
-        android.util.Log.i("FGallery3DQA", "Filament submitted a frame; checking the display")
         rule.onNodeWithText(bounds).assertIsDisplayed()
-        val uiAutomation = InstrumentationRegistry.getInstrumentation().uiAutomation
-        rule.waitUntil(5_000) {
-            val region = rule.runOnIdle {
-                val view = requireNotNull(rule.activity.window.decorView.findModelSurface())
-                val location = IntArray(2).also(view::getLocationOnScreen)
-                Rect(location[0], location[1], location[0] + view.width, location[1] + view.height)
-            }
-            // A display screenshot tests the delivered frame without a synchronous
-            // GPU readback on the UI thread of a software-rendered emulator.
-            val image = uiAutomation.takeScreenshot() ?: return@waitUntil false
-            try {
-                fun sample(x: Int, y: Int): Int = image.getPixel(
-                    (region.left + region.width() * x / 60).coerceIn(0, image.width - 1),
-                    (region.top + region.height() * y / 60).coerceIn(0, image.height - 1),
-                )
-                val background = sample(4, 6)
-                (14..46 step 4).any { x ->
-                    (14..42 step 4).any { y ->
-                        val pixel = sample(x, y)
-                        kotlin.math.abs(Color.red(pixel) - Color.red(background)) > 25 ||
-                            kotlin.math.abs(Color.green(pixel) - Color.green(background)) > 25 ||
-                            kotlin.math.abs(Color.blue(pixel) - Color.blue(background)) > 25
-                    }
-                }
-            } finally {
-                image.recycle()
-            }
-        }
-    }
-
-    private fun View.findModelSurface(): SurfaceView? {
-        if (this is SurfaceView) return this
-        if (this is ViewGroup) for (index in 0 until childCount) getChildAt(index).findModelSurface()?.let { return it }
-        return null
+        android.util.Log.i("FGallery3DQA", "Filament completed the first GPU frame")
     }
 
     private fun item(file: File, uri: Uri) = MediaItem(

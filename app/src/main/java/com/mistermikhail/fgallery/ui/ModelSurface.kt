@@ -181,6 +181,8 @@ private class RenderSession(
         view.renderer.render(view.view)
         view.renderer.endFrame()
         if (firstFrame) {
+            // Confirm the first frame on the GPU from the render thread.
+            check(engine?.flushAndWait(2_000_000_000L) == true) { "First model frame timed out" }
             firstFrame = false
             onFrame(checkNotNull(view.dimensions))
             // Render once more after the initial uploads reach the swap chain.
