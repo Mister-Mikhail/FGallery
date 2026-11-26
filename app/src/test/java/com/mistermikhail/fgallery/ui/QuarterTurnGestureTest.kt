@@ -178,4 +178,19 @@ class QuarterTurnGestureTest {
         assertEquals(90f, moveAt(high, 90.0), 0.001f)
         assertEquals(90, high.end())
     }
+    @Test fun reversalAfterActivationTracksEveryDegreeThroughTheStartingAngle() {
+        for (sign in listOf(-1, 1)) {
+            val gesture = QuarterTurnGesture()
+            gesture.begin(1f, 0f)
+            var previous = moveAt(gesture, sign * 35.0)
+            for (angle in 34 downTo -30) {
+                val next = moveAt(gesture, sign * angle.toDouble())
+                assertEquals(-sign.toFloat(), next - previous, 0.001f)
+                previous = next
+            }
+            gesture.end()
+            gesture.begin(1f, 0f)
+            assertEquals(0f, moveAt(gesture, sign * 10.0), 0f)
+        }
+    }
 }

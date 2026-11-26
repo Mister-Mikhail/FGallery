@@ -21,9 +21,12 @@ internal class QuarterTurnGesture(initialQuarterTurns: Int = 0, thresholdDegrees
     private var lastAngle: Double? = null
     private var accumulatedDegrees = 0.0
 
+    private var remainingOffset: Double? = null
+
     fun begin(dx: Float, dy: Float) {
         lastAngle = if (validVector(dx, dy)) angle(dx, dy) else null
         accumulatedDegrees = 0.0
+        remainingOffset = null
     }
 
     /** Returns transient rotation in degrees relative to the last committed quarter-turn. */
@@ -43,16 +46,26 @@ internal class QuarterTurnGesture(initialQuarterTurns: Int = 0, thresholdDegrees
         if (delta > 180.0) delta -= 360.0
         if (delta < -180.0) delta += 360.0
         accumulatedDegrees += delta
+        val magnitude = kotlin.math.abs(accumulatedDegrees)
+        if (remainingOffset == null && magnitude > threshold) {
+            remainingOffset = Math.copySign(threshold.toDouble(), accumulatedDegrees)
+        }
+        remainingOffset?.let { offset ->
+            // Consume the initial offset as the first turn approaches 90°.
+            // Reversing direction never restores any of the consumed offset.
+            if (offset * accumulatedDegrees > 0) {
+                val residual = threshold * ((90.0 - magnitude) / (90.0 - threshold)).coerceIn(0.0, 1.0)
+                remainingOffset = Math.copySign(minOf(kotlin.math.abs(offset), residual), offset)
+            }
+        }
         lastAngle = current
         return previewDegrees().toFloat()
     }
 
     // Start at zero at the edge of the dead zone and catch up continuously by 90°.
     private fun previewDegrees(): Double {
-        val magnitude = kotlin.math.abs(accumulatedDegrees)
-        if (magnitude <= threshold) return 0.0
-        if (magnitude >= 90.0 || threshold == 0) return accumulatedDegrees
-        return Math.copySign((magnitude - threshold) * 90.0 / (90.0 - threshold), accumulatedDegrees)
+        val offset = remainingOffset ?: return 0.0
+        return accumulatedDegrees - offset
     }
 
     /** Snap to the nearest quarter turn, in either direction. */
@@ -71,6 +84,7 @@ internal class QuarterTurnGesture(initialQuarterTurns: Int = 0, thresholdDegrees
     fun cancel() {
         lastAngle = null
         accumulatedDegrees = 0.0
+        remainingOffset = null
     }
 
     fun reset() {

@@ -1384,48 +1384,37 @@ class MainActivity : ComponentActivity() {
                 )
             }
 
-            AnimatedContent(
-                targetState = current,
-                modifier = Modifier.fillMaxSize(),
-                transitionSpec = {
-                    fadeIn(animationSpec = tween(180)) togetherWith fadeOut(animationSpec = tween(200))
-                },
-                contentKey = { item -> if (item == null) "gallery" else "viewer" },
-                label = "media-viewer-transition",
-            ) { animatedItem ->
-                if (animatedItem != null) {
-                    DisposableEffect(Unit) { onDispose { viewerTiles.followUri = null } }
-                    TileViewerFrame(transition) {
-                        ViewerScreen(
-                            items = (if (state.recycleBinVisible) state.recycleBinItems else state.visibleItems).let { items ->
-                                if (items.any { it.uriKey == animatedItem.uriKey }) items else listOf(animatedItem)
-                            },
-                            initialItem = animatedItem,
-                            onVisibleItemChanged = {
-                                savedViewerUri = it.uriKey
-                                if (viewerTiles.followUri != null) viewerTiles.followUri = it.uriKey
-                            },
-                            onBack = { selectedItem = null; savedViewerUri = null },
-                            active = videoCropItem == null && !operationBusy,
-                            onTrash = { requestTrash(listOf(it), keepViewerOpen = true) },
-                            onRestore = { restoreFromRecycleBin(listOf(it)) },
-                            editedPreviewUri = cropPreview?.takeIf { it.first == animatedItem.uriKey }?.second,
-                            zoomSecondPower = zoomSecondPower,
-                            quickExifEnabled = state.quickExifEnabled,
-                            cleanupMode = cleanupMode,
-                            onShare = ::shareMedia,
-                            onCrop = ::cropMedia,
-                            onRename = { item, name ->
-                                requestWrite(PendingWriteOperation.Rename(item, name))
-                            },
-                            onMove = { item ->
-                                beginMove(listOf(item))
-                            },
-                            deletingItemUri = deletingItemUri,
-                            recycleBinMode = state.recycleBinVisible,
-                        )
-                    }
-                }
+            TileViewerFrame(current) { animatedItem ->
+                ViewerScreen(
+                    items = (if (state.recycleBinVisible) state.recycleBinItems else state.visibleItems).let { items ->
+                        if (items.any { it.uriKey == animatedItem.uriKey }) items else listOf(animatedItem)
+                    },
+                    initialItem = animatedItem,
+                    onVisibleItemChanged = {
+                        if (selectedItem != null) {
+                            savedViewerUri = it.uriKey
+                            viewerTiles.followUri = it.uriKey
+                        }
+                    },
+                    onBack = { selectedItem = null; savedViewerUri = null },
+                    active = videoCropItem == null && !operationBusy,
+                    onTrash = { requestTrash(listOf(it), keepViewerOpen = true) },
+                    onRestore = { restoreFromRecycleBin(listOf(it)) },
+                    editedPreviewUri = cropPreview?.takeIf { it.first == animatedItem.uriKey }?.second,
+                    zoomSecondPower = zoomSecondPower,
+                    quickExifEnabled = state.quickExifEnabled,
+                    cleanupMode = cleanupMode,
+                    onShare = ::shareMedia,
+                    onCrop = ::cropMedia,
+                    onRename = { item, name ->
+                        requestWrite(PendingWriteOperation.Rename(item, name))
+                    },
+                    onMove = { item ->
+                        beginMove(listOf(item))
+                    },
+                    deletingItemUri = deletingItemUri,
+                    recycleBinMode = state.recycleBinVisible,
+                )
             }
         }
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {

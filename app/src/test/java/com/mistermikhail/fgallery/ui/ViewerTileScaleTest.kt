@@ -12,4 +12,7 @@ class ViewerTileScaleTest {
     @Test fun portraitPhotoFillsWideMosaicTile() {
         assertEquals(0.5f, viewerTileScale(400f, 800f, 200f, 100f, 0.5f), 0.0001f)
     }
+    @Test fun comparisonThumbnailFitsWholePhotoInsideSquare() {
+        assertEquals(0.25f, viewerTileScale(400f, 800f, 100f, 100f, 2f, fit = true), 0.0001f)
+    }
 }

@@ -163,7 +163,14 @@ fun RecycleBinScreen(
                 )
             }
         } else {
+            val grid = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
+            val focus = LocalViewerTiles.current.followUri
+            androidx.compose.runtime.LaunchedEffect(focus) {
+                val index = items.indexOfFirst { it.uriKey == focus }
+                if (index >= 0 && grid.layoutInfo.visibleItemsInfo.none { it.index == index }) grid.scrollToItem(index)
+            }
             LazyVerticalGrid(
+                state = grid,
                 columns = GridCells.Fixed(3),
                 modifier = Modifier
                     .fillMaxSize()
@@ -202,7 +209,7 @@ private fun RecycleBinTile(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .aspectRatio(1f)
+            .aspectRatio(1f).viewerTile(item)
             .then(
                 if (selected) {
                     Modifier.border(

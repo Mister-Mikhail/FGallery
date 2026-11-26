@@ -217,15 +217,16 @@ internal fun DuplicateSearchScreen(
                         }
                     }
                 }
-                if (preview != null) {
+                TileViewerFrame(preview) { displayed ->
+                    val viewerTiles = LocalViewerTiles.current
                     val catalogue = state.catalogue
                     val selection = state.visualSelected
-                    val items = remember(preview, comparisonOpen, selection, catalogue) {
-                        if (comparisonOpen && preview.uriKey in selection) {
+                    val items = remember(displayed, comparisonOpen, selection, catalogue) {
+                        if (comparisonOpen && displayed.uriKey in selection) {
                             selection.mapNotNull { catalogue?.rows?.get(it)?.toDuplicateMediaItem() }
-                        } else listOf(preview)
+                        } else listOf(displayed)
                     }
-                    var visibleName by remember(preview) { mutableStateOf(preview.name) }
+                    var visibleName by remember(displayed) { mutableStateOf(displayed.name) }
                     DisposableEffect(Unit) {
                         ThumbnailCache.setViewerBusy(true)
                         onDispose { ThumbnailCache.setViewerBusy(false) }
@@ -233,9 +234,9 @@ internal fun DuplicateSearchScreen(
                     Surface(Modifier.fillMaxSize(), color = Color.Black) {
                         ViewerScreen(
                             items = items,
-                            initialItem = preview,
+                            initialItem = displayed,
                             onBack = controller::closePreview,
-                            onVisibleItemChanged = { visibleName = it.name },
+                            onVisibleItemChanged = { visibleName = it.name; viewerTiles.followUri = it.uriKey },
                             quickExifEnabled = true,
                             cleanupMode = state.comparisonCleanup,
                             active = !busy,
@@ -610,7 +611,14 @@ private fun VisualComparison(
                 val moreColumns = columns < selected.size
                 val visibleColumns = if (moreColumns) columns + 0.15f else columns.toFloat()
                 val cardWidth = (maxWidth - gap * (if (moreColumns) columns else columns - 1)) / visibleColumns
+                val strip = androidx.compose.foundation.lazy.rememberLazyListState()
+                val focus = LocalViewerTiles.current.followUri
+                androidx.compose.runtime.LaunchedEffect(focus) {
+                    val index = selected.indexOfFirst { it.uri == focus }
+                    if (index >= 0 && strip.layoutInfo.visibleItemsInfo.none { it.index == index }) strip.scrollToItem(index)
+                }
                 LazyRow(
+                    state = strip,
                     modifier = Modifier.fillMaxWidth().testTag("comparison-photos"),
                     horizontalArrangement = Arrangement.spacedBy(gap),
                 ) {
@@ -742,7 +750,7 @@ private fun DuplicateTile(
     val model = remember(media, highQuality) { media?.let { GalleryThumb(it, highQuality = highQuality) } }
     var failed by remember(model) { mutableStateOf(false) }
     Surface(
-        modifier = if (!interactive) modifier else modifier.combinedClickable(
+        modifier = if (!interactive) modifier else (if (media != null) modifier.viewerTile(media, fit = contentScale == ContentScale.Fit) else modifier).combinedClickable(
             enabled = enabled && media != null,
             onClick = onOpen,
             onLongClickLabel = "Действия со снимком",
