@@ -11,7 +11,7 @@ import android.net.Uri
 import android.os.Debug
 import android.os.SystemClock
 import android.provider.DocumentsContract
-import android.view.TextureView
+import android.view.SurfaceView
 import android.view.View
 import android.view.ViewGroup
 import androidx.activity.ComponentActivity
@@ -56,6 +56,7 @@ class ModelViewerTest {
         val item = item(file, uri)
         val startTime = SystemClock.elapsedRealtime()
         val initialPss = Debug.getPss()
+        android.util.Log.i("FGallery3DQA", "opening transformed-textured.glb")
         rule.setContent { ModelViewer(item, {}) }
         assertRendered("4 × 3 × 0 м")
         android.util.Log.i("FGallery3DQA",
@@ -161,16 +162,17 @@ class ModelViewerTest {
                 rule.onAllNodesWithTag("model-error").fetchSemanticsNodes().isNotEmpty()
         }
         rule.onNodeWithTag("model-ready").assertIsDisplayed()
+        android.util.Log.i("FGallery3DQA", "Filament submitted a frame; checking the display")
         rule.onNodeWithText(bounds).assertIsDisplayed()
         val uiAutomation = InstrumentationRegistry.getInstrumentation().uiAutomation
         rule.waitUntil(5_000) {
             val region = rule.runOnIdle {
-                val view = requireNotNull(rule.activity.window.decorView.findTexture())
+                val view = requireNotNull(rule.activity.window.decorView.findModelSurface())
                 val location = IntArray(2).also(view::getLocationOnScreen)
                 Rect(location[0], location[1], location[0] + view.width, location[1] + view.height)
             }
             // A display screenshot tests the delivered frame without a synchronous
-            // TextureView readback on the UI thread of a software-rendered emulator.
+            // GPU readback on the UI thread of a software-rendered emulator.
             val image = uiAutomation.takeScreenshot() ?: return@waitUntil false
             try {
                 fun sample(x: Int, y: Int): Int = image.getPixel(
@@ -192,9 +194,9 @@ class ModelViewerTest {
         }
     }
 
-    private fun View.findTexture(): TextureView? {
-        if (this is TextureView) return this
-        if (this is ViewGroup) for (index in 0 until childCount) getChildAt(index).findTexture()?.let { return it }
+    private fun View.findModelSurface(): SurfaceView? {
+        if (this is SurfaceView) return this
+        if (this is ViewGroup) for (index in 0 until childCount) getChildAt(index).findModelSurface()?.let { return it }
         return null
     }
 

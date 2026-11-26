@@ -1,12 +1,12 @@
 package com.mistermikhail.fgallery.ui
 
 import android.content.Context
-import android.graphics.SurfaceTexture
 import android.os.Handler
 import android.os.HandlerThread
 import android.view.Choreographer
 import android.view.Surface
-import android.view.TextureView
+import android.view.SurfaceHolder
+import android.view.SurfaceView
 import com.google.android.filament.Camera
 import com.google.android.filament.Engine
 import com.google.android.filament.IndirectLight
@@ -34,7 +34,7 @@ internal class ModelSurface(
     data: ByteBuffer,
     onFrame: (ModelDimensions) -> Unit,
     onError: () -> Unit,
-) : TextureView(context), TextureView.SurfaceTextureListener {
+) : SurfaceView(context), SurfaceHolder.Callback {
     private val worker = ModelRenderThread.handler
     private val session = RenderSession(data, { bounds -> post { if (!released) onFrame(bounds) } }) {
         post { if (!released) onError() }
@@ -42,7 +42,7 @@ internal class ModelSurface(
     private var released = false
 
     init {
-        surfaceTextureListener = this
+        holder.addCallback(this)
         contentDescription = "Модель в 3D"
     }
 
@@ -64,26 +64,21 @@ internal class ModelSurface(
         worker.post { session.close() }
     }
 
-    override fun onSurfaceTextureAvailable(texture: SurfaceTexture, width: Int, height: Int) {
-        worker.post { session.attach(texture, width, height) }
+    override fun surfaceCreated(holder: SurfaceHolder) {
+        val window = holder.surface
+        val width = holder.surfaceFrame.width()
+        val height = holder.surfaceFrame.height()
+        worker.post { session.attach(window, width, height) }
     }
 
-    override fun onSurfaceTextureSizeChanged(texture: SurfaceTexture, width: Int, height: Int) {
+    override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
         worker.post { session.resize(width, height) }
     }
 
-    override fun onSurfaceTextureUpdated(texture: SurfaceTexture) = Unit
-
-    override fun onSurfaceTextureDestroyed(texture: SurfaceTexture): Boolean {
-        worker.post {
-            try {
-                session.detach()
-            } finally {
-                texture.release()
-            }
-        }
-        return false
+    override fun surfaceDestroyed(holder: SurfaceHolder) {
+        worker.post { session.detach() }
     }
+
 }
 
 private object ModelRenderThread {
@@ -112,8 +107,9 @@ private class RenderSession(
         guarded { draw(timestamp) }
     }
 
-    fun attach(texture: SurfaceTexture, width: Int, height: Int) = guarded {
+    fun attach(window: Surface, width: Int, height: Int) = guarded {
         detach()
+        if (!window.isValid) return@guarded
         if (engine == null) {
             Gltfio.init()
             checkNotNull(model)
@@ -124,9 +120,9 @@ private class RenderSession(
             content.load(checkNotNull(model))
             model = null
         }
-        val nativeSurface = Surface(texture)
-        surface = nativeSurface
-        swapChain = checkNotNull(engine).createSwapChain(nativeSurface)
+        if (!window.isValid) return@guarded
+        surface = window
+        swapChain = checkNotNull(engine).createSwapChain(window)
         resize(width, height)
     }
 
@@ -170,7 +166,7 @@ private class RenderSession(
     }
 
     private fun draw(timestamp: Long) {
-        if (!active) return
+        if (!active || surface?.isValid != true) return
         val chain = swapChain ?: return
         val view = objects ?: return
         if (!view.updateResources()) {
@@ -199,7 +195,7 @@ private class RenderSession(
             engine?.flushAndWait()
         }
         swapChain = null
-        surface?.release()
+        // SurfaceView owns this window and releases it when its holder is destroyed.
         surface = null
     }
 
@@ -254,6 +250,7 @@ private class RenderObjects(private val engine: Engine) {
         setCamera(this@RenderObjects.camera)
         setScene(this@RenderObjects.scene)
         setShadowingEnabled(false)
+        setPostProcessingEnabled(false)
     }
     private val materials = UbershaderProvider(engine)
     private val assets = AssetLoader(engine, materials, entities)
