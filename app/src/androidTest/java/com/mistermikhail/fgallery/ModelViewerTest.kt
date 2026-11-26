@@ -79,8 +79,8 @@ class ModelViewerTest {
         } finally {
             png.recycle()
         }
-        assertEquals(cache.map(File::name).toSet(),
-            File(context.cacheDir, "model-previews").listFiles().orEmpty().filter { it.extension == "glb" }.map(File::name).toSet())
+        assertEquals(cache.map { it.name }.toSet(),
+            File(context.cacheDir, "model-previews").listFiles().orEmpty().filter { it.extension == "glb" }.map { it.name }.toSet())
         assertArrayEquals(original, file.readBytes())
         android.util.Log.i("FGallery3DQA", "fixture=${file.name},cache_bytes=${cache.sumOf(File::length)}")
     }
