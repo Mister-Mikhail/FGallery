@@ -165,6 +165,18 @@ fun GalleryScreen(
         buildMosaicRows(visibleItems)
     }
 
+    val focusUri = LocalViewerTiles.current.followUri
+    LaunchedEffect(focusUri, state.gridMode) {
+        if (focusUri == null || !inAlbum) return@LaunchedEffect
+        if (state.gridMode == GridMode.MOSAIC) {
+            val row = visibleMosaicRows.indexOfFirst { group -> group.any { it.uriKey == focusUri } }
+            if (row >= 0 && mosaicListState.layoutInfo.visibleItemsInfo.none { it.index == row }) mosaicListState.scrollToItem(row)
+        } else {
+            val index = visibleItems.indexOfFirst { it.uriKey == focusUri }
+            if (index >= 0 && uniformGridState.layoutInfo.visibleItemsInfo.none { it.index == index }) uniformGridState.scrollToItem(index)
+        }
+    }
+
     val visibleVideoIds by remember(
         inAlbum,
         state.gridMode,
@@ -911,7 +923,7 @@ private fun MediaTile(
     val shape = RoundedCornerShape(0.dp)
 
     Box(
-        modifier = modifier
+        modifier = modifier.viewerTile(item)
             .then(
                 if (selected) {
                     Modifier.border(

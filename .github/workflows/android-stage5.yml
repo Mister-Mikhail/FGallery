@@ -127,7 +127,7 @@ jobs:
     # An immutable
     # QA tag is created ONCE, explicitly, after the consolidated test pack is
     # ready; otherwise every fix after build28 fails against the old QA tag.
-    if: (github.event_name == 'workflow_dispatch' && inputs.publish_qa == true && github.ref == 'refs/heads/fix/fgallery-m4v-saf-mime-regression') || (github.event_name == 'push' && github.ref == 'refs/heads/feature/duplicates-material-black' && contains(github.event.head_commit.message, '[publish-qa]'))
+    if: (github.event_name == 'workflow_dispatch' && inputs.publish_qa == true && github.ref == 'refs/heads/fix/fgallery-m4v-saf-mime-regression') || (github.event_name == 'push' && (github.ref == 'refs/heads/feature/duplicates-material-black' || github.ref == 'refs/heads/feature/duplicates-manual-compare') && contains(github.event.head_commit.message, '[publish-qa]'))
     needs: [r8-build, r8-device-tests]
     runs-on: ubuntu-latest
     permissions:
