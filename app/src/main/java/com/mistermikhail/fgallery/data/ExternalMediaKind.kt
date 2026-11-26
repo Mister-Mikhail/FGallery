@@ -24,7 +24,7 @@ internal object ExternalMediaKind {
 
     // Recognized document/CAD formats must not fall through to an image MIME
     // incorrectly reported by a SAF provider. Dedicated viewers are future work.
-    private val externalDocuments = setOf("cdr", "dwg", "dxf", "stl", "step", "stp", "blend", "obj", "glb", "gltf", "3mf", "ply")
+    private val externalDocuments = setOf("cdr", "dwg", "dxf", "step", "stp", "blend", "obj", "gltf", "3mf", "ply")
 
     private val legacyVideoMimes = setOf(
         "application/x-avi", "application/avi", "application/x-msvideo",
@@ -38,11 +38,13 @@ internal object ExternalMediaKind {
         val extension = name.trim().substringAfterLast('.', "").lowercase(Locale.ROOT)
         return when {
             extension in externalDocuments -> null
+            ModelFormat.from(name, null) != null -> MediaKind.MODEL
             extension in videos -> MediaKind.VIDEO
             extension in raws -> MediaKind.RAW
             extension == "pdf" -> MediaKind.PDF
             extension == "svg" -> MediaKind.SVG
             extension in images -> MediaKind.IMAGE
+            ModelFormat.from("", normalizedMime) != null -> MediaKind.MODEL
             // A nameless SAF document may only expose the SVG MIME; route it to the SVG viewer.
             normalizedMime == "image/svg+xml" -> MediaKind.SVG
             normalizedMime?.startsWith("video/") == true || normalizedMime in legacyVideoMimes -> MediaKind.VIDEO

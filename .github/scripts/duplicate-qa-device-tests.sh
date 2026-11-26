@@ -12,6 +12,7 @@ for file in exact-selection-large-font.png shared-svg-viewer.png visual-candidat
     adb pull "$source_dir/$file" "$destination/$file" || true
 done
 
+adb logcat -d -s FGallery3DQA:I > "$destination/model-performance.log"
 adb logcat -d -b events -s am_anr > "$destination/anr.log"
 if grep -q 'am_anr:.*com\.mistermikhail\.fgallery' "$destination/anr.log"; then
     cat "$destination/anr.log"

@@ -18,8 +18,8 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         minSdk = 29
         targetSdk = 35
-        versionCode = 76
-        versionName = "0.4.0-qa76"
+        versionCode = 77
+        versionName = "0.4.0-qa77"
         externalNativeBuild { cmake { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64") } }
     }
 
@@ -117,6 +117,8 @@ dependencies {
     implementation("io.coil-kt.coil3:coil-gif:3.1.0")
     implementation("io.coil-kt.coil3:coil-video:3.1.0")
     implementation("com.caverock:androidsvg-aar:1.4")
+    implementation("com.google.android.filament:filament-android:1.75.1")
+    implementation("com.google.android.filament:gltfio-android:1.75.1")
     implementation("io.legere:pdfiumandroid:2.0.0")
     implementation("com.github.dburckh:AndroidLibRaw:2.0.7")
     implementation("com.github.beyka:Android-TiffBitmapFactory:0.9.9.3")

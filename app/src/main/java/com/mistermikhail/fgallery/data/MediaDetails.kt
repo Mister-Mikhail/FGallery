@@ -12,4 +12,5 @@ data class DetailSection(
 
 data class MediaDetails(
     val sections: List<DetailSection>,
+    val captureLocation: CaptureLocation? = null,
 )

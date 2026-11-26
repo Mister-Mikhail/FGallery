@@ -1,6 +1,9 @@
 package com.mistermikhail.fgallery.data
 
 import android.content.Context
+import android.net.Uri
+import android.provider.MediaStore
+import android.util.LruCache
 import android.media.MediaMetadataRetriever
 import androidx.exifinterface.media.ExifInterface
 import kotlinx.coroutines.Dispatchers
@@ -14,6 +17,15 @@ class MediaDetailsRepository(
     private val context: Context,
 ) {
     suspend fun load(item: MediaItem): MediaDetails = withContext(Dispatchers.IO) {
+        val canReadOriginal = context.canReadOriginalLocation()
+        val key = CacheKey(item, canReadOriginal)
+        if (item.dateModifiedMillis > 0L) cache.get(key)?.let { return@withContext it }
+        val details = loadDetails(item)
+        if (item.dateModifiedMillis > 0L) cache.put(key, details)
+        details
+    }
+
+    private suspend fun loadDetails(item: MediaItem): MediaDetails {
         val sections = mutableListOf<DetailSection>()
         // RAW resolution comes from the LibRaw sensor area, never from embedded-preview
         // IFD0 dimensions or MediaStore's often-missing WIDTH/HEIGHT.
@@ -49,22 +61,45 @@ class MediaDetailsRepository(
             },
         )
 
+        var captureLocation: CaptureLocation? = null
         when (item.kind) {
-            MediaKind.SVG, MediaKind.PDF -> Unit
+            MediaKind.SVG, MediaKind.PDF, MediaKind.MODEL -> Unit
             MediaKind.VIDEO -> loadVideoDetails(item)?.let(sections::add)
-            MediaKind.IMAGE,
-            MediaKind.RAW,
-            -> loadExifDetails(item)?.let(sections::add)
+            MediaKind.IMAGE, MediaKind.RAW -> {
+                val regular = readExif(item.uri)
+                regular?.let { loadExifDetails(item.kind, it) }?.let(sections::add)
+                captureLocation = readLocation(item, regular)
+            }
         }
-
-        MediaDetails(sections = sections)
+        return MediaDetails(sections, captureLocation)
     }
 
-    private fun loadExifDetails(item: MediaItem): DetailSection? {
-        val exif = runCatching {
-            context.contentResolver.openInputStream(item.uri)?.use(::ExifInterface)
-        }.getOrNull() ?: return null
+    private fun readExif(uri: Uri): ExifInterface? =
+        runCatching { context.contentResolver.openInputStream(uri)?.use(::ExifInterface) }.getOrNull()
 
+    private fun readLocation(item: MediaItem, regular: ExifInterface?): CaptureLocation {
+        // A direct file or SAF URI uses its own access grant, even if its provider is MediaDocuments.
+        val original = if (item.uri.isMediaStoreItem()) {
+            try {
+                context.contentResolver.openInputStream(MediaStore.setRequireOriginal(item.uri))?.use(::ExifInterface)
+            } catch (_: SecurityException) {
+                return if (context.canReadOriginalLocation()) CaptureLocation.Unavailable
+                    else CaptureLocation.PermissionRequired
+            } catch (_: UnsupportedOperationException) {
+                if (!context.canReadOriginalLocation()) return CaptureLocation.PermissionRequired
+                null
+            } catch (_: Exception) {
+                null
+            }
+        } else {
+            regular
+        }
+        return ExifGpsCoordinates.fromExif(original?.latLong)?.let(CaptureLocation::Available)
+            ?: if (original == null || item.kind == MediaKind.RAW) CaptureLocation.Unavailable
+            else CaptureLocation.Missing
+    }
+
+    private fun loadExifDetails(kind: MediaKind, exif: ExifInterface): DetailSection? {
         val fields = buildList {
             exif.attribute(ExifInterface.TAG_DATETIME_ORIGINAL)?.let {
                 add(DetailField("Дата съёмки", it))
@@ -123,15 +158,6 @@ class MediaDetailsRepository(
                 )
             }
 
-            exif.latLong?.let { location ->
-                add(
-                    DetailField(
-                        "GPS",
-                        String.format(Locale.ROOT, "%.6f, %.6f", location[0], location[1]),
-                    )
-                )
-            }
-
             exif.attribute(ExifInterface.TAG_SOFTWARE)?.let {
                 add(DetailField("ПО", it))
             }
@@ -139,7 +165,7 @@ class MediaDetailsRepository(
 
         return fields.takeIf { it.isNotEmpty() }?.let {
             DetailSection(
-                title = if (item.kind == MediaKind.RAW) "EXIF / RAW" else "EXIF",
+                title = if (kind == MediaKind.RAW) "EXIF / RAW" else "EXIF",
                 fields = it,
             )
         }
@@ -256,4 +282,11 @@ class MediaDetailsRepository(
         }
         return rounded + suffix
     }
+
+    private data class CacheKey(val item: MediaItem, val originalPermission: Boolean)
+
+    private companion object {
+        val cache = LruCache<CacheKey, MediaDetails>(64)
+    }
+
 }

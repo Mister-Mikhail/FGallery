@@ -242,6 +242,7 @@ object ThumbnailCache {
         }
         return when (item.kind) {
         MediaKind.VIDEO -> representativeVideoFrame(context, item, edge.coerceAtMost(720))
+        MediaKind.MODEL -> null
         MediaKind.PDF -> PdfSession(context, item.uri).use { it.render(0, edge) }
         MediaKind.SVG -> VisualDocuments.svgPreview(context, item.uri, edge)
         MediaKind.IMAGE, MediaKind.RAW ->

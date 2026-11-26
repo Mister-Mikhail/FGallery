@@ -74,6 +74,7 @@ import com.mistermikhail.fgallery.ui.RecycleBinScreen
 import com.mistermikhail.fgallery.ui.ViewerScreen
 import com.mistermikhail.fgallery.ui.theme.FGalleryTheme
 import com.mistermikhail.fgallery.data.MediaKind
+import com.mistermikhail.fgallery.data.ModelFormat
 import com.mistermikhail.fgallery.data.EditedMediaStore
 import com.mistermikhail.fgallery.data.DriveLibrary
 import com.mistermikhail.fgallery.data.StorageAccess
@@ -154,10 +155,11 @@ class MainActivity : ComponentActivity() {
             val uri = incomingUri ?: return@LaunchedEffect
             // Keep the intent key stable while resolving the document. Clearing it here
             // cancels this LaunchedEffect on recomposition before PDF/SVG can open.
+            val incomingType = intent?.type
             runCatching {
                 val metadata = withContext(Dispatchers.IO) {
                     var displayName = uri.lastPathSegment?.substringAfterLast('/') ?: "Файл"
-                    var size = 0L
+                    var size = if (uri.scheme == "file") uri.path?.let { java.io.File(it).length() } ?: 0L else 0L
                     if (uri.scheme == "content") {
                         contentResolver.query(uri, arrayOf(
                             android.provider.OpenableColumns.DISPLAY_NAME,
@@ -171,14 +173,19 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                     }
-                    Triple(displayName, size, contentResolver.getType(uri))
+                    val reportedType = contentResolver.getType(uri)
+                    val modelType = ModelFormat.from("", incomingType)?.mimeType
+                    val mime = if (reportedType == null || reportedType == "application/octet-stream")
+                        modelType ?: reportedType else reportedType
+                    Triple(displayName, size, mime)
                 }
                 val (name, size, mime) = metadata
                 val kind = com.mistermikhail.fgallery.data.ExternalMediaKind.classify(name, mime)
                     ?: throw IllegalArgumentException("Формат файла не поддерживается: $name")
                 val item = MediaItem(
                     id = uri.toString().hashCode().toLong(), uri = uri, name = name,
-                    mimeType = mime, kind = kind, dateTakenMillis = 0L,
+                    mimeType = if (kind == MediaKind.MODEL) ModelFormat.from(name, mime)?.mimeType else mime,
+                    kind = kind, dateTakenMillis = 0L,
                     width = 0, height = 0, durationMillis = 0L, album = "",
                     relativePath = "", sizeBytes = size,
                 )
@@ -331,7 +338,7 @@ class MainActivity : ComponentActivity() {
         fun cropMedia(item: MediaItem) {
             if (operationBusy) return
             if (item.kind == MediaKind.VIDEO) { videoCropItem = item; return }
-            if (item.kind == MediaKind.PDF || item.kind == MediaKind.SVG) {
+            if (item.kind in setOf(MediaKind.PDF, MediaKind.SVG, MediaKind.MODEL)) {
                 notify("Кадрирование доступно для растровых изображений и видео")
                 return
             }
@@ -1305,7 +1312,7 @@ class MainActivity : ComponentActivity() {
                     limitedMediaAccess = hasLimitedMediaPermission(),
                     onRefresh = { viewModel.refresh(forceFull = true) },
                     onAddStorage = { storagePickerLauncher.launch(null) },
-                    onImportDocuments = { documentsLauncher.launch(arrayOf("application/pdf", "image/svg+xml", "image/tiff", "image/x-tiff")) },
+                    onImportDocuments = { documentsLauncher.launch(arrayOf("application/pdf", "image/svg+xml", "image/tiff", "image/x-tiff", *ModelFormat.mimeTypes, "application/octet-stream")) },
                     onManageFileAccess = { openFileAccessSettings() },
                     onOpenAlbum = { album ->
                         selectedIds = emptySet()
@@ -1477,7 +1484,7 @@ class MainActivity : ComponentActivity() {
             AlertDialog(
                 onDismissRequest = { pendingAccessWrite = null },
                 title = { Text("Доступ для перемещения без повторных окон") },
-                text = { Text("Один раз разрешите FGallery доступ ко всем файлам в настройках Android. После этого выбранные файлы перемещаются сразу; доступны пустые папки, создание папок и поиск PDF/SVG.") },
+                text = { Text("Один раз разрешите FGallery доступ ко всем файлам в настройках Android. После этого выбранные файлы перемещаются сразу; доступны пустые папки, создание папок и поиск PDF, SVG и 3D-моделей.") },
                 confirmButton = { TextButton(onClick = { pendingAccessWrite = null; openFileAccessSettings(operation) }) { Text("Настроить доступ") } },
                 dismissButton = { TextButton(onClick = { pendingAccessWrite = null }) { Text("Отмена") } },
             )

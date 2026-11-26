@@ -63,9 +63,10 @@ class VideoPlaybackMimeTest {
 
     @Test fun cadAndThreeDDocumentsDoNotMasqueradeAsImagesOrRaw() {
         for (ext in listOf("CDR", "dwg", "DXF", "STL", "step", "stp", "blend", "obj", "glb", "gltf", "3mf", "ply")) {
-            assertEquals(ext, null, ExternalMediaKind.classify("drawing.$ext", "image/jpeg"))
-            assertEquals(ext, null, ExternalMediaKind.classify("drawing.$ext", "image/x-raw"))
-            assertEquals(ext, null, ExternalMediaKind.classify("drawing.$ext", "application/octet-stream"))
+            val expected = ModelFormat.from("drawing.$ext", null)?.let { MediaKind.MODEL }
+            assertEquals(ext, expected, ExternalMediaKind.classify("drawing.$ext", "image/jpeg"))
+            assertEquals(ext, expected, ExternalMediaKind.classify("drawing.$ext", "image/x-raw"))
+            assertEquals(ext, expected, ExternalMediaKind.classify("drawing.$ext", "application/octet-stream"))
         }
     }
 

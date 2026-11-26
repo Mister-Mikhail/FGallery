@@ -25,7 +25,7 @@ class DocumentLibrary(private val context: Context) {
                 val local = if (uri.scheme == "file") File(uri.path!!) else null
                 if (local != null && !local.exists()) return@runCatching null
                 if (local == null && DocumentsContract.isDocumentUri(context, uri) && DocumentFile.fromSingleUri(context, uri)?.exists() != true) return@runCatching null
-                val mime = if (local != null) { when { local.extension.equals("pdf", true) -> "application/pdf"; TiffImages.isTiff(local.name) -> "image/tiff"; else -> "image/svg+xml" } } else context.contentResolver.getType(uri)
+                val mime = if (local != null) { ModelFormat.from(local.name, null)?.mimeType ?: when { local.extension.equals("pdf", true) -> "application/pdf"; TiffImages.isTiff(local.name) -> "image/tiff"; else -> "image/svg+xml" } } else context.contentResolver.getType(uri)
                 var name = local?.name ?: uri.lastPathSegment.orEmpty()
                 var size = local?.length() ?: 0L
                 if (local == null) context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null)?.use { cursor ->
@@ -35,6 +35,7 @@ class DocumentLibrary(private val context: Context) {
                     }
                 }
                 val kind = when {
+                    ModelFormat.from(name, mime) != null -> MediaKind.MODEL
                     mime == "application/pdf" || name.endsWith(".pdf", true) -> MediaKind.PDF
                     mime == "image/svg+xml" || name.endsWith(".svg", true) -> MediaKind.SVG
                     TiffImages.isTiff(name, mime) -> MediaKind.IMAGE

@@ -59,4 +59,14 @@ class ExternalMediaKindTest {
     @Test fun arbitraryBinaryDoesNotBecomeImage() {
         assertNull(ExternalMediaKind.classify("archive.zip", "application/octet-stream"))
     }
+
+    @Test fun onlyGlbAndStlAreInternalModelFormats() {
+        assertEquals(MediaKind.MODEL, ExternalMediaKind.classify("mesh.GLB", "application/octet-stream"))
+        assertEquals(MediaKind.MODEL, ExternalMediaKind.classify("mesh.STL", "image/jpeg"))
+        assertEquals(MediaKind.MODEL, ExternalMediaKind.classify("document", "model/gltf-binary"))
+        for (extension in listOf("gltf", "dwg", "blend", "step")) {
+            assertNull(ExternalMediaKind.classify("mesh.$extension", "application/octet-stream"))
+        }
+    }
+
 }

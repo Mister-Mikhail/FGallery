@@ -33,6 +33,7 @@ import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.ViewInAr
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.CheckCircle
@@ -989,7 +990,7 @@ private fun MediaTile(
                 )
             }
 
-            MediaKind.IMAGE, MediaKind.SVG, MediaKind.PDF -> Unit
+            MediaKind.IMAGE, MediaKind.SVG, MediaKind.PDF, MediaKind.MODEL -> Unit
         }
 
         if (selected) {
@@ -1017,6 +1018,16 @@ private fun MediaPreview(
     livePreview: Boolean,
     albumCover: Boolean = false,
 ) {
+    if (item.kind == MediaKind.MODEL) {
+        Box(modifier.background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(Icons.Outlined.ViewInAr, contentDescription = null)
+                val format = com.mistermikhail.fgallery.data.ModelFormat.from(item.name, item.mimeType)
+                Text(format?.name ?: "3D", style = MaterialTheme.typography.labelMedium)
+            }
+        }
+        return
+    }
     val context = LocalContext.current
     // Coil now owns generation and cancellation; no competing Compose
     // produceState request decodes this original a second time.

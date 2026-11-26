@@ -13,6 +13,7 @@ import java.io.File
 /** Also discovers volumes which Android has not indexed in MediaStore yet. */
 object DriveLibrary {
     fun kind(name: String, mime: String?): MediaKind? = when {
+        ModelFormat.from(name, mime) != null -> MediaKind.MODEL
         name.endsWith(".pdf", true) || mime == "application/pdf" -> MediaKind.PDF
         name.endsWith(".svg", true) || mime == "image/svg+xml" -> MediaKind.SVG
         name.substringAfterLast('.', "").lowercase() in setOf("dng", "cr2", "cr3", "nef", "nrw", "arw", "sr2", "srf", "orf", "rw2", "raf", "pef", "raw", "3fr", "fff", "iiq") -> MediaKind.RAW
@@ -24,7 +25,8 @@ object DriveLibrary {
             ) -> MediaKind.IMAGE
         else -> null
     }
-    fun mime(name: String): String? = MimeTypeMap.getSingleton().getMimeTypeFromExtension(name.substringAfterLast('.', "").lowercase())
+    fun mime(name: String): String? = ModelFormat.from(name, null)?.mimeType
+        ?: MimeTypeMap.getSingleton().getMimeTypeFromExtension(name.substringAfterLast('.', "").lowercase())
     fun item(uri: Uri, name: String, mime: String?, size: Long, modified: Long, root: StorageRoot, parent: String, relative: String = ""): MediaItem? {
         val kind = kind(name, mime) ?: return null
         val folder = if (parent.startsWith("content://")) relative.trimEnd('/').substringAfterLast('/').ifBlank { root.name } else File(parent).name

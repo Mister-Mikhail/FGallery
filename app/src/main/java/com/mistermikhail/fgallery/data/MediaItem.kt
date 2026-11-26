@@ -2,7 +2,7 @@ package com.mistermikhail.fgallery.data
 
 import android.net.Uri
 
-enum class MediaKind { IMAGE, VIDEO, RAW, SVG, PDF }
+enum class MediaKind { IMAGE, VIDEO, RAW, SVG, PDF, MODEL }
 
 data class MediaItem(
     val id: Long,

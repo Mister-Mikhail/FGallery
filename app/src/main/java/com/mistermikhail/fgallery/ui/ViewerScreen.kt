@@ -73,6 +73,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.snapshotFlow
@@ -99,6 +100,7 @@ import com.mistermikhail.fgallery.data.MediaItem
 import com.mistermikhail.fgallery.data.MediaKind
 import com.mistermikhail.fgallery.data.ThumbnailCache
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import me.saket.telephoto.zoomable.DoubleClickToZoomListener
 import me.saket.telephoto.zoomable.ZoomSpec
 import me.saket.telephoto.zoomable.rememberZoomableImageState
@@ -180,12 +182,15 @@ fun ViewerScreen(
         currentItem?.let(onVisibleItemChanged)
     }
     val currentIsVideo = currentItem?.kind == MediaKind.VIDEO
+    val currentIsModel = currentItem?.kind == MediaKind.MODEL
+    val pagerScope = rememberCoroutineScope()
     val deletingCurrent = currentItem?.uriKey == deletingItemUri && deletingItemUri != null
     val mediaAlpha by animateFloatAsState(if (deletingCurrent) .45f else 1f, tween(60), label = "trash-fade")
 
-    LaunchedEffect(currentItem?.uriKey, currentIsVideo) {
+    LaunchedEffect(currentItem?.uriKey, currentIsVideo, currentIsModel) {
         showDetails = false
         videoMenuExpanded = false
+        if (currentIsModel) chromeVisible = true
         if (currentIsVideo) {
             chromeVisible = true
             chromeEpoch += 1
@@ -222,6 +227,7 @@ fun ViewerScreen(
     ) {
         HorizontalPager(
             state = pagerState,
+            userScrollEnabled = !currentIsModel,
             key = { if (looping) it else pages[it].uriKey },
             modifier = Modifier.fillMaxSize().graphicsLayer { alpha = mediaAlpha },
         ) { page ->
@@ -257,6 +263,13 @@ fun ViewerScreen(
                             readOnly = readOnly,
                         )
                     },
+                )
+            } else if (item.kind == MediaKind.MODEL) {
+                if (activePage) ModelViewer(
+                    item = item,
+                    toggleChrome = ::toggleChrome,
+                    previous = if (page > 0) ({ pagerScope.launch { pagerState.scrollToPage(page - 1) } }) else null,
+                    next = if (page < pages.lastIndex) ({ pagerScope.launch { pagerState.scrollToPage(page + 1) } }) else null,
                 )
             } else if (item.kind == MediaKind.PDF) {
                 PdfViewer(item, ::toggleChrome, onDoubleTap = if (cleanupMode && !recycleBinMode && !readOnly) ({ onTrash(item) }) else null, zoomSecondPower = zoomSecondPower)
@@ -329,7 +342,7 @@ fun ViewerScreen(
                                     tint = Color.White,
                                 )
                             }
-                            if (!readOnly && !recycleBinMode && currentItem.kind != MediaKind.PDF && currentItem.kind != MediaKind.SVG) IconButton(onClick = { onCrop(currentItem) }) {
+                            if (!readOnly && !recycleBinMode && currentItem.kind !in setOf(MediaKind.PDF, MediaKind.SVG, MediaKind.MODEL)) IconButton(onClick = { onCrop(currentItem) }) {
                                 Icon(
                                     Icons.Outlined.Crop,
                                     contentDescription = "Кадрировать",
@@ -401,7 +414,7 @@ fun ViewerScreen(
         if (
             chromeVisible &&
             quickExifEnabled &&
-            !currentIsVideo &&
+            !currentIsVideo && !currentIsModel &&
             currentItem != null
         ) {
             QuickExifOverlay(
