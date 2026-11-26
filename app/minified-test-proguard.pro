@@ -54,3 +54,8 @@
 # Preserve only Room's test-facing factory API on minifiedTest; do not
 # disable R8 for release or keep the whole Room runtime.
 -keep class androidx.room.Room { *; }
+
+# GPS fixtures are written from the separate AndroidTest APK.
+-keepclassmembers class androidx.exifinterface.media.ExifInterface {
+    public void setLatLong(double, double);
+}

@@ -116,6 +116,8 @@ jobs:
           api-level: ${{ matrix.api }}
           arch: x86_64
           profile: pixel_2
+          # Run models on the OpenGL software path without the virtual Vulkan compositor.
+          emulator-options: ${{ github.ref == 'refs/heads/feature/models-location' && '-no-window -gpu swiftshader -feature -Vulkan -no-snapshot -noaudio -no-boot-anim' || '-no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim' }}
           disable-animations: true
           script: ${{ matrix.api == 33 && github.ref == 'refs/heads/feature/models-location' && 'timeout --signal=INT --kill-after=30s 14m gradle :app:connectedMinifiedTestAndroidTest -Pandroid.testInstrumentationRunnerArguments.timeout_msec=90000 -Pandroid.testInstrumentationRunnerArguments.class=com.mistermikhail.fgallery.VideoContentUriPlaybackTest,com.mistermikhail.fgallery.ModelViewerTest,com.mistermikhail.fgallery.CaptureLocationTest' || matrix.api == 33 && 'gradle :app:connectedMinifiedTestAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.mistermikhail.fgallery.VideoContentUriPlaybackTest' || 'bash .github/scripts/duplicate-qa-device-tests.sh' }}
       - uses: actions/upload-artifact@v4
