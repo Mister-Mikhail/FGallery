@@ -1,0 +1,33 @@
+name: Verify published APK update
+on:
+  push:
+    branches: [qa/check-released-upgrade-b65]
+permissions:
+  contents: read
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Download published APKs
+        run: |
+          for n in 63 65; do
+            for abi in arm64-v8a universal; do
+              curl -fsSL --retry 3 "https://github.com/Mister-Mikhail/FGallery/releases/download/qa-v0.4.0-b$n/FGallery-0.4.0-qa$n-b$n-$abi.apk" -o "$n-$abi.apk"
+            done
+          done
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Install release 63 then update it with release 65
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          script: |
+            adb shell getprop ro.product.cpu.abilist
+            abi=universal; if adb shell getprop ro.product.cpu.abilist | grep -q arm64-v8a; then abi=arm64-v8a; fi; echo "Testing $abi"; adb install "63-$abi.apk" && adb shell dumpsys package com.mistermikhail.fgallery | grep -m1 'versionCode=63 ' && adb install -r "65-$abi.apk" && adb shell dumpsys package com.mistermikhail.fgallery | grep -m1 'versionCode=65 ' && echo "$abi upgrade verified" >> "$GITHUB_STEP_SUMMARY"
