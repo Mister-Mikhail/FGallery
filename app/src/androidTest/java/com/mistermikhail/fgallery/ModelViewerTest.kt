@@ -1,15 +1,11 @@
 package com.mistermikhail.fgallery
 
-import android.content.ComponentName
-import android.content.Intent
-import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.net.Uri
 import android.os.Debug
 import android.os.SystemClock
-import android.provider.DocumentsContract
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertIsDisplayed
@@ -19,9 +15,6 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.core.content.FileProvider
-import androidx.test.core.app.ActivityScenario
-import com.mistermikhail.fgallery.data.DocumentLibrary
-import com.mistermikhail.fgallery.data.StorageAccess
 import com.mistermikhail.fgallery.data.MediaItem
 import com.mistermikhail.fgallery.data.MediaKind
 import com.mistermikhail.fgallery.data.ModelFormat
@@ -45,7 +38,7 @@ class ModelViewerTest {
 
     @Test fun glbWithEmbeddedTextureDrawsAndReportsTransformedBounds() {
         val file = File(context.cacheDir, "transformed-textured.glb")
-        texturedGlb(file)
+        writeTexturedModelFixture(file)
         val original = file.readBytes()
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", file)
         val item = item(file, uri)
@@ -109,48 +102,6 @@ class ModelViewerTest {
         assertRendered("6 × 4 × 0 ед. модели")
     }
 
-    @Test fun safImportAndExternalViewOpenModelOutsideCatalog() {
-        val file = File(context.cacheDir, "external-model.glb")
-        texturedGlb(file)
-        val provider = ComponentName(context, TestDriveProvider::class.java)
-        val manager = context.packageManager
-        val initialState = manager.getComponentEnabledSetting(provider)
-        manager.setComponentEnabledSetting(provider, PackageManager.COMPONENT_ENABLED_STATE_ENABLED, PackageManager.DONT_KILL_APP)
-        val prefs = context.getSharedPreferences("fgallery_documents", 0)
-        val imported = prefs.getStringSet("uris", null)?.toSet()
-        val tree = DocumentsContract.buildTreeDocumentUri("com.mistermikhail.fgallery.test.drives", "root")
-        val parent = DocumentsContract.buildDocumentUriUsingTree(tree, "root")
-        val name = "test-view-${System.nanoTime()}.glb"
-        val source = StorageAccess.create(context, parent.toString(), name, ModelFormat.GLB.mimeType)
-        val onboarding = context.getSharedPreferences("fgallery_onboarding", 0)
-        val onboardingCompleted = onboarding.getBoolean("access_wizard_completed", false)
-        try {
-            requireNotNull(context.contentResolver.openOutputStream(source)).use {
-                file.inputStream().use { input -> input.copyTo(it) }
-            }
-            val library = DocumentLibrary(context)
-            library.add(listOf(source))
-            val saved = runBlocking { library.load().single { it.uri == source } }
-            assertEquals(MediaKind.MODEL, saved.kind)
-            // Open the external URI without relying on the imported catalogue record.
-            prefs.edit().putStringSet("uris", imported).commit()
-            onboarding.edit().putBoolean("access_wizard_completed", true).commit()
-            val external = Intent(Intent.ACTION_VIEW).setPackage(context.packageName)
-                .setDataAndType(source, ModelFormat.GLB.mimeType)
-                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            ActivityScenario.launch<MainActivity>(external).use {
-                rule.waitUntil(22_000) { rule.onAllNodesWithTag("model-ready").fetchSemanticsNodes().isNotEmpty() }
-                rule.onNodeWithText(name).assertIsDisplayed()
-            }
-        } finally {
-            prefs.edit().putStringSet("uris", imported).commit()
-            onboarding.edit().putBoolean("access_wizard_completed", onboardingCompleted).commit()
-            StorageAccess.delete(context, source)
-            manager.setComponentEnabledSetting(provider, initialState, PackageManager.DONT_KILL_APP)
-            file.delete()
-        }
-    }
-
     private fun assertRendered(bounds: String) {
         rule.waitUntil(22_000) {
             rule.onAllNodesWithTag("model-ready").fetchSemanticsNodes().isNotEmpty() ||
@@ -185,42 +136,42 @@ class ModelViewerTest {
         data.position(data.position() + 8)
         return JSONObject(description.toString(Charsets.UTF_8).trim()) to data.slice()
     }
+}
 
-    private fun texturedGlb(file: File) {
-        val image = ByteArrayOutputStream()
-        val bitmap = Bitmap.createBitmap(2050, 8, Bitmap.Config.ARGB_8888)
-        bitmap.eraseColor(Color.argb(190, 255, 90, 35))
-        bitmap.compress(Bitmap.CompressFormat.PNG, 100, image)
-        bitmap.recycle()
+internal fun writeTexturedModelFixture(file: File) {
+    val image = ByteArrayOutputStream()
+    val bitmap = Bitmap.createBitmap(2050, 8, Bitmap.Config.ARGB_8888)
+    bitmap.eraseColor(Color.argb(190, 255, 90, 35))
+    bitmap.compress(Bitmap.CompressFormat.PNG, 100, image)
+    bitmap.recycle()
 
-        val geometry = ByteBuffer.allocate(96).order(ByteOrder.LITTLE_ENDIAN)
-        floatArrayOf(0f, 0f, 0f, 2f, 0f, 0f, 1f, 1f, 0f,
-            0f, 0f, 1f, 0f, 0f, 1f, 0f, 0f, 1f,
-            0f, 0f, 1f, 0f, 0.5f, 1f).forEach { geometry.putFloat(it) }
-        val binary = 96 + image.size()
-        val json = """
-            {"asset":{"version":"2.0"},"scene":0,"scenes":[{"nodes":[0]}],
-            "nodes":[{"translation":[20,5,0],"children":[1]},{"scale":[-2,3,1],"mesh":0}],
-            "meshes":[{"primitives":[{"attributes":{"POSITION":0,"NORMAL":1,"TEXCOORD_0":2},"material":0}]}],
-            "materials":[{"doubleSided":true,"alphaMode":"BLEND","pbrMetallicRoughness":{
-            "baseColorTexture":{"index":0},"metallicFactor":0,"roughnessFactor":0.8}}],
-            "textures":[{"source":0}],"images":[{"bufferView":3,"mimeType":"image/png"}],
-            "buffers":[{"byteLength":$binary}],
-            "bufferViews":[{"buffer":0,"byteLength":36,"target":34962},
-            {"buffer":0,"byteOffset":36,"byteLength":36,"target":34962},
-            {"buffer":0,"byteOffset":72,"byteLength":24,"target":34962},
-            {"buffer":0,"byteOffset":96,"byteLength":${image.size()}}],
-            "accessors":[{"bufferView":0,"componentType":5126,"type":"VEC3","count":3,"min":[0,0,0],"max":[2,1,0]},
-            {"bufferView":1,"componentType":5126,"type":"VEC3","count":3},
-            {"bufferView":2,"componentType":5126,"type":"VEC2","count":3}]}
-        """.trimIndent().toByteArray(Charsets.UTF_8)
-        val textPadding = (4 - json.size % 4) % 4
-        val binPadding = (4 - binary % 4) % 4
-        val size = 28 + json.size + textPadding + binary + binPadding
-        val glb = ByteBuffer.allocate(size).order(ByteOrder.LITTLE_ENDIAN)
-            .putInt(0x46546C67).putInt(2).putInt(size).putInt(json.size + textPadding).putInt(0x4E4F534A).put(json)
-        repeat(textPadding) { glb.put(0x20) }
-        glb.putInt(binary + binPadding).putInt(0x004E4942).put(geometry.array()).put(image.toByteArray())
-        file.writeBytes(glb.array())
-    }
+    val geometry = ByteBuffer.allocate(96).order(ByteOrder.LITTLE_ENDIAN)
+    floatArrayOf(0f, 0f, 0f, 2f, 0f, 0f, 1f, 1f, 0f,
+        0f, 0f, 1f, 0f, 0f, 1f, 0f, 0f, 1f,
+        0f, 0f, 1f, 0f, 0.5f, 1f).forEach { geometry.putFloat(it) }
+    val binary = 96 + image.size()
+    val json = """
+        {"asset":{"version":"2.0"},"scene":0,"scenes":[{"nodes":[0]}],
+        "nodes":[{"translation":[20,5,0],"children":[1]},{"scale":[-2,3,1],"mesh":0}],
+        "meshes":[{"primitives":[{"attributes":{"POSITION":0,"NORMAL":1,"TEXCOORD_0":2},"material":0}]}],
+        "materials":[{"doubleSided":true,"alphaMode":"BLEND","pbrMetallicRoughness":{
+        "baseColorTexture":{"index":0},"metallicFactor":0,"roughnessFactor":0.8}}],
+        "textures":[{"source":0}],"images":[{"bufferView":3,"mimeType":"image/png"}],
+        "buffers":[{"byteLength":$binary}],
+        "bufferViews":[{"buffer":0,"byteLength":36,"target":34962},
+        {"buffer":0,"byteOffset":36,"byteLength":36,"target":34962},
+        {"buffer":0,"byteOffset":72,"byteLength":24,"target":34962},
+        {"buffer":0,"byteOffset":96,"byteLength":${image.size()}}],
+        "accessors":[{"bufferView":0,"componentType":5126,"type":"VEC3","count":3,"min":[0,0,0],"max":[2,1,0]},
+        {"bufferView":1,"componentType":5126,"type":"VEC3","count":3},
+        {"bufferView":2,"componentType":5126,"type":"VEC2","count":3}]}
+    """.trimIndent().toByteArray(Charsets.UTF_8)
+    val textPadding = (4 - json.size % 4) % 4
+    val binPadding = (4 - binary % 4) % 4
+    val size = 28 + json.size + textPadding + binary + binPadding
+    val glb = ByteBuffer.allocate(size).order(ByteOrder.LITTLE_ENDIAN)
+        .putInt(0x46546C67).putInt(2).putInt(size).putInt(json.size + textPadding).putInt(0x4E4F534A).put(json)
+    repeat(textPadding) { glb.put(0x20) }
+    glb.putInt(binary + binPadding).putInt(0x004E4942).put(geometry.array()).put(image.toByteArray())
+    file.writeBytes(glb.array())
 }

@@ -13,7 +13,7 @@ if [ "${GITHUB_REF_NAME:-}" = "feature/models-location" ]; then
     trap 'kill "$log_pid" 2>/dev/null || true' EXIT
     test_args=(-Pandroid.testInstrumentationRunnerArguments.timeout_msec=90000)
     if [ "$api" = 33 ]; then
-        test_args+=(-Pandroid.testInstrumentationRunnerArguments.class=com.mistermikhail.fgallery.VideoContentUriPlaybackTest,com.mistermikhail.fgallery.ModelViewerTest,com.mistermikhail.fgallery.CaptureLocationTest)
+        test_args+=(-Pandroid.testInstrumentationRunnerArguments.class=com.mistermikhail.fgallery.VideoContentUriPlaybackTest,com.mistermikhail.fgallery.ModelViewerTest,com.mistermikhail.fgallery.ModelSafLaunchTest,com.mistermikhail.fgallery.CaptureLocationTest)
     fi
     timeout --signal=INT --kill-after=30s 14m gradle :app:connectedMinifiedTestAndroidTest "${test_args[@]}" || result=$?
 else
