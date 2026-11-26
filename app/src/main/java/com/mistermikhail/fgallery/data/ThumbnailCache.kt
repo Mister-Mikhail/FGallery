@@ -241,7 +241,7 @@ object ThumbnailCache {
             return BitmapFactory.decodeFile(file.path, options)
         }
         return when (item.kind) {
-        MediaKind.VIDEO -> representativeVideoFrame(context, item, edge)
+        MediaKind.VIDEO -> representativeVideoFrame(context, item, edge.coerceAtMost(720))
         MediaKind.PDF -> PdfSession(context, item.uri).use { it.render(0, edge) }
         MediaKind.SVG -> VisualDocuments.svgPreview(context, item.uri, edge)
         MediaKind.IMAGE, MediaKind.RAW ->
@@ -348,9 +348,25 @@ object ThumbnailCache {
 
     /** Try multiple positions: a sync frame at time zero is often just a black leader. */
     fun representativeVideoFrame(context: Context, item: MediaItem, edge: Int = 720): Bitmap? {
+        // Let MediaStore/SAF serve an indexed poster before opening a video decoder.
+        val indexed = runCatching {
+            when (item.uri.scheme) {
+                "content" -> context.contentResolver.loadThumbnail(item.uri, Size(edge, edge), null)
+                "file" -> android.media.ThumbnailUtils.createVideoThumbnail(
+                    File(requireNotNull(item.uri.path)), Size(edge, edge), null)
+                else -> null
+            }
+        }.getOrNull()
+        if (indexed != null && (indexed.config == Bitmap.Config.HARDWARE || !isBlack(indexed))) return indexed
+
         val retriever = MediaMetadataRetriever()
         try {
-            retriever.setDataSource(context, item.uri)
+            try {
+                retriever.setDataSource(context, item.uri)
+            } catch (failure: Exception) {
+                val file = StorageAccess.file(context, item)?.takeIf { it.isFile && it.canRead() } ?: throw failure
+                retriever.setDataSource(file.path)
+            }
             val duration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
                 ?.toLongOrNull() ?: item.durationMillis
             val width = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)
@@ -359,21 +375,27 @@ object ThumbnailCache {
                 ?.toIntOrNull()?.coerceAtLeast(1) ?: edge
             val scale = minOf(1f, edge.toFloat() / maxOf(width, height))
             val times = listOf(duration / 2, duration / 4, duration * 3 / 4, 1_000L, 0L).distinct()
-            for (time in times) {
+            for ((time, option) in listOf(duration / 2 to MediaMetadataRetriever.OPTION_CLOSEST_SYNC) +
+                times.map { it to MediaMetadataRetriever.OPTION_CLOSEST }) {
                 val frame = runCatching {
                     retriever.getScaledFrameAtTime(
                         time.coerceIn(0L, (duration - 1).coerceAtLeast(0L)) * 1_000,
-                        MediaMetadataRetriever.OPTION_CLOSEST,
+                        option,
                         (width * scale).toInt().coerceAtLeast(1),
                         (height * scale).toInt().coerceAtLeast(1),
                     )
                 }.getOrNull() ?: continue
-                if (!isBlack(frame)) return frame
+                if (!isBlack(frame)) {
+                    indexed?.recycle()
+                    return frame
+                }
                 frame.recycle()
             }
-            return null
+            return indexed
+        } catch (_: Exception) {
+            return indexed
         } finally {
-            retriever.release()
+            runCatching { retriever.release() }
         }
     }
 

@@ -59,6 +59,24 @@ class VideoContentUriPlaybackTest {
                 assertEquals("video/mp4", VideoPlaybackMime.forFile(name, mime))
             } ?: error("MediaStore query failed")
 
+            // No player exists yet. A non-playing video tile must have a visible poster.
+            val item = com.mistermikhail.fgallery.data.MediaItem(1, mediaUri, "sample.m4v", "video/mp4",
+                MediaKind.VIDEO, 0, 320, 240, 1000, "Tests", "Movies/FGalleryTests/", 1)
+            val poster = kotlinx.coroutines.runBlocking {
+                com.mistermikhail.fgallery.data.ThumbnailCache.ensure(context, item)
+            }
+            val bitmap = android.graphics.BitmapFactory.decodeFile(requireNotNull(poster).path)
+            assertNotNull("Static video poster must decode before autoplay", bitmap)
+            try {
+                assertTrue("Static poster must contain visible image pixels", (1..7).any { x ->
+                    (1..7).any { y ->
+                        val pixel = bitmap.getPixel((bitmap.width - 1) * x / 8, (bitmap.height - 1) * y / 8)
+                        android.graphics.Color.red(pixel) > 25 || android.graphics.Color.green(pixel) > 25 ||
+                            android.graphics.Color.blue(pixel) > 25
+                    }
+                })
+            } finally { bitmap.recycle(); poster.delete() }
+
             val firstFrame = CountDownLatch(1)
             val failure = AtomicReference<String?>(null)
             val playerRef = AtomicReference<ExoPlayer?>()

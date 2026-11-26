@@ -83,6 +83,10 @@ jobs:
           path: app/build/outputs/mapping/release/mapping.txt
 
   r8-device-tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [33, 36]
     if: github.event_name != 'pull_request' || github.base_ref != 'fix/fgallery-m4v-saf-mime-regression' || github.head_ref == 'feature/stage6-duplicate-search-issue22'
     runs-on: ubuntu-latest
     steps:
@@ -108,15 +112,15 @@ jobs:
           sudo udevadm trigger --name-match=kvm
       - uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 36
+          api-level: ${{ matrix.api }}
           arch: x86_64
           profile: pixel_2
           disable-animations: true
-          script: bash .github/scripts/duplicate-qa-device-tests.sh
+          script: ${{ matrix.api == 33 && 'gradle :app:connectedMinifiedTestAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.mistermikhail.fgallery.VideoContentUriPlaybackTest' || 'bash .github/scripts/duplicate-qa-device-tests.sh' }}
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: FGallery-0.4.0-R8-instrumentation
+          name: FGallery-0.4.0-R8-instrumentation-api${{ matrix.api }}
           path: |
             app/build/reports/androidTests/connected/
             artifacts/duplicate-qa/

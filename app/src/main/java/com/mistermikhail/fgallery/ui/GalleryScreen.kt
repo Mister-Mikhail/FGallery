@@ -1045,6 +1045,9 @@ private fun MediaPreview(
         .size(tileSize.width.coerceAtLeast(1), tileSize.height.coerceAtLeast(1)).build()
     Box(modifier.onSizeChanged { if (it != tileSize) tileSize = it }
         .background(MaterialTheme.colorScheme.surfaceVariant)) {
+        if (item.kind == MediaKind.VIDEO && cachedModel != null && !primaryLoaded) {
+            AsyncImage(cachedModel, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+        }
         AsyncImage(request, item.name, contentScale = ContentScale.Crop,
             onSuccess = { primaryLoaded = true; previewFailed = false },
             onError = { previewFailed = true; if (albumCover && item.kind in listOf(MediaKind.IMAGE, MediaKind.VIDEO)) fallbackNeeded = true },
