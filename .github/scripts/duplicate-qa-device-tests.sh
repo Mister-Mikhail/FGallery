@@ -20,6 +20,11 @@ else
     gradle :app:connectedMinifiedTestAndroidTest || result=$?
 fi
 
+if [ "$result" -ne 0 ] && [ "${GITHUB_REF_NAME:-}" = "feature/models-location" ]; then
+    adb devices -l > "$destination/runner-devices.log" || true
+    sudo dmesg --ctime | tail -120 > "$destination/runner-kernel.log" || true
+    free -m > "$destination/runner-memory.log" || true
+fi
 if [ "$api" = 33 ]; then
     exit "$result"
 fi
@@ -29,8 +34,8 @@ for file in exact-selection-large-font.png shared-svg-viewer.png visual-candidat
     adb pull "$source_dir/$file" "$destination/$file" || true
 done
 
-adb logcat -d -s FGallery3DQA:I > "$destination/model-performance.log"
-adb logcat -d -b events -s am_anr > "$destination/anr.log"
+adb logcat -d -s FGallery3DQA:I > "$destination/model-performance.log" || true
+adb logcat -d -b events -s am_anr > "$destination/anr.log" || true
 if grep -q 'am_anr:.*com\.mistermikhail\.fgallery' "$destination/anr.log"; then
     cat "$destination/anr.log"
     result=1

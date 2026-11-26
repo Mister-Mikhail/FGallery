@@ -112,12 +112,13 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
       - uses: reactivecircus/android-emulator-runner@v2
+        timeout-minutes: 21
         with:
           api-level: ${{ matrix.api }}
           arch: x86_64
           profile: pixel_2
-          # Run models on the OpenGL software path without the virtual Vulkan compositor.
-          emulator-options: ${{ github.ref == 'refs/heads/feature/models-location' && '-no-window -gpu swiftshader -feature -Vulkan -no-snapshot -noaudio -no-boot-anim' || '-no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim' }}
+          # Use ANGLE for model QA. The emulator's SwiftShader GLES path loses the device.
+          emulator-options: ${{ github.ref == 'refs/heads/feature/models-location' && '-no-window -gpu swangle -feature -Vulkan -no-snapshot -noaudio -no-boot-anim' || '-no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim' }}
           disable-animations: true
           script: ${{ github.ref == 'refs/heads/feature/models-location' && format('bash .github/scripts/duplicate-qa-device-tests.sh {0}', matrix.api) || matrix.api == 33 && 'gradle :app:connectedMinifiedTestAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.mistermikhail.fgallery.VideoContentUriPlaybackTest' || 'bash .github/scripts/duplicate-qa-device-tests.sh' }}
       - uses: actions/upload-artifact@v4
