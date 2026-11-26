@@ -2,7 +2,12 @@
 set -euo pipefail
 
 result=0
-gradle :app:connectedMinifiedTestAndroidTest || result=$?
+if [ "${GITHUB_REF_NAME:-}" = "feature/models-location" ]; then
+    timeout --signal=INT --kill-after=30s 14m gradle :app:connectedMinifiedTestAndroidTest \
+        -Pandroid.testInstrumentationRunnerArguments.timeout_msec=90000 || result=$?
+else
+    gradle :app:connectedMinifiedTestAndroidTest || result=$?
+fi
 
 destination=artifacts/duplicate-qa
 source_dir=/data/local/tmp/fgallery-duplicate-qa
@@ -13,6 +18,7 @@ for file in exact-selection-large-font.png shared-svg-viewer.png visual-candidat
 done
 
 adb logcat -d -s FGallery3DQA:I > "$destination/model-performance.log"
+adb logcat -d -s FGallery3D:W AndroidRuntime:E > "$destination/model-errors.log"
 adb logcat -d -b events -s am_anr > "$destination/anr.log"
 if grep -q 'am_anr:.*com\.mistermikhail\.fgallery' "$destination/anr.log"; then
     cat "$destination/anr.log"
