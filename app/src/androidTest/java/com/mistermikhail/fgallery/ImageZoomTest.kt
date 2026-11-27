@@ -58,8 +58,10 @@ class ImageZoomTest {
         try {
             preferences.edit().putBoolean(REMEMBER_ROTATION_KEY, false).apply()
             rule.setContent {
-                Box(Modifier.size(240.dp, 320.dp).background(Color.Black).testTag("rotation-test-viewport")) {
-                    key(session.intValue) { TiledZoomableImage(item, {}, false, {}) }
+                Box(Modifier.fillMaxSize()) {
+                    Box(Modifier.size(240.dp, 320.dp).background(Color.Black).testTag("rotation-test-viewport")) {
+                        key(session.intValue) { TiledZoomableImage(item, {}, false, {}) }
+                    }
                 }
             }
             val viewport = rule.onNodeWithTag("rotation-test-viewport")
