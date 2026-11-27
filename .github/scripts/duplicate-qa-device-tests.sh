@@ -7,8 +7,10 @@ destination=artifacts/duplicate-qa
 source_dir=/data/local/tmp/fgallery-duplicate-qa
 mkdir -p "$destination"
 extended_qa=false
+cleanup_qa=false
 case "${GITHUB_REF_NAME:-}" in
-    feature/models-location|fix/viewer-cleanup-latency) extended_qa=true ;;
+    feature/models-location) extended_qa=true ;;
+    fix/viewer-cleanup-latency|fix/cleanup-queue-and-navigation) extended_qa=true; cleanup_qa=true ;;
 esac
 if "$extended_qa"; then
     # Keep a live copy even if the virtual device disconnects.
@@ -18,12 +20,12 @@ if "$extended_qa"; then
     test_args=(-Pandroid.testInstrumentationRunnerArguments.timeout_msec=90000)
     if [ "$api" = 33 ]; then
         selected_tests=com.mistermikhail.fgallery.VideoContentUriPlaybackTest,com.mistermikhail.fgallery.ModelViewerTest,com.mistermikhail.fgallery.ModelSafLaunchTest,com.mistermikhail.fgallery.CaptureLocationTest
-        if [ "${GITHUB_REF_NAME:-}" = "fix/viewer-cleanup-latency" ]; then
+        if "$cleanup_qa"; then
             selected_tests+=,com.mistermikhail.fgallery.CleanupBurstTest
         fi
         test_args+=("-Pandroid.testInstrumentationRunnerArguments.class=$selected_tests")
     fi
-    if [ "${GITHUB_REF_NAME:-}" = "fix/viewer-cleanup-latency" ]; then
+    if "$cleanup_qa"; then
         # Android may restart the app process when its storage grant changes.
         # Set it on the disposable emulator before launching instrumentation.
         timeout --signal=INT --kill-after=30s 10m gradle :app:assembleMinifiedTest

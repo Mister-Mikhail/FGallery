@@ -18,8 +18,8 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         minSdk = 29
         targetSdk = 35
-        versionCode = 78
-        versionName = "0.4.0-qa78"
+        versionCode = 79
+        versionName = "0.4.0-qa79"
         externalNativeBuild { cmake { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64") } }
     }
 

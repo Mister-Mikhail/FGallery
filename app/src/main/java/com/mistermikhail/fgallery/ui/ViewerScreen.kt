@@ -233,6 +233,11 @@ fun ViewerScreen(
         ) { page ->
             val item = pages.getOrNull(page) ?: return@HorizontalPager
             val activePage = active && page == pagerState.currentPage
+            val canTrashWithGesture = cleanupMode && !recycleBinMode && !readOnly
+            fun isSettledPage() = active && !pagerState.isScrollInProgress && page == pagerState.settledPage
+            fun trashWithGesture() {
+                if (canTrashWithGesture && isSettledPage()) onTrash(item)
+            }
 
             if (item.kind == MediaKind.VIDEO) {
                 VideoPlayer(
@@ -244,9 +249,7 @@ fun ViewerScreen(
                         if (!playing && activePage) { chromeVisible = true; chromeEpoch++ }
                     },
                     onSingleTap = ::toggleChrome,
-                    onDoubleTap = {
-                        if (cleanupMode && !recycleBinMode && !readOnly) onTrash(item)
-                    },
+                    onDoubleTap = ::trashWithGesture,
                     topBar = {
                         VideoTopBar(
                             expanded = videoMenuExpanded,
@@ -272,9 +275,11 @@ fun ViewerScreen(
                     next = if (page < pages.lastIndex) ({ pagerScope.launch { pagerState.scrollToPage(page + 1) } }) else null,
                 )
             } else if (item.kind == MediaKind.PDF) {
-                PdfViewer(item, ::toggleChrome, onDoubleTap = if (cleanupMode && !recycleBinMode && !readOnly) ({ onTrash(item) }) else null, zoomSecondPower = zoomSecondPower)
+                PdfViewer(item, ::toggleChrome, onDoubleTap = ::trashWithGesture.takeIf { canTrashWithGesture },
+                    zoomSecondPower = zoomSecondPower)
             } else if (item.kind == MediaKind.SVG) {
-                SvgViewer(item, ::toggleChrome, onDoubleTap = if (cleanupMode && !recycleBinMode && !readOnly) ({ onTrash(item) }) else null, zoomSecondPower = zoomSecondPower)
+                SvgViewer(item, ::toggleChrome, onDoubleTap = ::trashWithGesture.takeIf { canTrashWithGesture },
+                    zoomSecondPower = zoomSecondPower)
             } else {
                 val comparisonCleanup = onComparisonDoubleTap != null
                 TiledZoomableImage(
@@ -282,8 +287,8 @@ fun ViewerScreen(
                     onSingleTap = ::toggleChrome,
                     cleanupMode = cleanupMode && !recycleBinMode && (!readOnly || comparisonCleanup),
                     onTrash = {
-                        if (onComparisonDoubleTap == null) onTrash(item)
-                        else if (activePage && !pagerState.isScrollInProgress && page == pagerState.settledPage) {
+                        if (onComparisonDoubleTap == null) trashWithGesture()
+                        else if (isSettledPage()) {
                             onComparisonDoubleTap(item)
                         }
                     },

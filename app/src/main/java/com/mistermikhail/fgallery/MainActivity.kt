@@ -149,7 +149,15 @@ class MainActivity : ComponentActivity() {
     @Composable
     private fun FGalleryRoot(viewModel: GalleryViewModel) {
         val state by viewModel.uiState.collectAsState()
+        val galleryItems = remember(state.visibleItems, state.pendingViewerTrash) {
+            if (state.pendingViewerTrash.isEmpty()) state.visibleItems
+            else state.visibleItems.filterNot { it.uriKey in state.pendingViewerTrash }
+        }
+        val galleryState = remember(state, galleryItems) {
+            if (galleryItems === state.visibleItems) state else state.copy(visibleItems = galleryItems)
+        }
         var selectedItem by remember { mutableStateOf<MediaItem?>(null) }
+        var skipViewerCloseAnimation by remember { mutableStateOf(false) }
         val incomingUri by externalViewUri
         LaunchedEffect(incomingUri) {
             val uri = incomingUri ?: return@LaunchedEffect
@@ -207,7 +215,10 @@ class MainActivity : ComponentActivity() {
             }
         }
         LaunchedEffect(selectedItem?.uriKey) {
-            selectedItem?.let { savedViewerUri = it.uriKey }
+            selectedItem?.let {
+                savedViewerUri = it.uriKey
+                skipViewerCloseAnimation = false
+            }
         }
         var duplicateReviewOpen by rememberSaveable { mutableStateOf(false) }
         LaunchedEffect(duplicateReviewOpen) {
@@ -266,6 +277,11 @@ class MainActivity : ComponentActivity() {
         )
 
         fun notify(message: String) { Toast.makeText(this@MainActivity, message, Toast.LENGTH_LONG).show() }
+        LaunchedEffect(viewModel) {
+            viewModel.viewerTrashFailures.collect { name ->
+                notify("Не удалось переместить в корзину: $name")
+            }
+        }
         fun finishOperation() {
             selectedIds = emptySet()
             pendingMoveItems = emptyList()
@@ -939,30 +955,31 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        fun nextAfterTrash(uri: String): MediaItem? {
+            val index = galleryItems.indexOfFirst { it.uriKey == uri }
+            if (index < 0) return null
+            return galleryItems.getOrNull(index + 1) ?: galleryItems.getOrNull(index - 1)
+        }
+
         fun performTrash(
             items: List<MediaItem>,
             keepViewerOpen: Boolean = false,
         ) {
             if (items.isEmpty()) return
 
-            val nextViewerItem = if (
-                keepViewerOpen &&
-                items.size == 1
-            ) {
-                val currentItems = state.visibleItems
-                val currentIndex = currentItems.indexOfFirst { it.uriKey == items.first().uriKey }
-
-                when {
-                    currentIndex < 0 -> null
-                    currentIndex < currentItems.lastIndex -> currentItems[currentIndex + 1]
-                    currentIndex > 0 -> currentItems[currentIndex - 1]
-                    else -> null
-                }
-            } else {
-                null
+            if (operationBusy) return
+            val viewerItem = items.singleOrNull()?.takeIf { keepViewerOpen }
+            val nextViewerItem = viewerItem?.let { nextAfterTrash(it.uriKey) }
+            if (cleanupMode && viewerItem != null && !state.recycleBinVisible) {
+                if (selectedItem == null || savedViewerUri != viewerItem.uriKey) return
+                if (!viewModel.enqueueViewerTrash(viewerItem)) return
+                selectedItem = nextViewerItem
+                savedViewerUri = nextViewerItem?.uriKey
+                // The last photo has no tile to animate back to.
+                if (nextViewerItem == null) skipViewerCloseAnimation = true
+                return
             }
 
-            if (operationBusy) return
             operationBusy = true
             deletingItemUri = items.singleOrNull()?.uriKey
             operationMessage = "Перемещение в корзину"
@@ -1313,7 +1330,7 @@ class MainActivity : ComponentActivity() {
                 )
             } else {
                 GalleryScreen(
-                    state = state,
+                    state = galleryState,
                     onRequestPermission = ::requestMediaAccess,
                     limitedMediaAccess = hasLimitedMediaPermission(),
                     onRefresh = { viewModel.refresh(forceFull = true) },
@@ -1373,7 +1390,7 @@ class MainActivity : ComponentActivity() {
                     },
                     onLongPressSelection = { item ->
                         selectedIds = com.mistermikhail.fgallery.ui.inclusiveSelectionRange(
-                            state.visibleItems.map { it.id }, selectionAnchor, item.id, selectedIds,
+                            galleryItems.map { it.id }, selectionAnchor, item.id, selectedIds,
                         )
                         selectionAnchor = item.id
                     },
@@ -1397,9 +1414,9 @@ class MainActivity : ComponentActivity() {
                 )
             }
 
-            TileViewerFrame(current) { animatedItem ->
+            TileViewerFrame(current, animateClose = !skipViewerCloseAnimation) { animatedItem ->
                 ViewerScreen(
-                    items = (if (state.recycleBinVisible) state.recycleBinItems else state.visibleItems).let { items ->
+                    items = (if (state.recycleBinVisible) state.recycleBinItems else galleryItems).let { items ->
                         if (items.any { it.uriKey == animatedItem.uriKey }) items else listOf(animatedItem)
                     },
                     initialItem = animatedItem,
@@ -1410,7 +1427,7 @@ class MainActivity : ComponentActivity() {
                         }
                     },
                     onBack = { selectedItem = null; savedViewerUri = null },
-                    active = videoCropItem == null && !operationBusy,
+                    active = current != null && videoCropItem == null && !operationBusy,
                     onTrash = { requestTrash(listOf(it), keepViewerOpen = true) },
                     onRestore = { restoreFromRecycleBin(listOf(it)) },
                     editedPreviewUri = cropPreview?.takeIf { it.first == animatedItem.uriKey }?.second,

@@ -63,25 +63,33 @@ internal fun closingViewerOpacity(progress: Float): Float {
 
 /** A single uniform scale preserves the image ratio. The clip uncrops a square or mosaic tile. */
 @Composable
-internal fun TileViewerFrame(item: MediaItem?, content: @Composable BoxScope.(MediaItem) -> Unit) {
+internal fun TileViewerFrame(
+    item: MediaItem?,
+    animateClose: Boolean = true,
+    content: @Composable BoxScope.(MediaItem) -> Unit,
+) {
     val tiles = LocalViewerTiles.current
     var retained by remember { mutableStateOf<MediaItem?>(null) }
     val progress = remember { Animatable(0f) }
     var closingAnchor by remember { mutableStateOf<TileAnchor?>(null) }
-    LaunchedEffect(item) {
+    LaunchedEffect(item, animateClose) {
         if (item != null) {
             closingAnchor = null
             retained = item
             tiles.followUri = item.uriKey
             progress.animateTo(1f, tween(320, easing = FastOutSlowInEasing))
         } else if (retained != null) {
-            closingAnchor = tiles.visible[tiles.followUri ?: retained?.uriKey]?.anchor()
-            progress.animateTo(0f, tween(300, easing = FastOutSlowInEasing))
+            if (animateClose) {
+                closingAnchor = tiles.visible[tiles.followUri ?: retained?.uriKey]?.anchor()
+                progress.animateTo(0f, tween(300, easing = FastOutSlowInEasing))
+            } else {
+                progress.snapTo(0f)
+            }
             retained = null
             tiles.followUri = null
         }
     }
-    val displayed = item ?: retained ?: return
+    val displayed = item ?: retained.takeIf { animateClose } ?: return
     var origin by remember { mutableStateOf(Offset.Zero) }
     Box(Modifier.fillMaxSize().onGloballyPositioned { origin = it.positionInRoot() }.graphicsLayer {
         alpha = if (item == null) closingViewerOpacity(progress.value) else 1f

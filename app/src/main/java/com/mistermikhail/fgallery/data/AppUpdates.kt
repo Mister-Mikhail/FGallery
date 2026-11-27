@@ -13,7 +13,15 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
 
-data class AvailableUpdate(val version: String, val versionCode: Long, val tag: String, val url: String, val size: Long, val digest: String?)
+data class AvailableUpdate(
+    val version: String,
+    val versionCode: Long,
+    val tag: String,
+    val url: String,
+    val size: Long,
+    val digest: String?,
+    val changes: List<String> = emptyList(),
+)
 
 class AppUpdates(
     private val context: Context,
@@ -63,7 +71,7 @@ class AppUpdates(
                 val digest = asset.optString("digest").takeIf { it.startsWith("sha256:") }
                     ?.removePrefix("sha256:") ?: fromNotes
                 if (tag.startsWith("qa-") && digest == null) return@mapNotNull null
-                AvailableUpdate(version, build, tag, url, asset.optLong("size"), digest)
+                AvailableUpdate(version, build, tag, url, asset.optLong("size"), digest, releaseChanges(notes))
             }.maxWithOrNull(compareBy<AvailableUpdate> { it.versionCode }
                 .thenBy { !it.tag.startsWith("qa-") })
             currentCoroutineContext().ensureActive()
@@ -120,6 +128,19 @@ class AppUpdates(
     }
 
     companion object {
+        internal fun releaseChanges(notes: String): List<String> = notes.lineSequence()
+            .map(String::trim)
+            .dropWhile { it.trimStart('#').trim() != "Что нового" || !it.startsWith('#') }
+            .drop(1)
+            .takeWhile { !it.startsWith('#') && !it.startsWith("FGALLERY_") }
+            .mapNotNull { line ->
+                line.takeIf { it.startsWith("- ") || it.startsWith("* ") }?.drop(2)?.trim()
+                    ?.takeIf(String::isNotEmpty)
+            }
+            .take(4)
+            .map { if (it.length <= 180) it else it.take(179).trimEnd() + "…" }
+            .toList()
+
         // Immutable QA tags carry versionCode despite reused versionName.
         internal fun releaseVersionAndCode(
             tag: String, notes: String, currentVersion: String, currentCode: Long,

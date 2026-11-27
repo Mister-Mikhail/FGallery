@@ -8,6 +8,7 @@ import android.os.Environment
 import android.os.SystemClock
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.ComposeTimeoutException
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.doubleClick
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
@@ -35,6 +36,7 @@ import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -50,7 +52,7 @@ class CleanupBurstTest {
     private val instrumentation get() = InstrumentationRegistry.getInstrumentation()
     private val context get() = instrumentation.targetContext
 
-    @Test fun sequentialDoubleTapsAdvanceWhileRoomIsBusy() {
+    @Test fun sequentialDoubleTapsAdvanceBeforeFileMovesAndRoomWrites() {
         assertTrue("Grant all-files access before starting the test process", Environment.isExternalStorageManager())
         val preferences = context.getSharedPreferences("fgallery_onboarding", Context.MODE_PRIVATE)
         val completed = preferences.getBoolean("access_wizard_completed", false)
@@ -58,13 +60,14 @@ class CleanupBurstTest {
         val root = Environment.getExternalStorageDirectory()
         val album = File(root, "Pictures/Cleanup-$nonce")
         val bin = File(root, StorageAccess.BIN)
-        val executor = Executors.newSingleThreadExecutor()
+        val executor = Executors.newFixedThreadPool(2)
         val releaseWriter = CountDownLatch(1)
+        val releaseBin = CompletableDeferred<Unit>()
 
         try {
             preferences.edit().putBoolean("access_wizard_completed", true).commit()
             assertTrue(album.mkdirs())
-            val files = (0..7).associate { index ->
+            val files = (0..8).associate { index ->
                 val photo = File(album, "cleanup-$nonce-$index.jpg")
                 val bitmap = Bitmap.createBitmap(80, 60, Bitmap.Config.ARGB_8888)
                 try {
@@ -105,6 +108,19 @@ class CleanupBurstTest {
 
                 val database = CatalogDatabase.get(context)
                 val writerEntered = CountDownLatch(1)
+                val binEntered = CountDownLatch(1)
+                val binProbe = executor.submit {
+                    runBlocking {
+                        val result = runCatching {
+                            DriveRecycleBin(context).trashWithPreMoveCheck(listOf(ordered.first())) {
+                                binEntered.countDown()
+                                releaseBin.await()
+                                false
+                            }
+                        }
+                        check(result.isFailure)
+                    }
+                }
                 val transaction = executor.submit {
                     database.runInTransaction(Runnable {
                         writerEntered.countDown()
@@ -113,14 +129,15 @@ class CleanupBurstTest {
                 }
                 try {
                     assertTrue("Room writer did not start", writerEntered.await(5, TimeUnit.SECONDS))
+                    assertTrue("Recycle bin probe did not acquire the lock", binEntered.await(5, TimeUnit.SECONDS))
+                    val payloads = files.mapValues { (_, file) -> file.readBytes() }
                     for (index in 1 until ordered.size) {
                         val source = files.getValue(ordered[index].name)
-                        val bytes = source.readBytes()
                         val next = ordered.getOrElse(index + 1) { ordered.first() }
                         val started = SystemClock.elapsedRealtime()
                         viewer.performTouchInput { doubleClick(center) }
                         try {
-                            rule.waitUntil(2_000) { showsPhoto(next) && !source.exists() }
+                            rule.waitUntil(2_000) { showsPhoto(next) }
                         } catch (failure: ComposeTimeoutException) {
                             throw AssertionError(
                                 "sequence=$index,current=${currentUri()},sourceExists=${source.exists()}," +
@@ -131,11 +148,30 @@ class CleanupBurstTest {
                         val elapsed = SystemClock.elapsedRealtime() - started
                         android.util.Log.i("FGalleryCleanupQA", "sequence=$index,tap_to_next_ms=$elapsed")
                         assertFalse("A Room transaction completed during the check", transaction.isDone)
-                        val copied = bin.listFiles().orEmpty().single { it.name.endsWith("_${source.name}") }
-                        assertArrayEquals(bytes, copied.readBytes())
+                        assertTrue("The viewer must advance before the source is moved", source.isFile)
+                        assertTrue(ordered[index].uriKey in viewModel.uiState.value.pendingViewerTrash)
                     }
+                    assertTrue(viewModel.uiState.value.recycleBinItems.none { it.name in files })
+                    val changed = files.getValue(ordered[2].name)
+                    changed.appendBytes(byteArrayOf(42))
+                    releaseBin.complete(Unit)
+                    binProbe.get(5, TimeUnit.SECONDS)
+                    rule.waitUntil(10_000) { viewModel.uiState.value.pendingViewerTrash.isEmpty() }
+                    assertTrue("A changed file must stay in its folder", changed.isFile)
+                    assertTrue("A failed file must return to the album", viewModel.uiState.value.visibleItems.any { it.name == changed.name })
+                    assertTrue("A failed move must not change the current photo", showsPhoto(ordered.first()))
+                    assertFalse("All successful moves should finish while Room is blocked", transaction.isDone)
+                    for (item in ordered.drop(1).filter { it.name != changed.name }) {
+                        assertFalse(files.getValue(item.name).exists())
+                        val copied = bin.listFiles().orEmpty().single { it.name.endsWith("_${item.name}") }
+                        assertArrayEquals(payloads.getValue(item.name), copied.readBytes())
+                    }
+                    viewer.performTouchInput { swipeLeft() }
+                    rule.waitUntil(8_000) { showsPhoto(ordered[2]) }
+                    viewer.assertIsDisplayed()
                     assertTrue(files.getValue(ordered.first().name).exists())
                 } finally {
+                    releaseBin.complete(Unit)
                     releaseWriter.countDown()
                     transaction.get(5, TimeUnit.SECONDS)
                 }
@@ -146,6 +182,7 @@ class CleanupBurstTest {
                 }
             }
         } finally {
+            releaseBin.complete(Unit)
             releaseWriter.countDown()
             executor.shutdownNow()
             val payloads = bin.listFiles().orEmpty().filter { it.name.contains("_cleanup-$nonce-") }

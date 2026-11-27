@@ -6,13 +6,19 @@ import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -83,7 +89,7 @@ fun AppUpdateHost(checkRequests: Int) {
                     if (candidate.size > 0) LinearProgressIndicator(progress = { (downloaded.toFloat() / candidate.size).coerceIn(0f, 1f) })
                     else LinearProgressIndicator()
                     Text("${downloaded / (1024 * 1024)} МБ${if (candidate.size > 0) " / ${candidate.size / (1024 * 1024)} МБ" else ""}")
-                } else Text(if (candidate.tag.startsWith("qa-")) "Доступна новая тестовая сборка FGallery. Настройки и файлы сохранятся." else "Доступно обновление приложения.")
+                } else UpdateOfferMessage(candidate)
             },
             confirmButton = {
                 if (!downloading) TextButton(onClick = {
@@ -110,4 +116,17 @@ fun AppUpdateHost(checkRequests: Int) {
     }
     error?.let { message -> AlertDialog(onDismissRequest = { error = null }, title = { Text("Обновление") },
         text = { Text(message) }, confirmButton = { TextButton(onClick = { error = null }) { Text("Закрыть") } }) }
+}
+
+@Composable
+internal fun UpdateOfferMessage(candidate: AvailableUpdate) {
+    Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(if (candidate.tag.startsWith("qa-")) {
+            "Доступна новая тестовая сборка FGallery. Настройки и файлы сохранятся."
+        } else "Доступно обновление приложения.")
+        if (candidate.changes.isNotEmpty()) {
+            Text("Что нового", style = MaterialTheme.typography.titleSmall)
+            candidate.changes.forEach { Text("• $it") }
+        }
+    }
 }

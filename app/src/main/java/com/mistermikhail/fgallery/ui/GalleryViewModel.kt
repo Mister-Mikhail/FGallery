@@ -19,6 +19,7 @@ import com.mistermikhail.fgallery.data.AppSettingsRepository
 import com.mistermikhail.fgallery.data.MediaItem
 import com.mistermikhail.fgallery.data.MediaKind
 import com.mistermikhail.fgallery.data.MediaRepository
+import com.mistermikhail.fgallery.data.StorageAccess
 import com.mistermikhail.fgallery.data.ThumbnailCache
 import com.mistermikhail.fgallery.data.comparisonTrashSha256
 import com.mistermikhail.fgallery.data.trashExactDuplicateBatch
@@ -36,6 +37,8 @@ import kotlinx.coroutines.flow.updateAndGet
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -87,6 +90,7 @@ data class GalleryUiState(
     val recycleBinVisible: Boolean = false,
     val recycleBinUris: Set<String> = emptySet(),
     val physicalBinUris: Set<String> = emptySet(),
+    val pendingViewerTrash: Set<String> = emptySet(),
 )
 
 class GalleryViewModel(application: Application, private val savedStateHandle: SavedStateHandle) : AndroidViewModel(application) {
@@ -101,6 +105,10 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
     @Volatile private var duplicateSearchActive = false
     private var libraryChangedDuringDuplicateSearch = false
     private val activeBinMoves = MutableStateFlow(0)
+    private val viewerTrashQueue = ArrayDeque<MediaItem>()
+    private var viewerTrashJob: kotlinx.coroutines.Job? = null
+    private val viewerTrashErrors = Channel<String>(Channel.UNLIMITED)
+    internal val viewerTrashFailures = viewerTrashErrors.receiveAsFlow()
     private val catalogueWrites = Mutex()
     private var binIndexJob: kotlinx.coroutines.Job? = null
     private var observingCleanupViewer = false
@@ -151,7 +159,7 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
     }
 
     private fun resumeDeferredRefresh() {
-        if (activeBinMoves.value != 0) return
+        if (activeBinMoves.value != 0 || _uiState.value.pendingViewerTrash.isNotEmpty()) return
         if (!observingCleanupViewer && cleanupMediaPaths.isNotEmpty()) {
             val paths = cleanupMediaPaths.toSet()
             cleanupMediaPaths.removeAll(paths)
@@ -172,6 +180,7 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
         binNotifications.isOwnMediaChange(uri, flags)
 
     internal suspend fun awaitRecycleBinMoves() {
+        uiState.first { it.pendingViewerTrash.isEmpty() }
         activeBinMoves.first { it == 0 }
     }
 
@@ -182,6 +191,7 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
         force: Boolean,
         progress: (String) -> Unit,
     ): DuplicateSearchInput {
+        awaitRecycleBinMoves()
         progress("Сканируем доступные носители…")
         if (force || refreshJob == null || (lastCatalogueScanSucceeded != true && refreshJob?.isActive == false)) {
             refresh(forceFull = force)
@@ -387,19 +397,29 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
     }
 
     /** Insert a successful edited copy immediately, rather than waiting for Android's media scanner. */
-    fun onSavedCopy(source: MediaItem, uri: android.net.Uri, mime: String) {
-        val filename = if (uri.scheme == "file") java.io.File(uri.path.orEmpty()).name else
-            getApplication<Application>().contentResolver.query(uri,
-                arrayOf(android.provider.MediaStore.MediaColumns.DISPLAY_NAME), null, null, null)
-                ?.use { if (it.moveToFirst()) it.getString(0) else null }
-                ?: source.name
+    suspend fun onSavedCopy(source: MediaItem, uri: android.net.Uri, mime: String) {
+        val (filename, size, modified) = withContext(Dispatchers.IO) {
+            if (uri.scheme == "file") {
+                val file = java.io.File(uri.path.orEmpty())
+                Triple(file.name, file.length(), file.lastModified())
+            } else {
+                val context = getApplication<Application>()
+                val nameColumn = android.provider.OpenableColumns.DISPLAY_NAME
+                val sizeColumn = android.provider.OpenableColumns.SIZE
+                context.contentResolver.query(uri, arrayOf(nameColumn, sizeColumn), null, null, null)?.use { cursor ->
+                    if (cursor.moveToFirst()) Triple(cursor.getString(0) ?: source.name, cursor.getLong(1), System.currentTimeMillis())
+                    else null
+                } ?: Triple(source.name, 0L, System.currentTimeMillis())
+            }
+        }
         val copy = source.copy(
             id = com.mistermikhail.fgallery.data.StorageAccess.stableId(uri.toString()),
             uri = uri,
             name = filename,
             mimeType = mime,
             kind = if (mime.startsWith("video/")) MediaKind.VIDEO else MediaKind.IMAGE,
-            dateModifiedMillis = System.currentTimeMillis(),
+            sizeBytes = size,
+            dateModifiedMillis = modified,
             sourcePath = if (uri.scheme == "file") uri.path.orEmpty() else "",
         )
         _uiState.update { current ->
@@ -428,7 +448,7 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
     }
 
     fun refresh(forceFull: Boolean = false) {
-        if (activeBinMoves.value > 0) {
+        if (activeBinMoves.value > 0 || _uiState.value.pendingViewerTrash.isNotEmpty()) {
             deferredExplicitRefresh = forceFull || deferredExplicitRefresh == true
             return
         }
@@ -649,6 +669,46 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
         }
     }
 
+    internal fun enqueueViewerTrash(item: MediaItem): Boolean {
+        val uri = item.uriKey
+        val state = _uiState.value
+        if (uri in state.pendingViewerTrash || uri in state.recycleBinUris || uri in state.physicalBinUris) return false
+        // Hide the source in the viewer while the existing bin journal protects the physical move.
+        viewerTrashQueue.addLast(item)
+        _uiState.update { it.copy(pendingViewerTrash = it.pendingViewerTrash + uri) }
+        if (viewerTrashJob?.isActive != true) {
+            viewerTrashJob = viewModelScope.launch {
+                while (viewerTrashQueue.isNotEmpty()) {
+                    moveQueuedViewerItem(viewerTrashQueue.removeFirst())
+                }
+                resumeDeferredRefresh()
+            }
+        }
+        return true
+    }
+
+    private suspend fun moveQueuedViewerItem(item: MediaItem) {
+        try {
+            moveItemsToRecycleBin(listOf(item), deferMediaScan = true) { source ->
+                val file = StorageAccess.file(getApplication(), source)
+                file == null || (
+                    file.isFile &&
+                        (source.sizeBytes <= 0L || file.length() == source.sizeBytes) &&
+                        (source.dateModifiedMillis <= 0L || file.lastModified() / 1000 <= source.dateModifiedMillis / 1000)
+                    )
+            }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            if (failure !is DuplicateTrashInterrupted || item.uriKey !in failure.moved) {
+                Log.w("FGallery", "Viewer cleanup move failed", failure)
+                viewerTrashErrors.trySend(item.name)
+            }
+        } finally {
+            _uiState.update { it.copy(pendingViewerTrash = it.pendingViewerTrash - item.uriKey) }
+        }
+    }
+
     suspend fun moveToRecycleBin(items: List<MediaItem>) =
         moveToRecycleBinWithPreMoveCheck(items) { true }
 
@@ -657,10 +717,18 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
         items: List<MediaItem>,
         verifyBeforeMove: suspend (MediaItem) -> Boolean,
     ) {
+        moveItemsToRecycleBin(items, observingCleanupViewer, verifyBeforeMove)
+    }
+
+    private suspend fun moveItemsToRecycleBin(
+        items: List<MediaItem>,
+        deferMediaScan: Boolean,
+        verifyBeforeMove: suspend (MediaItem) -> Boolean,
+    ) {
         moveBinBatch { onMoved ->
             // A stream of cleanup taps only changes the affected app rows.
             // Hand the old paths to Android together when the viewer closes.
-            val reconcile: (Set<String>) -> Unit = if (observingCleanupViewer) {
+            val reconcile: (Set<String>) -> Unit = if (deferMediaScan) {
                 { cleanupMediaPaths.addAll(it) }
             } else driveBin::reconcileAndroidIndex
             driveBin.trashWithPreMoveCheck(

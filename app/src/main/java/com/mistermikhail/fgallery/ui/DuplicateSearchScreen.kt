@@ -374,6 +374,7 @@ private fun ExactCopies(
 ) {
     var type by rememberSaveable { mutableStateOf("Все") }
     var large by rememberSaveable { mutableStateOf(false) }
+    val listState = rememberLazyGridState()
     val cards = remember(catalogue, type, large) {
         catalogue.cards.filter { card ->
             val kind = catalogue.rows.getValue(card.items.first().uri).kind
@@ -390,6 +391,7 @@ private fun ExactCopies(
     }
     LazyVerticalGrid(
         columns = GridCells.Fixed(if (grid) 2 else 1),
+        state = listState,
         modifier = Modifier.fillMaxSize().testTag(if (state.group == null) "duplicate-groups" else "duplicate-copy-grid"),
         contentPadding = PaddingValues(8.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -416,11 +418,18 @@ private fun ExactCopies(
                 }
             }
         }
-        if (catalogue.valid) cards.forEach { card ->
+        if (catalogue.valid) cards.forEachIndexed { index, card ->
             val expanded = state.group === card
             item("group/${card.sha256}", span = { GridItemSpan(maxLineSpan) }) {
                 Surface(shape = MaterialTheme.shapes.medium, color = duplicateColors.surfaceContainer) {
-                    Row(Modifier.fillMaxWidth().clickable(enabled = !busy) { controller.showGroup(if (expanded) null else card) }
+                    Row(Modifier.fillMaxWidth().clickable(enabled = !busy) {
+                        val target = if (expanded) null else card
+                        controller.showGroup(target)
+                        if (controller.state.value.group === target && (index > 0 || listState.firstVisibleItemIndex > 0)) {
+                            // Only this group can have file rows after the tap. The summary is item zero.
+                            listState.requestScrollToItem(index + 1)
+                        }
+                    }
                         .testTag("group-${card.sha256}").padding(8.dp), verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         val row = catalogue.rows.getValue(card.items.first().uri)
@@ -517,12 +526,19 @@ private fun VisualCandidates(
                     Column { SearchMessage("Сравниваем изображения во всех папках…"); LinearProgressIndicator(Modifier.fillMaxWidth()) }
                 }
                 groups.isEmpty() -> item(span = { GridItemSpan(maxLineSpan) }) { SearchMessage("Похожих изображений не найдено") }
-                else -> groups.forEach { group ->
+                else -> groups.forEachIndexed { index, group ->
                     val first = catalogue.rows.getValue(group.uris.first())
                     val open = state.expandedVisualGroup == group.key
                     item("visual-group/${group.key}", span = { GridItemSpan(maxLineSpan) }) {
                         Surface(shape = MaterialTheme.shapes.medium, color = duplicateColors.surfaceContainer) {
-                            Row(Modifier.fillMaxWidth().clickable { controller.toggleVisualGroup(group.key) }
+                            Row(Modifier.fillMaxWidth().testTag("visual-group-${group.key}").clickable(enabled = !busy) {
+                                controller.toggleVisualGroup(group.key)
+                                val target = if (open) null else group.key
+                                if (controller.state.value.expandedVisualGroup == target) {
+                                    // The old group's rows disappear on the same layout pass.
+                                    listState.requestScrollToItem(index)
+                                }
+                            }
                                 .padding(8.dp), verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                 if (!open) DuplicateTile(first, Modifier.size(48.dp), interactive = false) {}

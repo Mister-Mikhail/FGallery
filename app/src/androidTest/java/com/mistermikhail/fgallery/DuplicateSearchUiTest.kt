@@ -246,6 +246,31 @@ class DuplicateSearchUiTest {
         }
     }
 
+    @Test fun openingTheNextSimilarGroupKeepsItsFilesInView() {
+        val groups = listOf(
+            generatedRows(16).map { it.copy(fullHash = null, exifCamera = "A", perceptualHash = "0123456789abcdef") },
+            generatedRows(12).map {
+                it.copy(uri = it.uri.replace("Sample-", "Second-"), name = it.name.replace("Sample-", "Second-"),
+                    fullHash = null, exifCamera = "B", perceptualHash = "fedcba9876543210")
+            },
+        )
+        showSearch(groups.flatten())
+        rule.onNodeWithText("Похожие изображения", substring = false).performClick()
+        val first = "visual-group-${groups[0].first().uri}"
+        val second = "visual-group-${groups[1].first().uri}"
+        waitForTag(first)
+        rule.onNodeWithTag(first).performClick()
+        val firstCheck = "Сравнить ${groups[0].first().name}"
+        rule.onNodeWithContentDescription(firstCheck).performClick().assertIsOn()
+
+        rule.onNodeWithTag("duplicate-visual-list").performScrollToNode(hasTestTag(second))
+        rule.onNodeWithTag(second).performClick()
+
+        rule.onNodeWithTag(second).assertIsDisplayed()
+        rule.onNodeWithContentDescription("Сравнить ${groups[1].first().name}").assertIsDisplayed().assertIsOff()
+        rule.onNodeWithContentDescription(firstCheck).assertDoesNotExist()
+    }
+
     @Test fun comparisonShowsAndChecksFourPhotosAndBackClearsSelectionFirst() {
         val directory = Files.createTempDirectory(context.cacheDir.toPath(), "comparison-selection-").toFile()
         try {

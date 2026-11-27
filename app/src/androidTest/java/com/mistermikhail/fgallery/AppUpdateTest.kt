@@ -1,12 +1,17 @@
 package com.mistermikhail.fgallery
 
 import android.content.pm.PackageManager
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithText
 import androidx.test.platform.app.InstrumentationRegistry
 import com.mistermikhail.fgallery.data.*
+import com.mistermikhail.fgallery.ui.UpdateOfferMessage
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
 import java.io.ByteArrayInputStream
 import java.io.File
@@ -16,6 +21,7 @@ import java.net.URL
 import java.security.MessageDigest
 
 class AppUpdateTest {
+    @get:Rule val compose = createComposeRule()
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
     @Before fun resetPreferences() { context.getSharedPreferences("fgallery_updates", 0).edit().clear().commit() }
     private fun response(code: Int = 200, body: () -> InputStream) = object : HttpURLConnection(URL("https://github.com/")) {
@@ -46,20 +52,25 @@ class AppUpdateTest {
         assertNull(updates.check(false))
         assertNotNull(updates.check(true))
     }
-    @Test fun sameVersionNameHigherQaVersionCodeIsOffered() = runBlocking {
+    @Test fun sameVersionNameHigherQaVersionCodeIsOfferedWithChanges() {
         val installed = context.packageManager.getPackageInfo(context.packageName, PackageManager.GET_SIGNING_CERTIFICATES)
         val name = installed.versionName.orEmpty().substringBefore('-')
         val build = installed.longVersionCode + 1
         val tag = "qa-v$name-b$build"
         val json = """[{"tag_name":"$tag","draft":false,"prerelease":true,
+            "body":"### Что нового\n- Исправлена прокрутка групп.\nFGALLERY_VERSION_CODE=$build",
             "assets":[{"name":"FGallery-$name-b$build-universal.apk",
             "browser_download_url":"https://github.com/Mister-Mikhail/FGallery/releases/download/$tag/FGallery-$name-b$build-universal.apk",
             "size":100,"digest":"sha256:abcd"}]}]"""
         val updates = AppUpdates(context, { response { ByteArrayInputStream(json.toByteArray()) } })
-        val candidate = updates.check(true)!!
+        val candidate = runBlocking { updates.check(true) }!!
         assertEquals(name, candidate.version)
         assertEquals(build, candidate.versionCode)
         assertEquals(tag, candidate.tag)
+        compose.setContent { UpdateOfferMessage(candidate) }
+        compose.onNodeWithText("Что нового").assertIsDisplayed()
+        compose.onNodeWithText("• Исправлена прокрутка групп.").assertIsDisplayed()
+        compose.onNodeWithText("FGALLERY_VERSION_CODE=$build").assertDoesNotExist()
     }
 
     @Test fun failedAutomaticChecksDoNotSuppressRetryForSixHours() = runBlocking {

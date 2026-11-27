@@ -4,6 +4,30 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class AppUpdatesTest {
+    @Test fun updateNotesUseOnlyTheShortUserFacingSection() {
+        val notes = """
+            QA metadata
+            ### Что нового
+
+            - Быстрый переход между кадрами.
+            * Исправлена прокрутка.
+            - ${"а".repeat(181)}
+            - Четвёртая строка.
+            - За пределами окна.
+
+            ### Проверки
+            - Android 16
+            FGALLERY_VERSION_CODE=79
+        """.trimIndent()
+        assertEquals(
+            listOf("Быстрый переход между кадрами.", "Исправлена прокрутка.", "а".repeat(179) + "…", "Четвёртая строка."),
+            AppUpdates.releaseChanges(notes.replace("\n", "\r\n")),
+        )
+        assertTrue(AppUpdates.releaseChanges("FGALLERY_VERSION_CODE=78").isEmpty())
+        assertEquals(listOf("Исправлена прокрутка."),
+            AppUpdates.releaseChanges("### Что нового\n- Исправлена прокрутка.\nFGALLERY_VERSION_CODE=79\n- Служебная строка"))
+    }
+
     @Test fun semanticVersionsCompareNumericallyAndRejectDowngrades() {
         assertTrue(AppUpdates.isNewerVersion("0.2.10", "0.2.9"))
         assertTrue(AppUpdates.isNewerVersion("v1.0.0", "0.99.99"))

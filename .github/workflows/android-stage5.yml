@@ -11,6 +11,7 @@ on:
       - feature/duplicates-manual-compare
       - feature/models-location
       - fix/viewer-cleanup-latency
+      - fix/cleanup-queue-and-navigation
   pull_request:
     branches:
       - main
@@ -119,9 +120,9 @@ jobs:
           arch: x86_64
           profile: pixel_2
           # Use ANGLE for model QA. The emulator's SwiftShader GLES path loses the device.
-          emulator-options: ${{ (github.ref == 'refs/heads/feature/models-location' || github.ref == 'refs/heads/fix/viewer-cleanup-latency') && '-no-window -gpu swangle -feature -Vulkan -no-snapshot -noaudio -no-boot-anim' || '-no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim' }}
+          emulator-options: ${{ contains(fromJSON('["feature/models-location","fix/viewer-cleanup-latency","fix/cleanup-queue-and-navigation"]'), github.ref_name) && '-no-window -gpu swangle -feature -Vulkan -no-snapshot -noaudio -no-boot-anim' || '-no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim' }}
           disable-animations: true
-          script: ${{ (github.ref == 'refs/heads/feature/models-location' || github.ref == 'refs/heads/fix/viewer-cleanup-latency') && format('bash .github/scripts/duplicate-qa-device-tests.sh {0}', matrix.api) || matrix.api == 33 && 'gradle :app:connectedMinifiedTestAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.mistermikhail.fgallery.VideoContentUriPlaybackTest' || 'bash .github/scripts/duplicate-qa-device-tests.sh' }}
+          script: ${{ contains(fromJSON('["feature/models-location","fix/viewer-cleanup-latency","fix/cleanup-queue-and-navigation"]'), github.ref_name) && format('bash .github/scripts/duplicate-qa-device-tests.sh {0}', matrix.api) || matrix.api == 33 && 'gradle :app:connectedMinifiedTestAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.mistermikhail.fgallery.VideoContentUriPlaybackTest' || 'bash .github/scripts/duplicate-qa-device-tests.sh' }}
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -136,7 +137,7 @@ jobs:
     # An immutable
     # QA tag is created ONCE, explicitly, after the consolidated test pack is
     # ready; otherwise every fix after build28 fails against the old QA tag.
-    if: (github.event_name == 'workflow_dispatch' && inputs.publish_qa == true && github.ref == 'refs/heads/fix/fgallery-m4v-saf-mime-regression') || (github.event_name == 'push' && (github.ref == 'refs/heads/feature/duplicates-material-black' || github.ref == 'refs/heads/feature/duplicates-manual-compare' || github.ref == 'refs/heads/feature/models-location' || github.ref == 'refs/heads/fix/viewer-cleanup-latency') && contains(github.event.head_commit.message, '[publish-qa]'))
+    if: (github.event_name == 'workflow_dispatch' && inputs.publish_qa == true && github.ref == 'refs/heads/fix/fgallery-m4v-saf-mime-regression') || (github.event_name == 'push' && contains(fromJSON('["feature/duplicates-material-black","feature/duplicates-manual-compare","feature/models-location","fix/viewer-cleanup-latency","fix/cleanup-queue-and-navigation"]'), github.ref_name) && contains(github.event.head_commit.message, '[publish-qa]'))
     needs: [r8-build, r8-device-tests]
     runs-on: ubuntu-latest
     permissions:
@@ -154,7 +155,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-          QA_SCOPE: ${{ github.ref == 'refs/heads/fix/viewer-cleanup-latency' && 'Viewer cleanup latency' || github.ref == 'refs/heads/feature/models-location' && 'STL, GLB and photo location' || 'Stage 6' }}
+          QA_SCOPE: ${{ github.ref_name == 'fix/cleanup-queue-and-navigation' && 'Cleanup and duplicate navigation' || github.ref == 'refs/heads/fix/viewer-cleanup-latency' && 'Viewer cleanup latency' || github.ref == 'refs/heads/feature/models-location' && 'STL, GLB and photo location' || 'Stage 6' }}
         run: |
           set -euo pipefail
           version=$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts)
@@ -184,6 +185,14 @@ jobs:
             echo "R8 build, unit checks, Android 16 instrumented tests: passed. Galaxy S23 physical acceptance: pending."
             echo "QA scope: $QA_SCOPE."
             echo ""
+            if [[ "$version" == "0.4.0-qa79" ]]; then
+              echo "### Что нового"
+              echo ""
+              echo "- В режиме уборки следующий кадр открывается сразу, перенос в корзину идёт в фоне."
+              echo "- При открытии следующей группы дубликатов видны её файлы."
+              echo "- В окне обновления отображается список изменений сборки."
+              echo ""
+            fi
             echo "FGALLERY_VERSION_CODE=$code"
             echo "FGALLERY_SHA256_ARM64=$arm64_sha"
             echo "FGALLERY_SHA256_UNIVERSAL=$universal_sha"
