@@ -64,3 +64,9 @@
 -keepclassmembers class androidx.room.RoomDatabase {
     public void runInTransaction(java.lang.Runnable);
 }
+
+# The test obtains the Activity's real gallery ViewModel through the test APK.
+-keepclassmembers class androidx.lifecycle.ViewModelProvider {
+    public <init>(androidx.lifecycle.ViewModelStoreOwner);
+    public androidx.lifecycle.ViewModel get(java.lang.Class);
+}
