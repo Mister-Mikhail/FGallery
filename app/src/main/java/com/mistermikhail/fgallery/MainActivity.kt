@@ -1186,6 +1186,12 @@ class MainActivity : ComponentActivity() {
         val viewerTiles = LocalViewerTiles.current
         val current = selectedItem
 
+        val cleaningInViewer = current != null && cleanupMode && !state.recycleBinVisible
+        DisposableEffect(cleaningInViewer) {
+            if (cleaningInViewer) viewModel.onCleanupViewerChanged(true)
+            onDispose { if (cleaningInViewer) viewModel.onCleanupViewerChanged(false) }
+        }
+
         // Heavy RAW decoding in the viewer must not compete with background
         // thumbnail prewarming. Foreground tile requests remain responsive.
         DisposableEffect(current != null) {

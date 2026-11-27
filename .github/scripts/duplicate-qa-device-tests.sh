@@ -6,21 +6,29 @@ api="${1:-36}"
 destination=artifacts/duplicate-qa
 source_dir=/data/local/tmp/fgallery-duplicate-qa
 mkdir -p "$destination"
-if [ "${GITHUB_REF_NAME:-}" = "feature/models-location" ]; then
+extended_qa=false
+case "${GITHUB_REF_NAME:-}" in
+    feature/models-location|fix/viewer-cleanup-latency) extended_qa=true ;;
+esac
+if "$extended_qa"; then
     # Keep a live copy even if the virtual device disconnects.
-    adb logcat -v brief -s FGallery3D:V FGallery3DQA:I AndroidRuntime:E libc:F > "$destination/model-device.log" &
+    adb logcat -v brief -s FGallery3D:V FGallery3DQA:I FGalleryCleanupQA:I AndroidRuntime:E libc:F > "$destination/model-device.log" &
     log_pid=$!
     trap 'kill "$log_pid" 2>/dev/null || true' EXIT
     test_args=(-Pandroid.testInstrumentationRunnerArguments.timeout_msec=90000)
     if [ "$api" = 33 ]; then
-        test_args+=(-Pandroid.testInstrumentationRunnerArguments.class=com.mistermikhail.fgallery.VideoContentUriPlaybackTest,com.mistermikhail.fgallery.ModelViewerTest,com.mistermikhail.fgallery.ModelSafLaunchTest,com.mistermikhail.fgallery.CaptureLocationTest)
+        selected_tests=com.mistermikhail.fgallery.VideoContentUriPlaybackTest,com.mistermikhail.fgallery.ModelViewerTest,com.mistermikhail.fgallery.ModelSafLaunchTest,com.mistermikhail.fgallery.CaptureLocationTest
+        if [ "${GITHUB_REF_NAME:-}" = "fix/viewer-cleanup-latency" ]; then
+            selected_tests+=,com.mistermikhail.fgallery.CleanupBurstTest
+        fi
+        test_args+=("-Pandroid.testInstrumentationRunnerArguments.class=$selected_tests")
     fi
     timeout --signal=INT --kill-after=30s 14m gradle :app:connectedMinifiedTestAndroidTest "${test_args[@]}" || result=$?
 else
     gradle :app:connectedMinifiedTestAndroidTest || result=$?
 fi
 
-if [ "$result" -ne 0 ] && [ "${GITHUB_REF_NAME:-}" = "feature/models-location" ]; then
+if [ "$result" -ne 0 ] && "$extended_qa"; then
     adb devices -l > "$destination/runner-devices.log" || true
     sudo dmesg --ctime | tail -120 > "$destination/runner-kernel.log" || true
     free -m > "$destination/runner-memory.log" || true

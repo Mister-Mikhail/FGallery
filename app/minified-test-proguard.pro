@@ -59,3 +59,8 @@
 -keepclassmembers class androidx.exifinterface.media.ExifInterface {
     public void setLatLong(double, double);
 }
+
+# The cleanup latency regression holds the same Room writer from the test APK.
+-keepclassmembers class androidx.room.RoomDatabase {
+    public void runInTransaction(java.lang.Runnable);
+}

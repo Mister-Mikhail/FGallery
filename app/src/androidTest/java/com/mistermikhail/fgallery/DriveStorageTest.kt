@@ -54,6 +54,43 @@ class DriveStorageTest {
             assertTrue(restarted.load().none { it.folderTarget.startsWith(base.path) })
         } finally { base.deleteRecursively() }
     }
+    @Test fun restoresAnEntryWrittenByThePreferencesJournal() = runBlocking {
+        val directory = File(context.cacheDir, "legacy-bin-${UUID.randomUUID()}").apply { mkdirs() }
+        val root = StorageRoot("legacy", "Legacy", directory.path, directory)
+        val parent = File(directory, "Photos").apply { mkdirs() }
+        val binFolder = File(directory, StorageAccess.BIN).apply { mkdirs() }
+        val token = UUID.randomUUID().toString()
+        val file = File(binFolder, "${token}_old.jpg").apply { writeText("kept bytes") }
+        val uri = Uri.fromFile(file)
+        val oldJournal = context.getSharedPreferences("fgallery_drive_bin_v1", 0)
+        val record = org.json.JSONObject().apply {
+            put("token", token)
+            put("bin", binFolder.path)
+            put("parent", parent.path)
+            put("name", "old.jpg")
+            put("kind", MediaKind.IMAGE.name)
+            put("storage", root.id)
+            put("storageName", root.name)
+            put("album", parent.name)
+            put("size", file.length())
+            put("modified", file.lastModified())
+            put("lastUri", uri.toString())
+        }
+        assertTrue(oldJournal.edit().putString(token, record.toString()).commit())
+        try {
+            val bin = DriveRecycleBin(context, { listOf(root) }, { emptyList() })
+            val loaded = bin.load().single { it.uri == uri }
+            assertEquals(parent.path, bin.originalParent(loaded))
+            bin.restore(listOf(loaded))
+            assertEquals("kept bytes", File(parent, "old.jpg").readText())
+            assertFalse(file.exists())
+            assertFalse(oldJournal.contains(token))
+        } finally {
+            oldJournal.edit().remove(token).commit()
+            directory.deleteRecursively()
+        }
+        Unit
+    }
     @Test fun movesAcrossDrivesVerifyBytesAndPreserveSourceOnCollision() = runBlocking {
         val base = File(context.cacheDir, "move-${UUID.randomUUID()}").apply { mkdirs() }
         val source = File(base, "source.jpg").apply { writeBytes(ByteArray(150000) { (it % 239).toByte() }) }

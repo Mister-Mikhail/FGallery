@@ -148,7 +148,14 @@ object StorageAccess {
                 ?.let { DocumentsContract.buildDocumentUriUsingTree(Uri.parse(it.target), docId) }
     }
 
-    suspend fun move(context: Context, item: MediaItem, parent: String, name: String = item.name, scanMedia: Boolean = true): Uri {
+    suspend fun move(
+        context: Context,
+        item: MediaItem,
+        parent: String,
+        name: String = item.name,
+        scanMedia: Boolean = true,
+        uniqueLocalName: Boolean = false,
+    ): Uri {
         val sourceFile = file(context, item)
         val source = if (sourceFile?.exists() == true && sourceFile.canWrite()) Uri.fromFile(sourceFile)
             else sourceFile?.takeIf { it.exists() }?.let { documentForFile(context, it) } ?: item.uri
@@ -158,10 +165,12 @@ object StorageAccess {
         }
         if (source.scheme == "file" && !target.startsWith("content://") &&
             sourceFile?.canonicalFile == File(target, name).canonicalFile) return source
-        val resolvedName = MoveNamePlanner.plan(
-            listOf(name), children(context, target).map { it.first }
-        ).single()
-        if (source.scheme == "file" && !target.startsWith("content://")) {
+        val localMove = source.scheme == "file" && !target.startsWith("content://")
+        // The bin generates a UUID for each destination. Files.move and create
+        // still reject an existing path, without listing every other bin entry.
+        val existingNames = if (localMove && uniqueLocalName) emptyList() else children(context, target).map { it.first }
+        val resolvedName = MoveNamePlanner.plan(listOf(name), existingNames).single()
+        if (localMove) {
             val destination = File(target, resolvedName)
             check(!destination.exists()) { "В папке уже есть $resolvedName" }
             if (runCatching { Files.move(File(source.path!!).toPath(), destination.toPath()); true }.getOrDefault(false)) {

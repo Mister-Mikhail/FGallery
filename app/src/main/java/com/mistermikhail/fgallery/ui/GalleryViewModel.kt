@@ -37,6 +37,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.ConcurrentHashMap
 
 /** Album date is the latest timestamp of a contained file, not the folder mtime. */
@@ -99,7 +101,11 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
     @Volatile private var duplicateSearchActive = false
     private var libraryChangedDuringDuplicateSearch = false
     private val activeBinMoves = MutableStateFlow(0)
-    private var libraryChangedDuringBinMove = false
+    private val catalogueWrites = Mutex()
+    private var binIndexJob: kotlinx.coroutines.Job? = null
+    private var observingCleanupViewer = false
+    private var deferredObservedRefresh = false
+    private var deferredExplicitRefresh: Boolean? = null
     @Volatile private var lastCatalogueScanSucceeded: Boolean? = null
 
     internal val duplicateSearch by lazy {
@@ -132,9 +138,27 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
 
     internal fun onObservedLibraryChange() {
         when {
-            activeBinMoves.value > 0 -> libraryChangedDuringBinMove = true
+            activeBinMoves.value > 0 || observingCleanupViewer -> deferredObservedRefresh = true
             duplicateSearchActive -> libraryChangedDuringDuplicateSearch = true
             else -> refresh()
+        }
+    }
+
+    internal fun onCleanupViewerChanged(active: Boolean) {
+        observingCleanupViewer = active
+        if (!active) resumeDeferredRefresh()
+    }
+
+    private fun resumeDeferredRefresh() {
+        if (activeBinMoves.value != 0) return
+        val explicit = deferredExplicitRefresh
+        if (explicit != null) {
+            deferredExplicitRefresh = null
+            deferredObservedRefresh = false
+            refresh(forceFull = explicit)
+        } else if (!observingCleanupViewer && deferredObservedRefresh) {
+            deferredObservedRefresh = false
+            onObservedLibraryChange()
         }
     }
 
@@ -262,97 +286,97 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
     // Stable album identity must include drive and exact folder, never just a leaf name.
     private fun albumKey(item: MediaItem): String = "${item.storageId}:${item.folderTarget.ifBlank { item.relativePath.ifBlank { item.album } }}"
 
-    private fun sortItems(
-        items: List<MediaItem>,
-        mode: SortMode,
-    ): List<MediaItem> =
+    private fun mediaOrder(mode: SortMode): Comparator<MediaItem> =
         when (mode) {
-            SortMode.DATE_DESC -> items.sortedWith(compareByDescending<MediaItem> { it.dateTakenMillis }.thenBy { it.name.lowercase() })
-            SortMode.DATE_ASC -> items.sortedWith(compareBy<MediaItem> { it.dateTakenMillis }.thenBy { it.name.lowercase() })
-            SortMode.NAME_ASC -> items.sortedBy { it.name.lowercase() }
-            SortMode.NAME_DESC -> items.sortedByDescending { it.name.lowercase() }
-            SortMode.SIZE_DESC -> items.sortedByDescending { it.sizeBytes }
-            SortMode.SIZE_ASC -> items.sortedBy { it.sizeBytes }
-            SortMode.TYPE_ASC -> items.sortedWith(compareBy<MediaItem> { it.kind.name }.thenBy { it.name.lowercase() })
-            SortMode.TYPE_DESC -> items.sortedWith(compareByDescending<MediaItem> { it.kind.name }.thenBy { it.name.lowercase() })
+            SortMode.DATE_DESC -> compareByDescending<MediaItem> { it.dateTakenMillis }.thenBy { it.name.lowercase() }
+            SortMode.DATE_ASC -> compareBy<MediaItem> { it.dateTakenMillis }.thenBy { it.name.lowercase() }
+            SortMode.NAME_ASC -> compareBy { it.name.lowercase() }
+            SortMode.NAME_DESC -> compareByDescending { it.name.lowercase() }
+            SortMode.SIZE_DESC -> compareByDescending { it.sizeBytes }
+            SortMode.SIZE_ASC -> compareBy { it.sizeBytes }
+            SortMode.TYPE_ASC -> compareBy<MediaItem> { it.kind.name }.thenBy { it.name.lowercase() }
+            SortMode.TYPE_DESC -> compareByDescending<MediaItem> { it.kind.name }.thenBy { it.name.lowercase() }
         }
 
-    /**
-     * Expensive filtering/grouping/sorting happens only when its actual inputs change.
-     * Compose reads already-materialized immutable lists during scroll/recomposition.
-     */
+    private fun matchesFilter(item: MediaItem, filter: MediaFilter): Boolean = when (filter) {
+        MediaFilter.ALL -> true
+        MediaFilter.PHOTOS -> item.kind == MediaKind.IMAGE
+        MediaFilter.VIDEOS -> item.kind == MediaKind.VIDEO
+        MediaFilter.RAW -> item.kind == MediaKind.RAW
+    }
+
+    private fun albumSummary(
+        key: String,
+        items: List<MediaItem>,
+        query: String,
+        order: Comparator<MediaItem>,
+    ): AlbumSummary? {
+        val name = items.first().album
+        if (query.isNotBlank() && !name.contains(query, ignoreCase = true)) return null
+        return AlbumSummary(
+            name = name,
+            key = key,
+            cover = checkNotNull(items.minWithOrNull(order)),
+            count = items.size,
+            newestDateMillis = items.maxOf { albumFileTimestamp(it.dateTakenMillis, it.dateModifiedMillis) },
+            totalSizeBytes = items.sumOf { it.sizeBytes },
+        )
+    }
+
+    private fun sortAlbums(albums: List<AlbumSummary>, mode: SortMode): List<AlbumSummary> = when (mode) {
+        SortMode.DATE_DESC -> albums.sortedByDescending { it.newestDateMillis }
+        SortMode.DATE_ASC -> albums.sortedBy { it.newestDateMillis }
+        SortMode.NAME_ASC -> albums.sortedBy { it.name.lowercase() }
+        SortMode.NAME_DESC -> albums.sortedByDescending { it.name.lowercase() }
+        SortMode.SIZE_ASC -> albums.sortedBy { it.totalSizeBytes }
+        SortMode.SIZE_DESC -> albums.sortedByDescending { it.totalSizeBytes }
+        SortMode.TYPE_ASC -> albums.sortedBy { it.cover.kind.name }
+        SortMode.TYPE_DESC -> albums.sortedByDescending { it.cover.kind.name }
+    }
+
     private fun derive(state: GalleryUiState): GalleryUiState {
         val binUris = state.recycleBinUris + state.physicalBinUris
-        val available = state.allItems.asSequence()
-            .filterNot { it.uriKey in binUris }
-            .filter { item ->
-                when (state.filter) {
-                    MediaFilter.ALL -> true
-                    MediaFilter.PHOTOS -> item.kind == MediaKind.IMAGE
-                    MediaFilter.VIDEOS -> item.kind == MediaKind.VIDEO
-                    MediaFilter.RAW -> item.kind == MediaKind.RAW
-                }
-            }
+        val order = mediaOrder(state.sortMode)
+        val available = state.allItems.filter { it.uriKey !in binUris && matchesFilter(it, state.filter) }
+        val visible = available.asSequence()
+            .filter { state.selectedAlbum == null || albumKey(it) == state.selectedAlbum }
+            .filter { state.query.isBlank() || it.name.contains(state.query, ignoreCase = true) }
+            .sortedWith(order)
             .toList()
-
-        val visible = sortItems(
-            available.asSequence()
-                .filter {
-                    state.selectedAlbum == null || albumKey(it) == state.selectedAlbum
-                }
-                .filter {
-                    state.query.isBlank() || it.name.contains(state.query, ignoreCase = true)
-                }
-                .toList(),
-            state.sortMode,
-        )
-
-        val recycle = sortItems(
-            state.allItems.filter { it.uriKey in binUris },
-            state.sortMode,
-        )
-
-        val unsortedAlbums = available
-            .groupBy(::albumKey)
-            .mapNotNull { (key, items) ->
-                val name = items.first().album
-                if (
-                    state.query.isNotBlank() &&
-                    !name.contains(state.query, ignoreCase = true)
-                ) {
-                    return@mapNotNull null
-                }
-
-                val sorted = sortItems(items, state.sortMode)
-                val cover = sorted.firstOrNull() ?: return@mapNotNull null
-
-                AlbumSummary(
-                    name = name,
-                    key = key,
-                    cover = cover,
-                    count = items.size,
-                    // Sort albums by the newest file timestamp, never the folder timestamp.
-                    // Prefer whichever is newer: capture/creation or last modification.
-                    newestDateMillis = items.maxOfOrNull { albumFileTimestamp(it.dateTakenMillis, it.dateModifiedMillis) } ?: 0L,
-                    totalSizeBytes = items.sumOf { it.sizeBytes },
-                )
-            }
-
-        val albums = when (state.sortMode) {
-            SortMode.DATE_DESC -> unsortedAlbums.sortedByDescending { it.newestDateMillis }
-            SortMode.DATE_ASC -> unsortedAlbums.sortedBy { it.newestDateMillis }
-            SortMode.NAME_ASC -> unsortedAlbums.sortedBy { it.name.lowercase() }
-            SortMode.NAME_DESC -> unsortedAlbums.sortedByDescending { it.name.lowercase() }
-            SortMode.SIZE_DESC -> unsortedAlbums.sortedByDescending { it.totalSizeBytes }
-            SortMode.SIZE_ASC -> unsortedAlbums.sortedBy { it.totalSizeBytes }
-            SortMode.TYPE_ASC -> unsortedAlbums.sortedBy { it.cover.kind.name }
-            SortMode.TYPE_DESC -> unsortedAlbums.sortedByDescending { it.cover.kind.name }
+        val albums = available.groupBy(::albumKey).mapNotNull { (key, items) ->
+            albumSummary(key, items, state.query, order)
         }
-
         return state.copy(
             visibleItems = visible,
-            recycleBinItems = recycle,
-            albums = albums,
+            recycleBinItems = state.allItems.filter { it.uriKey in binUris }.sortedWith(order),
+            albums = sortAlbums(albums, state.sortMode),
+        )
+    }
+
+    private fun applyBinMoves(state: GalleryUiState, moved: Map<String, MediaItem>): GalleryUiState {
+        val destinations = moved.values.mapTo(hashSetOf()) { it.uriKey }
+        val retired = moved.keys + destinations
+        val bin = state.physicalBinUris + destinations
+        val affectedAlbums = hashSetOf<String>()
+        val remaining = state.allItems.filter { item ->
+            if (item.uriKey in retired) {
+                affectedAlbums += albumKey(item)
+                false
+            } else true
+        }
+        val order = mediaOrder(state.sortMode)
+        val revised = if (affectedAlbums.isEmpty()) emptyList() else remaining.asSequence()
+            .filter { it.uriKey !in bin && it.uriKey !in state.recycleBinUris && matchesFilter(it, state.filter) }
+            .filter { albumKey(it) in affectedAlbums }
+            .groupBy(::albumKey)
+            .mapNotNull { (key, items) -> albumSummary(key, items, state.query, order) }
+        return state.copy(
+            allItems = remaining + moved.values,
+            visibleItems = state.visibleItems.filterNot { it.uriKey in retired },
+            recycleBinItems = (state.recycleBinItems.filterNot { it.uriKey in retired } + moved.values).sortedWith(order),
+            physicalBinUris = bin,
+            albums = if (affectedAlbums.isEmpty()) state.albums else
+                sortAlbums(state.albums.filterNot { it.key in affectedAlbums } + revised, state.sortMode),
         )
     }
 
@@ -398,6 +422,10 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
     }
 
     fun refresh(forceFull: Boolean = false) {
+        if (activeBinMoves.value > 0) {
+            deferredExplicitRefresh = forceFull || deferredExplicitRefresh == true
+            return
+        }
         fingerprintJob?.cancel()
         refreshJob?.cancel()
         val restoreSnapshot = !snapshotRestored
@@ -466,7 +494,10 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
             // A newer refresh cancels this one. Never turn cancellation into a
             // successful checkpoint or continue writing stale JSON/thumbnail jobs.
             val roomStored = if (!scanSucceeded) false else try {
-                CatalogStore.persist(getApplication(), snapshot, started)
+                catalogueWrites.withLock {
+                    currentCoroutineContext().ensureActive()
+                    CatalogStore.persist(getApplication(), snapshot, started)
+                }
                 true
             } catch (e: kotlinx.coroutines.CancellationException) { throw e }
               catch (_: Exception) { false }
@@ -687,10 +718,7 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
                     if (completed.isNotEmpty()) recordBinMoves(completed)
                 } finally {
                     activeBinMoves.value--
-                    if (activeBinMoves.value == 0 && libraryChangedDuringBinMove) {
-                        libraryChangedDuringBinMove = false
-                        onObservedLibraryChange()
-                    }
+                    resumeDeferredRefresh()
                 }
             }
         }
@@ -698,32 +726,38 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
     }
 
     private suspend fun recordBinMoves(moved: Map<String, MediaItem>) {
-        // A scan started before these physical moves must not overwrite the catalogue update.
-        refreshJob?.cancelAndJoin()
+        // Retire any stale scan now. The writer mutex orders its in-flight
+        // Room transaction with the delta; the viewer can show the next frame.
+        refreshJob?.takeIf { it.isActive }?.let {
+            it.cancel()
+            if (lastCatalogueScanSucceeded != true) deferredObservedRefresh = true
+        }
         pendingBinIndexMoves.putAll(moved)
-        flushPendingBinIndexMoves()
         withContext(Dispatchers.Default) {
-            val binUris = moved.values.mapTo(hashSetOf()) { it.uriKey }
-            val current = _uiState.updateAndGet { current ->
-                derive(current.copy(
-                    allItems = current.allItems.filterNot { it.uriKey in moved || it.uriKey in binUris } + moved.values,
-                    physicalBinUris = current.physicalBinUris + binUris,
-                ))
-            }
+            val current = _uiState.updateAndGet { applyBinMoves(it, moved) }
             LibrarySnapshot.remember(LibrarySnapshot.Value(current.allItems, current.physicalBinUris, current.hasPermission))
+        }
+        if (binIndexJob?.isActive != true) {
+            binIndexJob = viewModelScope.launch {
+                while (pendingBinIndexMoves.isNotEmpty() && flushPendingBinIndexMoves()) {
+                    currentCoroutineContext().ensureActive()
+                }
+            }
         }
     }
 
-    private suspend fun flushPendingBinIndexMoves() {
+    private suspend fun flushPendingBinIndexMoves(): Boolean = catalogueWrites.withLock {
         val pending = pendingBinIndexMoves.toMap()
-        if (pending.isEmpty()) return
+        if (pending.isEmpty()) return@withLock true
         try {
             CatalogStore.recordRecycleBinMoves(getApplication(), pending)
             pending.forEach { (source, destination) -> pendingBinIndexMoves.remove(source, destination) }
+            true
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
             throw cancelled
         } catch (failure: Exception) {
             Log.w("FGallery", "Could not apply recycle-bin changes to Room", failure)
+            false
         }
     }
 
@@ -731,12 +765,11 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
         try {
             driveBin.restore(items)
             val restored = items.mapTo(hashSetOf()) { it.uriKey }
-            pendingBinIndexMoves.entries.removeIf { it.value.uriKey in restored }
-            // A successful restore changes the URI identity. Remove the old
-            // bin entry immediately; refresh() will index the restored URI.
-            // Never delete the catalogue entry before the physical move succeeds.
-            runCatching {
-                CatalogStore.removeUris(getApplication(), items.mapTo(hashSetOf()) { it.uriKey })
+            // A successful restore changes the URI identity. Order removal
+            // after any queued insertion of the same recycle-bin entry.
+            catalogueWrites.withLock {
+                pendingBinIndexMoves.entries.removeIf { it.value.uriKey in restored }
+                runCatching { CatalogStore.removeUris(getApplication(), restored) }
             }
             settingsRepository.removeFromRecycleBin(items.map { it.uriKey })
         } finally { refresh() }
@@ -745,9 +778,11 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
     fun onPermanentlyDeleted(uris: Collection<String>) {
         viewModelScope.launch {
             driveBin.deleted(uris)
-            pendingBinIndexMoves.entries.removeIf { it.value.uriKey in uris }
+            catalogueWrites.withLock {
+                pendingBinIndexMoves.entries.removeIf { it.value.uriKey in uris }
+                runCatching { CatalogStore.removeUris(getApplication(), uris.toSet()) }
+            }
             settingsRepository.removeFromRecycleBin(uris)
-            runCatching { CatalogStore.removeUris(getApplication(), uris.toSet()) }
             refresh()
         }
     }
