@@ -19,6 +19,7 @@ import com.canhub.cropper.CropImageView
 import com.mistermikhail.fgallery.data.EditedMediaStore
 import com.mistermikhail.fgallery.data.MediaItem
 import com.mistermikhail.fgallery.data.MediaKind
+import com.mistermikhail.fgallery.data.StorageAccess
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.Rule
@@ -115,7 +116,7 @@ class CropSaveTest {
             } catch (_: IllegalStateException) { }
             assertArrayEquals("Failed replacement must restore source", edited.readBytes(), bytes(uri))
         } finally {
-            copy?.let { context.contentResolver.delete(it, null, null) }
+            copy?.let { StorageAccess.delete(context, it) }
             context.contentResolver.delete(uri, null, null)
         }
     }
