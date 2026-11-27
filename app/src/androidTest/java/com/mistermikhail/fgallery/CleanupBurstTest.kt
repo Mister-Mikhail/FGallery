@@ -47,10 +47,7 @@ class CleanupBurstTest {
     private val context get() = instrumentation.targetContext
 
     @Test fun sequentialDoubleTapsAdvanceWhileRoomIsBusy() {
-        val appOp = "MANAGE_EXTERNAL_STORAGE"
-        val packageName = context.packageName
-        val previousMode = Regex("MANAGE_EXTERNAL_STORAGE:\\s*(\\w+)")
-            .find(shell("cmd appops get --uid $packageName $appOp"))?.groupValues?.get(1) ?: "default"
+        assertTrue("Grant all-files access before starting the test process", Environment.isExternalStorageManager())
         val preferences = context.getSharedPreferences("fgallery_onboarding", Context.MODE_PRIVATE)
         val completed = preferences.getBoolean("access_wizard_completed", false)
         val nonce = UUID.randomUUID().toString()
@@ -61,8 +58,6 @@ class CleanupBurstTest {
         val releaseWriter = CountDownLatch(1)
 
         try {
-            shell("cmd appops set --uid $packageName $appOp allow")
-            assertTrue(Environment.isExternalStorageManager())
             preferences.edit().putBoolean("access_wizard_completed", true).commit()
             assertTrue(album.mkdirs())
             val files = (0..7).associate { index ->
@@ -148,12 +143,8 @@ class CleanupBurstTest {
             } finally {
                 album.deleteRecursively()
                 preferences.edit().putBoolean("access_wizard_completed", completed).commit()
-                shell("cmd appops set --uid $packageName $appOp $previousMode")
             }
         }
     }
 
-    private fun shell(command: String): String =
-        android.os.ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand(command))
-            .bufferedReader().use { it.readText() }
 }

@@ -23,6 +23,13 @@ if "$extended_qa"; then
         fi
         test_args+=("-Pandroid.testInstrumentationRunnerArguments.class=$selected_tests")
     fi
+    if [ "${GITHUB_REF_NAME:-}" = "fix/viewer-cleanup-latency" ]; then
+        # Android may restart the app process when its storage grant changes.
+        # Set it on the disposable emulator before launching instrumentation.
+        timeout --signal=INT --kill-after=30s 10m gradle :app:assembleMinifiedTest
+        adb install -r -t app/build/outputs/apk/minifiedTest/app-x86_64-minifiedTest.apk
+        adb shell cmd appops set --uid com.mistermikhail.fgallery MANAGE_EXTERNAL_STORAGE allow
+    fi
     timeout --signal=INT --kill-after=30s 14m gradle :app:connectedMinifiedTestAndroidTest "${test_args[@]}" || result=$?
 else
     gradle :app:connectedMinifiedTestAndroidTest || result=$?
