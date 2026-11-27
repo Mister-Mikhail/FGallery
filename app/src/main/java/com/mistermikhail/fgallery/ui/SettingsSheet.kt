@@ -1,7 +1,5 @@
 package com.mistermikhail.fgallery.ui
 
-import android.content.Context
-import android.content.SharedPreferences
 import kotlin.math.roundToInt
 import androidx.compose.material3.Slider
 import androidx.compose.ui.semantics.contentDescription
@@ -40,14 +38,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-
-private const val ROTATION_THRESHOLD_KEY = "viewer_rotation_threshold_degrees"
-
-internal fun rotationThresholdPreferences(context: Context): SharedPreferences =
-    context.getSharedPreferences("fgallery_settings", Context.MODE_PRIVATE)
-
-internal fun SharedPreferences.rotationThreshold(): Int =
-    getInt(ROTATION_THRESHOLD_KEY, QuarterTurnGesture.DEFAULT_THRESHOLD).coerceIn(0, QuarterTurnGesture.MAX_THRESHOLD)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -126,7 +116,7 @@ fun SettingsSheet(
                 )
             }
 
-            val gesturePrefs = remember(context) { rotationThresholdPreferences(context) }
+            val gesturePrefs = remember(context) { viewerGesturePreferences(context) }
             var rotationThreshold by remember { mutableIntStateOf(gesturePrefs.rotationThreshold()) }
             Text("Порог поворота фото · ${rotationThreshold}°", style = MaterialTheme.typography.bodyLarge)
             Text("Насколько нужно повернуть два пальца, чтобы фото начало вращаться.",
@@ -139,6 +129,27 @@ fun SettingsSheet(
                 steps = QuarterTurnGesture.MAX_THRESHOLD - 1,
                 modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Порог поворота фото" },
             )
+            var rememberRotation by remember { mutableStateOf(gesturePrefs.rememberImageRotation()) }
+            Row(
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("Запоминать поворот фото", style = MaterialTheme.typography.bodyLarge)
+                    Text("Показывать фото в том же положении при следующем открытии.",
+                        style = MaterialTheme.typography.bodySmall)
+                }
+                Switch(
+                    checked = rememberRotation,
+                    onCheckedChange = { enabled ->
+                        rememberRotation = enabled
+                        gesturePrefs.edit().putBoolean(REMEMBER_ROTATION_KEY, enabled).apply()
+                    },
+                    modifier = Modifier.semantics { contentDescription = "Запоминать поворот фото" }
+                        .graphicsLayer { scaleX = 0.82f; scaleY = 0.82f },
+                )
+            }
 
             var accessExpanded by remember { mutableStateOf(false) }
             Row(

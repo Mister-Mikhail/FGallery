@@ -10,7 +10,7 @@ extended_qa=false
 cleanup_qa=false
 case "${GITHUB_REF_NAME:-}" in
     feature/models-location) extended_qa=true ;;
-    fix/viewer-cleanup-latency|fix/cleanup-queue-and-navigation) extended_qa=true; cleanup_qa=true ;;
+    fix/viewer-cleanup-latency|fix/cleanup-queue-and-navigation|fix/viewer-rotation-fit) extended_qa=true; cleanup_qa=true ;;
 esac
 if "$extended_qa"; then
     # Keep a live copy even if the virtual device disconnects.
@@ -22,6 +22,9 @@ if "$extended_qa"; then
         selected_tests=com.mistermikhail.fgallery.VideoContentUriPlaybackTest,com.mistermikhail.fgallery.ModelViewerTest,com.mistermikhail.fgallery.ModelSafLaunchTest,com.mistermikhail.fgallery.CaptureLocationTest
         if "$cleanup_qa"; then
             selected_tests+=,com.mistermikhail.fgallery.CleanupBurstTest
+        fi
+        if [ "${GITHUB_REF_NAME:-}" = "fix/viewer-rotation-fit" ]; then
+            selected_tests+=,com.mistermikhail.fgallery.ImageZoomTest
         fi
         test_args+=("-Pandroid.testInstrumentationRunnerArguments.class=$selected_tests")
     fi

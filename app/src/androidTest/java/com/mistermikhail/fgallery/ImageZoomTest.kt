@@ -5,21 +5,31 @@ import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.size
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toPixelMap
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.unit.dp
 import androidx.test.platform.app.InstrumentationRegistry
 import com.mistermikhail.fgallery.data.MediaItem
 import com.mistermikhail.fgallery.data.MediaKind
 import com.mistermikhail.fgallery.data.ThumbnailCache
 import com.mistermikhail.fgallery.ui.TiledZoomableImage
+import com.mistermikhail.fgallery.ui.REMEMBER_ROTATION_KEY
 import com.mistermikhail.fgallery.ui.ViewerImageReady
 import com.mistermikhail.fgallery.ui.ViewerZoomRange
 import com.mistermikhail.fgallery.ui.nextRasterDoubleTapZoom
+import com.mistermikhail.fgallery.ui.imageOrientationPreferences
+import com.mistermikhail.fgallery.ui.imageQuarterTurns
+import com.mistermikhail.fgallery.ui.saveImageQuarterTurns
+import com.mistermikhail.fgallery.ui.viewerGesturePreferences
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -27,6 +37,90 @@ import java.io.File
 
 class ImageZoomTest {
     @get:Rule val rule = createComposeRule()
+
+    @Test fun rotatingPortraitRefitsTheViewerAndRemembersOnlyWhenEnabled() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val file = File.createTempFile("rotation-fit-", ".png", context.cacheDir)
+        val bitmap = Bitmap.createBitmap(480, 720, Bitmap.Config.ARGB_8888)
+        try {
+            bitmap.eraseColor(android.graphics.Color.GREEN)
+            file.outputStream().use { assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) }
+        } finally {
+            bitmap.recycle()
+        }
+        val originalBytes = file.readBytes()
+        val item = MediaItem(987659, Uri.fromFile(file), file.name, "image/png", MediaKind.IMAGE,
+            0, 480, 720, 0, "Tests", "", file.length(), dateModifiedMillis = file.lastModified())
+        val preferences = viewerGesturePreferences(context)
+        val orientations = imageOrientationPreferences(context)
+        val previousSetting = preferences.all[REMEMBER_ROTATION_KEY] as? Boolean
+        val session = mutableIntStateOf(0)
+        try {
+            preferences.edit().putBoolean(REMEMBER_ROTATION_KEY, false).apply()
+            rule.setContent {
+                Box(Modifier.size(240.dp, 320.dp).background(Color.Black).testTag("rotation-test-viewport")) {
+                    key(session.intValue) { TiledZoomableImage(item, {}, false, {}) }
+                }
+            }
+            val viewport = rule.onNodeWithTag("rotation-test-viewport")
+            val image = rule.onNodeWithTag("viewer-image")
+            fun awaitOrientation(landscape: Boolean) {
+                rule.waitUntil(8_000) {
+                    runCatching {
+                        if (!image.fetchSemanticsNode().config[ViewerImageReady]) return@runCatching false
+                        val pixels = viewport.captureToImage().toPixelMap()
+                        fun greenAt(x: Float, y: Float) = pixels[(pixels.width * x).toInt(), (pixels.height * y).toInt()].green > .8f
+                        greenAt(.5f, .5f) && greenAt(.025f, .5f) == landscape &&
+                            greenAt(.975f, .5f) == landscape && greenAt(.5f, .22f) != landscape
+                    }.getOrDefault(false)
+                }
+            }
+            fun turnAndStretch() {
+                viewport.performTouchInput {
+                    val startRadius = width * .19f
+                    down(0, center - Offset(startRadius, 0f))
+                    down(1, center + Offset(startRadius, 0f))
+                    for (step in 1..6) {
+                        val angle = step * Math.PI / 12
+                        val radius = startRadius * (1 + step * .07f)
+                        val offset = Offset((radius * kotlin.math.cos(angle)).toFloat(), (radius * kotlin.math.sin(angle)).toFloat())
+                        updatePointerTo(0, center - offset)
+                        updatePointerTo(1, center + offset)
+                        move()
+                    }
+                    up(1)
+                    up(0)
+                }
+                awaitOrientation(landscape = true)
+                image.assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Zoom 100%"))
+            }
+            fun reopen() = rule.runOnIdle { session.intValue++ }
+
+            awaitOrientation(landscape = false)
+            turnAndStretch()
+            assertEquals(0, orientations.imageQuarterTurns(item))
+            reopen()
+            awaitOrientation(landscape = false)
+
+            preferences.edit().putBoolean(REMEMBER_ROTATION_KEY, true).apply()
+            turnAndStretch()
+            assertEquals(1, orientations.imageQuarterTurns(item))
+            reopen()
+            awaitOrientation(landscape = true)
+            assertArrayEquals(originalBytes, file.readBytes())
+
+            preferences.edit().putBoolean(REMEMBER_ROTATION_KEY, false).apply()
+            reopen()
+            awaitOrientation(landscape = false)
+        } finally {
+            orientations.saveImageQuarterTurns(item, 0)
+            val restore = preferences.edit()
+            if (previousSetting == null) restore.remove(REMEMBER_ROTATION_KEY)
+            else restore.putBoolean(REMEMBER_ROTATION_KEY, previousSetting)
+            restore.apply()
+            file.delete()
+        }
+    }
 
     @Test fun smallImageZoomsTwoAndHalfThenReturnsOnSecondTap() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext

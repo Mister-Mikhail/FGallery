@@ -31,6 +31,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -77,6 +78,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.semantics.SemanticsPropertyKey
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -86,7 +88,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem as PlayerMediaItem
@@ -865,13 +869,24 @@ internal fun TiledZoomableImage(
         }
     }
 
-    // Rotation is display-only and scoped to this media item. Observe at Final pass
-    // without consuming events so Telephoto retains pinch zoom and pan.
-    val quarterTurnGesture = remember(item.uriKey, context) {
-        QuarterTurnGesture(thresholdDegrees = rotationThresholdPreferences(context).rotationThreshold())
+    val gesturePrefs = remember(context) { viewerGesturePreferences(context) }
+    val orientationPrefs = remember(context) { imageOrientationPreferences(context) }
+    val quarterTurnGesture = remember(item.uriKey, item.dateModifiedMillis, item.sizeBytes, context) {
+        val initialTurns = if (gesturePrefs.rememberImageRotation()) orientationPrefs.imageQuarterTurns(item) else 0
+        QuarterTurnGesture(initialTurns, gesturePrefs.rotationThreshold())
     }
-    var displayRotation by remember(item.uriKey) { mutableFloatStateOf(0f) }
-    var rotationGestureActive by remember(item.uriKey) { mutableStateOf(false) }
+    var committedTurns by remember(quarterTurnGesture) { mutableIntStateOf(quarterTurnGesture.quarterTurns) }
+    var displayRotation by remember(quarterTurnGesture) { mutableFloatStateOf(committedTurns * 90f) }
+    var rotationGestureActive by remember(quarterTurnGesture) { mutableStateOf(false) }
+    var refitAfterTurn by remember(quarterTurnGesture) { mutableStateOf(false) }
+    LaunchedEffect(committedTurns) {
+        if (refitAfterTurn) {
+            // Reset any zoom introduced by the two-finger gesture after changing the viewport.
+            withFrameNanos { }
+            zoomableState.resetZoom(animationSpec = snap())
+            refitAfterTurn = false
+        }
+    }
     val animatedRotation by animateFloatAsState(
         targetValue = displayRotation,
         animationSpec = tween(durationMillis = if (rotationGestureActive) 0 else 240),
@@ -879,7 +894,8 @@ internal fun TiledZoomableImage(
     )
     Box(
         modifier = Modifier.fillMaxSize()
-            .pointerInput(item.uriKey, active) {
+            // Observe in screen coordinates without consuming Telephoto's pinch and pan.
+            .pointerInput(quarterTurnGesture, active) {
                 if (!active) return@pointerInput
                 awaitEachGesture {
                     awaitFirstDown(requireUnconsumed = false)
@@ -900,15 +916,31 @@ internal fun TiledZoomableImage(
                         } else if (tracking) {
                             val snapped = quarterTurnGesture.end().toFloat()
                             displayRotation = snapped + 360f * ((displayRotation - snapped) / 360f).roundToInt()
+                            val turns = quarterTurnGesture.quarterTurns
+                            if (turns != committedTurns) {
+                                committedTurns = turns
+                                previousTapTarget = 0f
+                                refitAfterTurn = true
+                                if (gesturePrefs.rememberImageRotation()) {
+                                    orientationPrefs.saveImageQuarterTurns(item, turns)
+                                }
+                            }
                             tracking = false
                             rotationGestureActive = false
                         }
                     } while (event.changes.any { it.pressed })
-                    if (tracking) {
-                        val snapped = quarterTurnGesture.end().toFloat()
-                        displayRotation = snapped + 360f * ((displayRotation - snapped) / 360f).roundToInt()
-                        rotationGestureActive = false
-                    }
+                }
+            }
+            .layout { measurable, constraints ->
+                // Fit in the rotated axes so both edges of the photo stay inside the screen.
+                val swapAxes = committedTurns % 2 != 0 && constraints.hasBoundedWidth && constraints.hasBoundedHeight
+                val image = measurable.measure(
+                    if (swapAxes) Constraints.fixed(constraints.maxHeight, constraints.maxWidth) else constraints,
+                )
+                val width = if (swapAxes) image.height else image.width
+                val height = if (swapAxes) image.width else image.height
+                layout(width, height) {
+                    image.place((width - image.width) / 2, (height - image.height) / 2)
                 }
             }
             .graphicsLayer { rotationZ = animatedRotation },
