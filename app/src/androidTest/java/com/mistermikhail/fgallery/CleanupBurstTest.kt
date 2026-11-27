@@ -6,6 +6,8 @@ import android.graphics.Color
 import android.net.Uri
 import android.os.Environment
 import android.os.SystemClock
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.ComposeTimeoutException
 import androidx.compose.ui.test.doubleClick
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
@@ -23,9 +25,11 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.mistermikhail.fgallery.data.CatalogDatabase
 import com.mistermikhail.fgallery.data.CatalogStore
 import com.mistermikhail.fgallery.data.DriveRecycleBin
+import com.mistermikhail.fgallery.data.MediaItem
 import com.mistermikhail.fgallery.data.StorageAccess
 import com.mistermikhail.fgallery.ui.GalleryViewModel
 import com.mistermikhail.fgallery.ui.ViewerCurrentUri
+import com.mistermikhail.fgallery.ui.ViewerImageReady
 import java.io.File
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
@@ -87,12 +91,17 @@ class CleanupBurstTest {
                 }
                 rule.onNodeWithContentDescription(ordered.first().name).performClick()
                 val viewer = rule.onNodeWithTag("viewer-root")
-                fun shows(uri: String) = rule.onAllNodesWithTag("viewer-root").fetchSemanticsNodes()
-                    .any { it.config[ViewerCurrentUri] == uri }
-                rule.waitUntil(8_000) { shows(ordered.first().uriKey) }
+                fun currentUri() = rule.onAllNodesWithTag("viewer-root").fetchSemanticsNodes()
+                    .singleOrNull()?.config?.getOrElse(ViewerCurrentUri) { "" }
+                fun showsPhoto(item: MediaItem): Boolean =
+                    currentUri() == item.uriKey && rule.onAllNodesWithTag("viewer-image").fetchSemanticsNodes().any {
+                        it.config.getOrElse(ViewerImageReady) { false } &&
+                            item.name in it.config.getOrElse(SemanticsProperties.ContentDescription) { emptyList() }
+                    }
+                rule.waitUntil(8_000) { showsPhoto(ordered.first()) }
                 rule.mainClock.advanceTimeBy(400)
                 viewer.performTouchInput { swipeLeft() }
-                rule.waitUntil(8_000) { shows(ordered[1].uriKey) }
+                rule.waitUntil(8_000) { showsPhoto(ordered[1]) }
 
                 val database = CatalogDatabase.get(context)
                 val writerEntered = CountDownLatch(1)
@@ -110,7 +119,15 @@ class CleanupBurstTest {
                         val next = ordered.getOrElse(index + 1) { ordered.first() }
                         val started = SystemClock.elapsedRealtime()
                         viewer.performTouchInput { doubleClick(center) }
-                        rule.waitUntil(2_000) { shows(next.uriKey) && !source.exists() }
+                        try {
+                            rule.waitUntil(2_000) { showsPhoto(next) && !source.exists() }
+                        } catch (failure: ComposeTimeoutException) {
+                            throw AssertionError(
+                                "sequence=$index,current=${currentUri()},sourceExists=${source.exists()}," +
+                                    "catalogueRemoved=${viewModel.uiState.value.visibleItems.none { it.name == source.name }}",
+                                failure,
+                            )
+                        }
                         val elapsed = SystemClock.elapsedRealtime() - started
                         android.util.Log.i("FGalleryCleanupQA", "sequence=$index,tap_to_next_ms=$elapsed")
                         assertFalse("A Room transaction completed during the check", transaction.isDone)

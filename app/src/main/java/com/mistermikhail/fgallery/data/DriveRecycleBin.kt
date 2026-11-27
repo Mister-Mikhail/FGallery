@@ -118,6 +118,7 @@ class DriveRecycleBin(private val context: Context, private val mounted: () -> L
         items: List<MediaItem>,
         verifyPreflight: (suspend (MediaItem) -> Boolean)? = null,
         onMoved: (source: MediaItem, destination: MediaItem) -> Unit = { _, _ -> },
+        reconcilePaths: (Set<String>) -> Unit = ::reconcileAndroidIndex,
         verifyBeforeMove: suspend (MediaItem) -> Boolean,
     ): List<MediaItem> = withContext(Dispatchers.IO) {
         val removedPaths = linkedSetOf<String>()
@@ -199,11 +200,16 @@ class DriveRecycleBin(private val context: Context, private val mounted: () -> L
         } finally {
             // Reconcile the old paths in Android's index in one request. The hidden bin
             // is tracked by our journal and Room, so it never needs media indexing.
-            if (removedPaths.isNotEmpty()) runCatching {
-                MediaScannerConnection.scanFile(context, removedPaths.toTypedArray(), null, null)
-            }
+            if (removedPaths.isNotEmpty()) reconcilePaths(removedPaths)
         }
     }
+
+    internal fun reconcileAndroidIndex(paths: Set<String>) {
+        if (paths.isNotEmpty()) runCatching {
+            MediaScannerConnection.scanFile(context, paths.toTypedArray(), null, null)
+        }
+    }
+
     suspend fun restore(items: List<MediaItem>) = withContext(Dispatchers.IO) {
         lock.withLock {
             val contents = BinContents()

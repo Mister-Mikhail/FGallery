@@ -104,6 +104,7 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
     private val catalogueWrites = Mutex()
     private var binIndexJob: kotlinx.coroutines.Job? = null
     private var observingCleanupViewer = false
+    private val cleanupMediaPaths = ConcurrentHashMap.newKeySet<String>()
     private var deferredObservedRefresh = false
     private var deferredExplicitRefresh: Boolean? = null
     @Volatile private var lastCatalogueScanSucceeded: Boolean? = null
@@ -151,6 +152,11 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
 
     private fun resumeDeferredRefresh() {
         if (activeBinMoves.value != 0) return
+        if (!observingCleanupViewer && cleanupMediaPaths.isNotEmpty()) {
+            val paths = cleanupMediaPaths.toSet()
+            cleanupMediaPaths.removeAll(paths)
+            viewModelScope.launch(Dispatchers.IO) { driveBin.reconcileAndroidIndex(paths) }
+        }
         val explicit = deferredExplicitRefresh
         if (explicit != null) {
             deferredExplicitRefresh = null
@@ -652,7 +658,14 @@ class GalleryViewModel(application: Application, private val savedStateHandle: S
         verifyBeforeMove: suspend (MediaItem) -> Boolean,
     ) {
         moveBinBatch { onMoved ->
-            driveBin.trashWithPreMoveCheck(items, onMoved = onMoved, verifyBeforeMove = verifyBeforeMove)
+            // A stream of cleanup taps only changes the affected app rows.
+            // Hand the old paths to Android together when the viewer closes.
+            val reconcile: (Set<String>) -> Unit = if (observingCleanupViewer) {
+                { cleanupMediaPaths.addAll(it) }
+            } else driveBin::reconcileAndroidIndex
+            driveBin.trashWithPreMoveCheck(
+                items, onMoved = onMoved, reconcilePaths = reconcile, verifyBeforeMove = verifyBeforeMove,
+            )
         }
     }
 
