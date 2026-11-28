@@ -182,9 +182,9 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                     val reportedType = contentResolver.getType(uri)
-                    val modelType = ModelFormat.from("", incomingType)?.mimeType
-                    val mime = if (reportedType == null || reportedType == "application/octet-stream")
-                        modelType ?: reportedType else reportedType
+                    val model = ModelFormat.from(displayName, incomingType)
+                        ?: ModelFormat.from(uri.path.orEmpty().substringAfterLast('/'), reportedType)
+                    val mime = model?.mimeType ?: reportedType ?: incomingType
                     Triple(displayName, size, mime)
                 }
                 val (name, size, mime) = metadata

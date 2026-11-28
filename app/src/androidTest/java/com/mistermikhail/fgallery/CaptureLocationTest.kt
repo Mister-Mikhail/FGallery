@@ -8,15 +8,21 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.foundation.layout.Column
 import androidx.core.content.FileProvider
 import androidx.exifinterface.media.ExifInterface
 import androidx.test.platform.app.InstrumentationRegistry
 import com.mistermikhail.fgallery.data.CaptureLocation
+import com.mistermikhail.fgallery.data.ExifGpsCoordinates
 import com.mistermikhail.fgallery.data.MediaDetailsRepository
 import com.mistermikhail.fgallery.data.MediaItem
 import com.mistermikhail.fgallery.data.MediaKind
 import com.mistermikhail.fgallery.ui.MediaDetailsSheet
+import com.mistermikhail.fgallery.ui.CaptureLocationSection
 import java.io.File
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -44,7 +50,25 @@ class CaptureLocationTest {
         rule.waitUntil(8_000) { rule.onAllNodesWithText(expected).fetchSemanticsNodes().isNotEmpty() }
         rule.onNodeWithText("Место съёмки").assertIsDisplayed()
         rule.onNodeWithText(expected).assertIsDisplayed()
-        rule.onNodeWithText("Открыть на карте").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithTag("capture-location-map").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test fun mapPreviewShowsPinAndOpensItsCapturePoint() {
+        val coordinates = checkNotNull(ExifGpsCoordinates.fromExif(doubleArrayOf(-35.12, 149.15)))
+        val map = Bitmap.createBitmap(320, 144, Bitmap.Config.ARGB_8888)
+        var opened: Uri? = null
+        rule.setContent {
+            Column {
+                CaptureLocationSection(CaptureLocation.Missing) { }
+                CaptureLocationSection(CaptureLocation.Available(coordinates), loadMap = { _, _ -> map },
+                    openMap = { opened = it }) { }
+            }
+        }
+        rule.onNodeWithText("Место съёмки").assertIsDisplayed()
+        rule.onNodeWithContentDescription("Метка места съёмки").assertIsDisplayed()
+        rule.onNodeWithText("© OpenStreetMap contributors").assertIsDisplayed()
+        rule.onNodeWithTag("capture-location-map").performClick()
+        rule.runOnIdle { assertEquals("geo", opened?.scheme); assertEquals("-35.12,149.15", opened?.schemeSpecificPart?.substringBefore('?')) }
     }
 
     @Test fun missingGpsAndOverwrittenGpsAreDistinguished() = runBlocking {

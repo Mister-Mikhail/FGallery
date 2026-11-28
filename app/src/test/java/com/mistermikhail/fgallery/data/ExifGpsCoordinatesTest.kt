@@ -6,6 +6,12 @@ import org.junit.Assert.assertNotNull
 import org.junit.Test
 
 class ExifGpsCoordinatesTest {
+    @Test fun videoCoordinatesUseTheSourceIso6709Tag() {
+        assertEquals("-35.120000, 149.150000", ExifGpsCoordinates.fromVideo("-35.12+149.15+12.0/")?.display())
+        assertEquals("0.000000, 0.000000", ExifGpsCoordinates.fromVideo("+00.0000+000.0000/")?.display())
+        assertNull(ExifGpsCoordinates.fromVideo("+91.00+001.00/"))
+        assertNull(ExifGpsCoordinates.fromVideo("no GPS"))
+    }
     @Test fun validZeroAndSignedCoordinates() {
         assertEquals("0.000000, 0.000000", ExifGpsCoordinates.fromExif(doubleArrayOf(0.0, 0.0))?.display())
         assertEquals("-33.865143, 151.209900", ExifGpsCoordinates.fromExif(doubleArrayOf(-33.865143, 151.2099))?.display())

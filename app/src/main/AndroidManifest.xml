@@ -49,10 +49,44 @@
                 <data android:mimeType="application/x-avi" />
                 <data android:mimeType="application/vnd.ms-asf" />
                 <data android:mimeType="model/gltf-binary" />
+                <data android:mimeType="application/x-glb" />
                 <data android:mimeType="model/stl" />
+                <data android:mimeType="model/x.stl-ascii" />
+                <data android:mimeType="model/x.stl-binary" />
                 <data android:mimeType="application/sla" />
                 <data android:mimeType="application/x-stl" />
             </intent-filter>
         </activity>
+        <!-- Android 12 added literal path suffix matching. Enable this alias only where the
+             system can limit generic VIEW requests to model filenames. -->
+        <activity-alias android:name=".ModelFileAssociation" android:targetActivity=".MainActivity"
+            android:enabled="@bool/model_suffix_association" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:host="*" />
+                <data android:pathSuffix=".stl" />
+                <data android:pathSuffix=".STL" />
+                <data android:pathSuffix=".glb" />
+                <data android:pathSuffix=".GLB" />
+                <data android:mimeType="application/octet-stream" />
+                <data android:mimeType="binary/octet-stream" />
+                <data android:mimeType="application/vnd.ms-pki.stl" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:host="*" />
+                <data android:pathSuffix=".stl" />
+                <data android:pathSuffix=".STL" />
+                <data android:pathSuffix=".glb" />
+                <data android:pathSuffix=".GLB" />
+            </intent-filter>
+        </activity-alias>
     </application>
 </manifest>

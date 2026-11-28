@@ -2,26 +2,38 @@ package com.mistermikhail.fgallery.ui
 
 import android.Manifest
 import android.content.ActivityNotFoundException
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import android.graphics.Bitmap
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -30,7 +42,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -38,6 +56,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import com.mistermikhail.fgallery.data.CaptureLocation
+import com.mistermikhail.fgallery.data.CaptureMapPreview
+import com.mistermikhail.fgallery.data.ExifGpsCoordinates
 import com.mistermikhail.fgallery.data.ExifAddressResolver
 import com.mistermikhail.fgallery.data.canReadOriginalLocation
 import com.mistermikhail.fgallery.data.MediaDetails
@@ -47,18 +67,22 @@ import com.mistermikhail.fgallery.data.MediaKind
 import com.mistermikhail.fgallery.data.FullResolutionFiles
 import com.mistermikhail.fgallery.data.RawEmbeddedJpeg
 import android.graphics.BitmapFactory
+import coil3.compose.AsyncImage
+import kotlin.math.abs
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MediaDetailsSheet(
     item: MediaItem,
     onDismiss: () -> Unit,
+    onNavigate: (Int) -> Unit = {},
 ) {
     val context = LocalContext.current
     val repository = remember(context.applicationContext) {
         MediaDetailsRepository(context.applicationContext)
     }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val navigate by rememberUpdatedState(onNavigate)
 
     var hasLocationPermission by remember { mutableStateOf(context.canReadOriginalLocation()) }
     var permissionRequest by remember { mutableIntStateOf(0) }
@@ -81,6 +105,14 @@ fun MediaDetailsSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .pointerInput(Unit) {
+                    var distance = 0f
+                    detectHorizontalDragGestures(
+                        onDragStart = { distance = 0f },
+                        onDragEnd = { if (abs(distance) >= size.width * .15f) navigate(if (distance < 0) 1 else -1) },
+                        onHorizontalDrag = { _, amount -> distance += amount },
+                    )
+                }
                 .verticalScroll(rememberScrollState())
                 .navigationBarsPadding()
                 .padding(start = 20.dp, end = 20.dp, bottom = 32.dp),
@@ -125,6 +157,11 @@ fun MediaDetailsSheet(
                     modifier = Modifier.padding(vertical = 12.dp),
                 )
             } else {
+                loaded.captureLocation?.let {
+                    CaptureLocationSection(it) {
+                        requestLocation.launch(Manifest.permission.ACCESS_MEDIA_LOCATION)
+                    }
+                }
                 loaded.sections.forEachIndexed { sectionIndex, section ->
                     if (sectionIndex > 0) {
                         HorizontalDivider(
@@ -161,18 +198,19 @@ fun MediaDetailsSheet(
                         }
                     }
                 }
-                loaded.captureLocation?.let {
-                    CaptureLocationSection(it) {
-                        requestLocation.launch(Manifest.permission.ACCESS_MEDIA_LOCATION)
-                    }
-                }
             }
         }
     }
 }
 
 @Composable
-internal fun CaptureLocationSection(location: CaptureLocation, requestPermission: () -> Unit) {
+internal fun CaptureLocationSection(
+    location: CaptureLocation,
+    loadMap: suspend (Context, ExifGpsCoordinates) -> Bitmap? = CaptureMapPreview::load,
+    openMap: ((Uri) -> Unit)? = null,
+    requestPermission: () -> Unit,
+) {
+    if (location == CaptureLocation.Missing) return
     val context = LocalContext.current
     HorizontalDivider(
         modifier = Modifier.padding(vertical = 16.dp),
@@ -180,7 +218,7 @@ internal fun CaptureLocationSection(location: CaptureLocation, requestPermission
     )
     Text("Место съёмки", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge)
     when (location) {
-        CaptureLocation.Missing -> Text("В файле нет координат")
+        CaptureLocation.Missing -> Unit
         CaptureLocation.Unavailable -> Text("Не удалось прочитать координаты")
         CaptureLocation.PermissionRequired -> {
             Text("Для чтения координат оригинала нужен доступ")
@@ -195,27 +233,66 @@ internal fun CaptureLocationSection(location: CaptureLocation, requestPermission
                     value = if (resolved == null) AddressState.Unavailable else AddressState.Available(resolved)
                 }.value
             }
+            val map = key(coordinates) {
+                produceState<MapState>(MapState.Loading) {
+                    value = loadMap(context.applicationContext, coordinates)?.let(MapState::Ready) ?: MapState.Unavailable
+                }.value
+            }
+            val openCapturePoint = {
+                val point = "${coordinates.latitude},${coordinates.longitude}"
+                val label = (address as? AddressState.Available)?.text
+                val query = if (label == null) point else "$point ($label)"
+                val uri = Uri.parse("geo:$point?q=${Uri.encode(query)}")
+                if (openMap != null) openMap(uri) else openLocationLink(context, uri)
+            }
+            Box(
+                Modifier.fillMaxWidth().padding(vertical = 6.dp)
+                    .aspectRatio(CaptureMapPreview.WIDTH.toFloat() / CaptureMapPreview.HEIGHT)
+                    .clip(MaterialTheme.shapes.medium).background(MaterialTheme.colorScheme.surfaceVariant)
+                    .testTag("capture-location-map").clickable(onClickLabel = "Открыть на карте", onClick = openCapturePoint),
+            ) {
+                if (map is MapState.Ready) {
+                    AsyncImage(map.image, null, modifier = Modifier.matchParentSize(), contentScale = ContentScale.FillBounds)
+                    Text(
+                        "© OpenStreetMap contributors",
+                        modifier = Modifier.align(Alignment.BottomEnd).background(MaterialTheme.colorScheme.surface)
+                            .clickable { openLocationLink(context, Uri.parse("https://www.openstreetmap.org/copyright")) }
+                            .padding(horizontal = 4.dp, vertical = 2.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                    Icon(Icons.Outlined.LocationOn, "Метка места съёмки",
+                        Modifier.align(Alignment.Center).offset(y = (-13).dp).size(32.dp),
+                        tint = androidx.compose.ui.graphics.Color(0xFFB3261E))
+                } else {
+                    Text(if (map == MapState.Loading) "Загружается карта…" else "Карта недоступна · Открыть на карте",
+                        modifier = Modifier.align(Alignment.Center).padding(10.dp),
+                        style = MaterialTheme.typography.bodySmall)
+                }
+            }
             when (address) {
                 AddressState.Loading -> Text("Определяется адрес…")
                 AddressState.Unavailable -> Text("Адрес недоступен")
                 is AddressState.Available -> Text(address.text)
             }
             Text(coordinates.display(), style = MaterialTheme.typography.bodySmall)
-            TextButton(onClick = {
-                val point = "${coordinates.latitude},${coordinates.longitude}"
-                val label = (address as? AddressState.Available)?.text
-                val query = if (label == null) point else "$point ($label)"
-                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("geo:$point?q=${Uri.encode(query)}"))
-                try {
-                    context.startActivity(intent)
-                } catch (_: ActivityNotFoundException) {
-                    Toast.makeText(context, "Приложение карт недоступно", Toast.LENGTH_SHORT).show()
-                } catch (_: SecurityException) {
-                    Toast.makeText(context, "Не удалось открыть карту", Toast.LENGTH_SHORT).show()
-                }
-            }) { Text("Открыть на карте") }
         }
     }
+}
+
+private fun openLocationLink(context: Context, uri: Uri) {
+    try {
+        context.startActivity(Intent(Intent.ACTION_VIEW, uri))
+    } catch (_: ActivityNotFoundException) {
+        Toast.makeText(context, "Приложение карт недоступно", Toast.LENGTH_SHORT).show()
+    } catch (_: SecurityException) {
+        Toast.makeText(context, "Не удалось открыть карту", Toast.LENGTH_SHORT).show()
+    }
+}
+
+private sealed interface MapState {
+    data object Loading : MapState
+    data object Unavailable : MapState
+    data class Ready(val image: Bitmap) : MapState
 }
 
 private sealed interface AddressState {

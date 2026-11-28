@@ -4,11 +4,13 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.File
+import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
@@ -39,44 +41,63 @@ class AppUpdates(
         // GitHub's /releases/latest ignores prereleases. Compare Android
         // versionCodes so builds with identical versionName are discoverable.
         if (!manual && System.currentTimeMillis() - preferences.getLong("checked", 0) < 6 * 60 * 60 * 1000L) return@withContext null
-        val connection = connection("https://api.github.com/repos/Mister-Mikhail/FGallery/releases?per_page=50")
-        try {
-            check(connection.responseCode == 200) { "Не удалось проверить обновления (${connection.responseCode})" }
-            val body = connection.inputStream.bufferedReader().use { it.readText() }
-            val releases = org.json.JSONArray(body)
-            val installed = installed()
-            val available = (0 until releases.length()).mapNotNull { index ->
-                val release = releases.optJSONObject(index) ?: return@mapNotNull null
-                if (release.optBoolean("draft", true)) return@mapNotNull null
-                val tag = release.optString("tag_name")
-                val notes = release.optString("body")
-                val (version, build) = releaseVersionAndCode(
-                    tag, notes, installed.versionName.orEmpty(), installed.longVersionCode,
-                ) ?: return@mapNotNull null
-                if (build <= installed.longVersionCode) return@mapNotNull null
-                if (!manual && preferences.getString("declined", "") == tag) return@mapNotNull null
-                val assets = release.optJSONArray("assets") ?: return@mapNotNull null
-                val apks = (0 until assets.length()).mapNotNull { assets.optJSONObject(it) }
-                    .filter { it.optString("name").endsWith(".apk") }
-                val asset = Build.SUPPORTED_ABIS.firstNotNullOfOrNull { abi ->
-                    apks.firstOrNull { "-$abi.apk" in it.optString("name") }
-                } ?: apks.firstOrNull { "-universal.apk" in it.optString("name") }
-                    ?: return@mapNotNull null
-                val url = asset.optString("browser_download_url")
-                if (!url.startsWith("https://github.com/Mister-Mikhail/FGallery/releases/download/")) return@mapNotNull null
-                val assetName = asset.optString("name")
-                val checksumKey = if ("-universal.apk" in assetName) "UNIVERSAL" else "ARM64"
-                val fromNotes = Regex("(?m)^FGALLERY_SHA256_$checksumKey=([a-fA-F0-9]{64})\\s*$")
-                    .find(notes)?.groupValues?.get(1)
-                val digest = asset.optString("digest").takeIf { it.startsWith("sha256:") }
-                    ?.removePrefix("sha256:") ?: fromNotes
-                if (tag.startsWith("qa-") && digest == null) return@mapNotNull null
-                AvailableUpdate(version, build, tag, url, asset.optLong("size"), digest, releaseChanges(notes))
-            }.maxWithOrNull(compareBy<AvailableUpdate> { it.versionCode }
-                .thenBy { !it.tag.startsWith("qa-") })
+        val installed = installed()
+        val declined = preferences.getString("declined", "").takeUnless { manual }
+        val available = try {
+            checkApi(installed, declined)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (primary: Exception) {
             currentCoroutineContext().ensureActive()
-            preferences.edit().putLong("checked", System.currentTimeMillis()).apply()
-            available
+            try {
+                GitHubReleaseFeed(::readPage, Build.SUPPORTED_ABIS).check(installed, declined)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (fallback: Exception) {
+                fallback.addSuppressed(primary)
+                throw IllegalStateException("Не удалось проверить обновления. Проверьте подключение к интернету и повторите.", fallback)
+            }
+        }
+        currentCoroutineContext().ensureActive()
+        preferences.edit().putLong("checked", System.currentTimeMillis()).apply()
+        available
+    }
+
+    private fun checkApi(installed: android.content.pm.PackageInfo, declined: String?): AvailableUpdate? {
+        val releases = org.json.JSONArray(readPage("https://api.github.com/repos/Mister-Mikhail/FGallery/releases?per_page=50"))
+        return (0 until releases.length()).mapNotNull { index ->
+            val release = releases.optJSONObject(index) ?: return@mapNotNull null
+            if (release.optBoolean("draft", true)) return@mapNotNull null
+            val tag = release.optString("tag_name")
+            val notes = release.optString("body")
+            val (version, build) = releaseVersionAndCode(
+                tag, notes, installed.versionName.orEmpty(), installed.longVersionCode,
+            ) ?: return@mapNotNull null
+            if (build <= installed.longVersionCode) return@mapNotNull null
+            if (declined == tag) return@mapNotNull null
+            val assets = release.optJSONArray("assets") ?: return@mapNotNull null
+            val apks = (0 until assets.length()).mapNotNull { assets.optJSONObject(it) }
+                .filter { it.optString("name").endsWith(".apk") }
+            val asset = Build.SUPPORTED_ABIS.firstNotNullOfOrNull { abi ->
+                apks.firstOrNull { "-$abi.apk" in it.optString("name") }
+            } ?: apks.firstOrNull { "-universal.apk" in it.optString("name") }
+                ?: return@mapNotNull null
+            val url = asset.optString("browser_download_url")
+            if (!url.startsWith("$FGALLERY_RELEASES/download/$tag/")) return@mapNotNull null
+            val assetName = asset.optString("name")
+            val fromNotes = releaseChecksum(assetName, notes)
+            val digest = asset.optString("digest").takeIf { it.startsWith("sha256:") }
+                ?.removePrefix("sha256:") ?: fromNotes
+            if (tag.startsWith("qa-") && digest == null) return@mapNotNull null
+            AvailableUpdate(version, build, tag, url, asset.optLong("size"), digest, releaseChanges(notes))
+        }.maxWithOrNull(compareBy<AvailableUpdate> { it.versionCode }.thenBy { !it.tag.startsWith("qa-") })
+    }
+
+    private fun readPage(url: String): String {
+        val connection = connection(url)
+        try {
+            if (connection.responseCode != 200) throw IOException("GitHub returned HTTP ${connection.responseCode}")
+            return connection.inputStream.bufferedReader().use { it.readText() }
         } finally { connection.disconnect() }
     }
 
@@ -128,6 +149,11 @@ class AppUpdates(
     }
 
     companion object {
+        internal fun releaseChecksum(assetName: String, notes: String): String? {
+            val key = if (assetName.endsWith("-universal.apk")) "UNIVERSAL" else "ARM64"
+            return Regex("(?m)^FGALLERY_SHA256_$key=([a-fA-F0-9]{64})\\s*$").find(notes)?.groupValues?.get(1)
+        }
+
         internal fun releaseChanges(notes: String): List<String> = notes.lineSequence()
             .map(String::trim)
             .dropWhile { it.trimStart('#').trim() != "Что нового" || !it.startsWith('#') }

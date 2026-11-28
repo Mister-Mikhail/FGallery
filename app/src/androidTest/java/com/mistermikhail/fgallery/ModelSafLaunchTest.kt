@@ -3,6 +3,7 @@ package com.mistermikhail.fgallery
 import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.provider.DocumentsContract
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
@@ -17,12 +18,28 @@ import com.mistermikhail.fgallery.data.StorageAccess
 import java.io.File
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertNotNull
 import org.junit.Rule
 import org.junit.Test
 
 class ModelSafLaunchTest {
     @get:Rule val rule = createEmptyComposeRule()
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
+
+    @Test fun genericModelFilesAppearInTheChooserWithoutClaimingUnrelatedFiles() {
+        fun resolve(uri: String, type: String?) = Intent(Intent.ACTION_VIEW).setPackage(context.packageName)
+            .setDataAndType(Uri.parse(uri), type)
+            .resolveActivity(context.packageManager)
+        val documents = "content://com.android.externalstorage.documents/document/"
+        assertNotNull(resolve(documents + "primary%3ADownload%2Fpart.v2.stl", "application/octet-stream"))
+        assertNotNull(resolve(documents + "primary%3ADownload%2Fscene.GLB", "application/octet-stream"))
+        assertNotNull(resolve(documents + "primary%3ADownload%2Fpart.stl", "application/vnd.ms-pki.stl"))
+        assertNotNull(resolve(documents + "primary%3ADownload%2Fscene.glb", null))
+        assertNotNull(resolve("content://model.provider/item/42", "application/x-glb"))
+        assertNull(resolve(documents + "primary%3ADownload%2Farchive.zip", "application/octet-stream"))
+        assertNull(resolve(documents + "primary%3ADownload%2Fpart.stl.exe", "application/octet-stream"))
+    }
 
     @Test fun safImportAndExternalViewOpenModelOutsideCatalog() {
         val file = File(context.cacheDir, "external-model.glb")

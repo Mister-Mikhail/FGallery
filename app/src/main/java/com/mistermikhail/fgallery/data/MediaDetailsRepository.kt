@@ -64,7 +64,11 @@ class MediaDetailsRepository(
         var captureLocation: CaptureLocation? = null
         when (item.kind) {
             MediaKind.SVG, MediaKind.PDF, MediaKind.MODEL -> Unit
-            MediaKind.VIDEO -> loadVideoDetails(item)?.let(sections::add)
+            MediaKind.VIDEO -> {
+                val (video, location) = loadVideoDetails(item)
+                video?.let(sections::add)
+                captureLocation = location
+            }
             MediaKind.IMAGE, MediaKind.RAW -> {
                 val regular = readExif(item.uri)
                 regular?.let { loadExifDetails(item.kind, it) }?.let(sections::add)
@@ -171,13 +175,12 @@ class MediaDetailsRepository(
         }
     }
 
-    private fun loadVideoDetails(item: MediaItem): DetailSection? {
+    private fun loadVideoDetails(item: MediaItem): Pair<DetailSection?, CaptureLocation> {
         val retriever = MediaMetadataRetriever()
-
-        val fields = runCatching {
-            retriever.setDataSource(context, item.uri)
-
-            buildList {
+        try {
+            val hasVideo = runCatching { retriever.setDataSource(context, item.uri) }.isSuccess
+            if (!hasVideo) return null to CaptureLocation.Unavailable
+            val fields = buildList {
                 retriever.value(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.let {
                     add(DetailField("Ширина", "$it px"))
                 }
@@ -200,13 +203,23 @@ class MediaDetailsRepository(
                     add(DetailField("Дата файла", it))
                 }
             }
-        }.getOrDefault(emptyList())
-
-        retriever.release()
-
-        return fields.takeIf { it.isNotEmpty() }?.let {
-            DetailSection("Видео", it)
+            return fields.takeIf { it.isNotEmpty() }?.let { DetailSection("Видео", it) } to
+                readVideoLocation(item, retriever)
+        } finally {
+            retriever.release()
         }
+    }
+
+    private fun readVideoLocation(item: MediaItem, retriever: MediaMetadataRetriever): CaptureLocation {
+        if (item.uri.isMediaStoreItem()) {
+            if (!context.canReadOriginalLocation()) return CaptureLocation.PermissionRequired
+            if (runCatching { retriever.setDataSource(context, MediaStore.setRequireOriginal(item.uri)) }.isFailure) {
+                return CaptureLocation.Unavailable
+            }
+        }
+        val location = retriever.value(MediaMetadataRetriever.METADATA_KEY_LOCATION)
+        return ExifGpsCoordinates.fromVideo(location)?.let(CaptureLocation::Available)
+            ?: CaptureLocation.Missing
     }
 
     private fun ExifInterface.attribute(tag: String): String? =

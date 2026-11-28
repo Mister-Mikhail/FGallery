@@ -10,7 +10,7 @@ extended_qa=false
 cleanup_qa=false
 case "${GITHUB_REF_NAME:-}" in
     feature/models-location) extended_qa=true ;;
-    fix/viewer-cleanup-latency|fix/cleanup-queue-and-navigation|fix/viewer-rotation-fit) extended_qa=true; cleanup_qa=true ;;
+    fix/viewer-cleanup-latency|fix/cleanup-queue-and-navigation|fix/viewer-rotation-fit|fix/models-location-update-regressions) extended_qa=true; cleanup_qa=true ;;
 esac
 if "$extended_qa"; then
     # Keep a live copy even if the virtual device disconnects.
@@ -25,6 +25,9 @@ if "$extended_qa"; then
         fi
         if [ "${GITHUB_REF_NAME:-}" = "fix/viewer-rotation-fit" ]; then
             selected_tests+=,com.mistermikhail.fgallery.ImageZoomTest
+        fi
+        if [ "${GITHUB_REF_NAME:-}" = "fix/models-location-update-regressions" ]; then
+            selected_tests+=,com.mistermikhail.fgallery.AppUpdateTest
         fi
         test_args+=("-Pandroid.testInstrumentationRunnerArguments.class=$selected_tests")
     fi

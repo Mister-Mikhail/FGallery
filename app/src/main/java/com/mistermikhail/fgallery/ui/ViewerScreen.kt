@@ -192,7 +192,6 @@ fun ViewerScreen(
     val mediaAlpha by animateFloatAsState(if (deletingCurrent) .45f else 1f, tween(60), label = "trash-fade")
 
     LaunchedEffect(currentItem?.uriKey, currentIsVideo, currentIsModel) {
-        showDetails = false
         videoMenuExpanded = false
         if (currentIsModel) chromeVisible = true
         if (currentIsVideo) {
@@ -442,6 +441,10 @@ fun ViewerScreen(
         MediaDetailsSheet(
             item = currentItem,
             onDismiss = { showDetails = false },
+            onNavigate = { direction ->
+                val destination = pagerState.currentPage + direction
+                if (destination in pages.indices) pagerScope.launch { pagerState.scrollToPage(destination) }
+            },
         )
     }
 

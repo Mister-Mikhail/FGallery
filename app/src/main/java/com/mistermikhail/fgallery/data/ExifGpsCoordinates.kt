@@ -13,6 +13,15 @@ data class ExifGpsCoordinates private constructor(
     fun display(): String = String.format(Locale.ROOT, "%.6f, %.6f", latitude, longitude)
 
     companion object {
+        private val videoLocation = Regex("""([+-]\d+(?:\.\d+)?)([+-]\d+(?:\.\d+)?)(?:[+-]\d+(?:\.\d+)?)?/?""")
+
+        internal fun fromVideo(metadata: String?): ExifGpsCoordinates? {
+            val parts = videoLocation.matchEntire(metadata?.trim() ?: return null) ?: return null
+            val lat = parts.groupValues[1].toDoubleOrNull() ?: return null
+            val lon = parts.groupValues[2].toDoubleOrNull() ?: return null
+            return fromExif(doubleArrayOf(lat, lon))
+        }
+
         fun fromExif(latLong: DoubleArray?): ExifGpsCoordinates? {
             if (latLong == null || latLong.size != 2) return null
             val lat = latLong[0]

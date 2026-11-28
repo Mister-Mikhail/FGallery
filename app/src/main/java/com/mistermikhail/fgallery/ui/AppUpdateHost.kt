@@ -121,12 +121,12 @@ fun AppUpdateHost(checkRequests: Int) {
 @Composable
 internal fun UpdateOfferMessage(candidate: AvailableUpdate) {
     Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(if (candidate.tag.startsWith("qa-")) {
-            "Доступна новая тестовая сборка FGallery. Настройки и файлы сохранятся."
-        } else "Доступно обновление приложения.")
         if (candidate.changes.isNotEmpty()) {
             Text("Что нового", style = MaterialTheme.typography.titleSmall)
             candidate.changes.forEach { Text("• $it") }
         }
+        Text(if (candidate.tag.startsWith("qa-")) {
+            "Доступна новая тестовая сборка FGallery. Настройки и файлы сохранятся."
+        } else "Доступно обновление приложения.")
     }
 }

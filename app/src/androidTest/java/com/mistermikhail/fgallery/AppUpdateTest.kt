@@ -18,6 +18,7 @@ import java.io.File
 import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.UnknownHostException
 import java.security.MessageDigest
 
 class AppUpdateTest {
@@ -76,8 +77,49 @@ class AppUpdateTest {
     @Test fun failedAutomaticChecksDoNotSuppressRetryForSixHours() = runBlocking {
         var requests = 0
         val updates = AppUpdates(context, { requests++; response(503) { ByteArrayInputStream(byteArrayOf()) } })
-        repeat(2) { try { updates.check(false); fail("HTTP error expected") } catch (_: IllegalStateException) {} }
-        assertEquals(2, requests)
+        repeat(2) {
+            try {
+                updates.check(false)
+                fail("HTTP error expected")
+            } catch (failure: IllegalStateException) {
+                assertTrue(failure.message.orEmpty().contains("Проверьте подключение"))
+            }
+        }
+        assertEquals(4, requests)
+    }
+
+    @Test fun atomFallbackReportsNoUpdateAndIncludesNotesWhenOneAppears() {
+        val installed = previousInstalledVersion()
+        val version = installed.versionName.orEmpty().substringBefore('-')
+        val digest = "a".repeat(64)
+        var offered = installed.longVersionCode
+        var assetRequests = 0
+        val updates = AppUpdates(context, { url ->
+            val tag = "qa-v$version-b$offered"
+            when (url) {
+                "$FGALLERY_RELEASES.atom" -> response {
+                    """<feed xmlns="http://www.w3.org/2005/Atom"><entry>
+                      <link rel="alternate" href="$FGALLERY_RELEASES/tag/$tag"/>
+                      <content type="html">&lt;h3&gt;Что нового&lt;/h3&gt;
+                      &lt;ul&gt;&lt;li&gt;Место съёмки на карте.&lt;/li&gt;&lt;/ul&gt;
+                      &lt;p&gt;FGALLERY_VERSION_CODE=$offered&lt;br&gt;FGALLERY_SHA256_UNIVERSAL=$digest&lt;/p&gt;
+                      </content></entry></feed>""".trimIndent().byteInputStream()
+                }
+                "$FGALLERY_RELEASES/expanded_assets/$tag" -> response {
+                    assetRequests++
+                    """<a href="/Mister-Mikhail/FGallery/releases/download/$tag/FGallery-universal.apk">APK</a>""".byteInputStream()
+                }
+                else -> throw UnknownHostException("api.github.com")
+            }
+        }, { installed })
+        assertNull(runBlocking { updates.check(true) })
+        assertEquals(0, assetRequests)
+        offered++
+        val candidate = checkNotNull(runBlocking { updates.check(true) })
+        assertEquals(offered, candidate.versionCode)
+        assertEquals(digest, candidate.digest)
+        compose.setContent { UpdateOfferMessage(candidate) }
+        compose.onNodeWithText("• Место съёмки на карте.").assertIsDisplayed()
     }
     @Test fun downloadedSignedApkIsValidatedAndIncompleteOrCancelledFilesAreDiscarded() = runBlocking {
         val apk = File(context.applicationInfo.sourceDir)

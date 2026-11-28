@@ -76,7 +76,12 @@ internal object ExifAddressResolver {
             } else {
                 runInterruptible { geocoder.getFromLocation(latitude, longitude, 1)?.firstOrNull() }
             }
-            return address?.getAddressLine(0)?.trim()?.takeIf { it.isNotEmpty() }
+            return address?.let {
+                it.getAddressLine(0)?.trim()?.takeIf(String::isNotEmpty)
+                    ?: listOf(it.thoroughfare, it.subLocality, it.locality, it.adminArea, it.countryName)
+                        .mapNotNull { part -> part?.trim()?.takeIf(String::isNotEmpty) }
+                        .distinct().joinToString(", ").takeIf(String::isNotEmpty)
+            }
         } catch (failure: Exception) {
             if (failure is kotlin.coroutines.cancellation.CancellationException) throw failure
             return null
